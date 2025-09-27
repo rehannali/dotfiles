@@ -1,0 +1,12 @@
+
+
+# Added by Toolbox App
+export PATH="$PATH:/usr/local/bin"
+
+
+# Created by `pipx` on 2024-03-02 08:04:12
+export PATH="$PATH:{{ .chezmoi.homeDir }}/.local/bin"
+
+# Added by OrbStack: command-line tools and integration
+# Comment this line if you don't want it to be added again.
+source {{ .chezmoi.homeDir }}/.orbstack/shell/init.zsh 2>/dev/null || :

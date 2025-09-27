@@ -1,0 +1,44 @@
+{{- $email := promptStringOnce . "email" "What is your email address" -}}
+
+[user]
+	name = Rehan Ali
+	email = {{ $email | quote }}
+	signingKey =
+[core]
+	excludesfile = {{ .chezmoi.homeDir }}/.gitignore_global
+[difftool "sourcetree"]
+	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
+	path =
+[mergetool "sourcetree"]
+	cmd = ~/Applications/Sourcetree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[commit]
+	template = {{ .chezmoi.homeDir }}/.stCommitMsg
+	gpgSign = false
+[init]
+	defaultBranch = main
+[tag]
+	forceSignAnnotated = false
+[gpg]
+	format = openpgp
+	program = gpg
+[gpg "ssh"]
+	program =
+	allowedSignersFile =
+
+[core]
+    pager = delta
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true    # use n and N to move between diff sections
+    side-by-side = true
+    line-numbers = true
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    colorMoved = default
