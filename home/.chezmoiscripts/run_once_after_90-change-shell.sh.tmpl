@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+if [ "$SHELL" != "$(which zsh)" ]; then
+    run sudo chsh -s "$(which zsh)" $USER
+    info "zsh set as default shell."
+else
+    info "zsh is already the default shell."
+fi
