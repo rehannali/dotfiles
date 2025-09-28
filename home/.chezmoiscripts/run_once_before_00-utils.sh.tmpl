@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HELP_DIR="{{ .chezmoi.destDir }}/.local/lib"
+HELP_FILE="$HELP_DIR/chezmoi-utils.sh"
+
+mkdir -p "$HELP_DIR"
+
+cat > "$HELP_FILE" << 'BASH'
+#!/usr/bin/env bash
+
+function bail {
+	error "$*"
+	exit 99
+}
+
+function error {
+	print "ERROR: $* \n" 1>&2
+}
+
+function info {
+	print "INFO: $* \n"
+}
+
+function cleanup {
+	exit_code=$?
+	if [[ $exit_code -ne 0 ]]; then
+        bail "Exiting remaining setup due to error. (Exit code: $exit_code)"
+    else
+        info "Setup completed successfully!"
+    fi
+}
+
+function check_command {
+    command -v "$1" &> /dev/null || bail "Unable to find $1, please install it and run this script again"
+}
+
+function linebreak {
+	print "\n"
+}
+
+function print {
+    echo -e "\n$@"
+}
+
+function run {
+	local cmdline=
+	for arg in "$@"; do
+		case "${arg}" in
+			*\ * | *\"*)
+				cmdline="${cmdline} '${arg}'"
+				;;
+			*)
+				cmdline="${cmdline} ${arg}"
+				;;
+		esac
+	done
+	info "Running${cmdline}" 1>&2
+	"$@"
+}
+BASH
+
+# install only if changed (cheap idempotence)
+if ! cmp -s "$HELP_FILE.tmp" "$HELP_FILE" 2>/dev/null; then
+  mv "$HELP_FILE.tmp" "$HELP_FILE"
+  chmod 755 "$HELP_FILE"
+  printf 'installed helpers to %s\n' "$HELP_FILE"
+else
+  rm -f "$HELP_FILE.tmp"
+  printf 'helpers already up-to-date at %s\n' "$HELP_FILE"
+fi

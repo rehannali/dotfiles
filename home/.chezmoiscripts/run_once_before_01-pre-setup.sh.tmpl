@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+CHEZ_OS="{{ .chezmoi.os }}"
+CHEZ_ARCH="{{ .chezmoi.arch }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+
+info "chezmoi prepare: OS=$CHEZ_OS ARCH=$CHEZ_ARCH DEST_DIR=$DEST_DIR"
+
+########################################################
+# macOS specific steps: Rosetta (on arm), Xcode CLT, Brew
+########################################################
+
+if [ "$CHEZ_OS" = "darwin" ]; then
+  info "Detected macOS"
+
+  # --- Rosetta (Apple Silicon) ---
+  if [ "$CHEZ_ARCH" = "arm64" ] || [ "$CHEZ_ARCH" = "arm" ]; then
+    info "Apple Silicon detected — attempting Rosetta install (idempotent)"
+    # This command is the supported non-interactive installer; if it fails, we continue.
+    run /usr/sbin/softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || {
+      error "Rosetta install command returned non-zero; continuing (may already be installed or require interaction)."
+    }
+  fi
+
+  # --- Xcode Command Line Tools ---
+  if ! xcode-select -p >/dev/null 2>&1; then
+    info "Xcode Command Line Tools not found → invoking installer (xcode-select --install)."
+    # This normally shows a GUI prompt. If it's not available (headless), consider using a PKG offline method.
+    run xcode-select --install >/dev/null 2>&1 || {
+      error "xcode-select --install returned non-zero. If you are headless, use the offline CLT pkg."
+    }
+
+    # Wait for CLI tools to appear (poll until xcode-select -p succeeds or timeout)
+    info "Waiting for Xcode Command Line Tools to finish installing..."
+    timeout_secs=900   # 15 minutes maximum wait (you can adjust)
+    interval=6
+    elapsed=0
+    while ! xcode-select -p >/dev/null 2>&1; do
+      sleep "$interval"
+      elapsed=$((elapsed + interval))
+      if [ "$elapsed" -ge "$timeout_secs" ]; then
+        error "Timed out waiting for Xcode CLT (waited ${timeout_secs}s). Continue anyway."
+        break
+      fi
+    done
+
+    if xcode-select -p >/dev/null 2>&1; then
+      info "Xcode Command Line Tools are installed."
+    else
+      error "Xcode Command Line Tools not detected — some builds or brew installs may fail until installed."
+    fi
+  else
+    info "Xcode Command Line Tools already present."
+  fi
+fi
+
+########################################################
+# Homebrew install (macOS + Linux) and make it available
+########################################################
+if ! command -v brew >/dev/null 2>&1; then
+  info "Homebrew not found — installing Homebrew for $CHEZ_OS"
+
+  # Use official installer; it detects correct prefix. Keep non-fatal if it fails.
+  run NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
+    error "Homebrew installer returned non-zero. If the install failed, you may need to inspect output."
+  }
+else
+  info "Homebrew already installed at $(command -v brew)"
+fi
+
+# Ensure brew is on PATH for this running script and for future shells.
+# Determine brew binary location robustly:
+BREW_BIN=""
+if command -v brew >/dev/null 2>&1; then
+  BREW_BIN="$(command -v brew)"
+else
+  # Fallback prefixes:
+  if [ "$CHEZ_OS" = "darwin" ]; then
+    if [ "$CHEZ_ARCH" = "arm64" ] || [ "$CHEZ_ARCH" = "arm" ]; then
+      BREW_BIN="/opt/homebrew/bin/brew"
+    else
+      BREW_BIN="/usr/local/bin/brew"
+    fi
+  else
+    BREW_BIN="/home/linuxbrew/.linuxbrew/bin/brew"
+  fi
+fi
+
+if [ -x "$BREW_BIN" ]; then
+  info "Evaluating brew shellenv to make brew available in this session (brew: $BREW_BIN)"
+  # eval the shellenv for current shell so further commands can use brew
+  eval "$("$BREW_BIN" shellenv)"
+else
+  error "brew binary not found at expected location ($BREW_BIN). brew may not be available in this session."
+fi
+
+# Persist brew shellenv into common shell startup files if not already present
+# This ensures future interactive shells get Homebrew on PATH.
+persist_line='eval "$('"$BREW_BIN"' shellenv)"'
+append_if_missing() {
+  local file="$1"
+  local line="$2"
+  [ -f "$file" ] || touch "$file"
+  if ! grep -Fqx -- "$line" "$file"; then
+    print "\n# Added by chezmoi — ensure Homebrew is on PATH\n%s\n" "$line" >> "$file"
+    info "Appended brew shellenv to $file"
+  else
+    info "brew shellenv already present in $file"
+  fi
+}
+
+# Don't touch system files — only update user's startup files in DEST_DIR
+PROFILE="$DEST_DIR/.profile"
+BASH_PROFILE="$DEST_DIR/.bash_profile"
+ZPROFILE="$DEST_DIR/.zprofile"
+BASHRC="$DEST_DIR/.bashrc"
+ZSHRC="$DEST_DIR/.zshrc"
+
+append_if_missing "$PROFILE" "$persist_line"
+append_if_missing "$BASH_PROFILE" "$persist_line"
+append_if_missing "$ZPROFILE" "$persist_line"
+append_if_missing "$BASHRC" "$persist_line"
+append_if_missing "$ZSHRC" "$persist_line"
+
+# Optional: run a quick brew update to ensure internal DB is sane
+if command -v brew >/dev/null 2>&1; then
+  info "Running 'brew update' (quiet)"
+  # do not fail whole script if brew update fails
+  run brew update --quiet || error "brew update failed or was noisy"
+fi
+
+info "prepare-system completed successfully."
