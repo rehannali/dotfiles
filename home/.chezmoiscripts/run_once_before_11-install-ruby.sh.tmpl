@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+
+info "Checking is rbenv exists"
+
+if [[ -d "${DEST_DIR}/.rbenv" ]]; then
+  info "Removing rbenv directory"
+  run rm -rf "${DEST_DIR}/.rbenv"
+fi
+
+if [[ ! "$PATH" =~ "$DEST_DIR/.rbenv/bin" ]]; then
+    run export PATH="$DEST_DIR/.rbenv/bin:$PATH"
+fi
+
+latest_ruby_version=$(rbenv install -l | grep -E '^(\d+\.\d+\.\d+)$' | sort -V | tail -n 1)
+
+run rbenv install $latest_ruby_version
+run rbenv global $latest_ruby_version
+
+info "Installed ruby version: $(ruby -v)"
+info "Installed gem version: $(gem -v)"
+
+run sudo gem install cocoapods
+run sudo gem install cocoapods-keys
+run gem install cocoapods
+run gem install cocoapods-keys
