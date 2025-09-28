@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+info "chezmoi run_once_before_10-install-omz.sh: OS={{ .chezmoi.os }} ARCH={{ .chezmoi.arch }} DEST_DIR=$DEST_DIR"
+
+
+info "Installing Oh My ZSH ...."
+
+if [[ -d "${DEST_DIR}/.oh-my-zsh" ]]; then
+  info "Removing old zsh directory before installation."
+  run rm -rf "${DEST_DIR}/.oh-my-zsh"
+fi
+
+run sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
