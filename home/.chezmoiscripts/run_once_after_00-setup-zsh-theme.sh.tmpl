@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+run ln -s "${ZSH_CUSTOM:-${DEST_DIR}/.oh-my-zsh/custom}/themes/spaceship-prompt/spaceship.zsh-theme" "${ZSH_CUSTOM:-${DEST_DIR}/.oh-my-zsh/custom}/themes/spaceship.zsh-theme"

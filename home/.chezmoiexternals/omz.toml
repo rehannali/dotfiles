@@ -53,3 +53,10 @@
     refreshPeriod = "168h"
     [".oh-my-zsh/custom/plugins/zsh-256color".pull]
         args = ["--ff-only"]
+
+[".oh-my-zsh/custom/themes/spaceship-prompt"]
+    type = "git-repo"
+    url = "https://github.com/spaceship-prompt/spaceship-prompt.git"
+    refreshPeriod = "168h"
+    [".oh-my-zsh/custom/themes/spaceship-prompt".pull]
+        args = ["--ff-only"]
