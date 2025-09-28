@@ -18,5 +18,5 @@ eval "$(uvx --generate-shell-completion zsh)"
 
 ## [Completion]
 ## Completion scripts setup. Remove the following line to uninstall
-[[ -f /Users/meliodas/.dart-cli-completion/zsh-config.zsh ]] && . /Users/meliodas/.dart-cli-completion/zsh-config.zsh || true
+[[ -f {{ .chezmoi.destDir }}/.dart-cli-completion/zsh-config.zsh ]] && . {{ .chezmoi.destDir }}/.dart-cli-completion/zsh-config.zsh || true
 ## [/Completion]
