@@ -133,4 +133,8 @@ if command -v brew >/dev/null 2>&1; then
   run brew update --quiet || error "brew update failed or was noisy"
 fi
 
+if [ "$CHEZ_OS" = "darwin" ]; then
+  run brew install mas
+fi
+
 info "prepare-system completed successfully."
