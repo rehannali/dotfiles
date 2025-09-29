@@ -1,0 +1,249 @@
+packages:
+  taps:
+    - colindean/fonts-nonfree
+    - ferdium/ferdium
+    - homebrew/bundle
+    - homebrew/services
+    - leoafarias/fvm
+    - netbirdio/tap
+    - teamookla/speedtest
+    - th-ch/youtube-music
+
+  global:
+    brews:
+      - name: act
+      - name: openssl@3
+      - name: ansible
+      - name: aria2
+      - name: atuin
+      - name: autoconf
+      - name: automake
+      - name: bat
+      - name: node
+      - name: bitwarden-cli
+      - name: btop
+      - name: glib
+      - name: cmake
+      - name: coreutils
+      - name: docker
+      - name: docker-compose
+      - name: dust
+      - name: eza
+      - name: ruby
+      - name: fastlane
+      - name: unbound
+      - name: harfbuzz
+      - name: ffmpeg
+      - name: gcc
+      - name: gh
+      - name: ghostscript
+      - name: git
+      - name: git-delta
+      - name: git-flow
+      - name: git-lfs
+      - name: go
+      - name: libheif
+      - name: graphicsmagick
+      - name: htop
+      - name: imagemagick
+      - name: libksba
+      - name: mkcert
+      - name: neofetch
+      - name: neovim
+      - name: nginx
+        args_str: 'restart_service: :changed'
+      - name: nmap
+      - name: openconnect
+      - name: openssl@1.1
+      - name: payload-dumper-go
+      - name: php
+      - name: pipx
+      - name: pkgconf
+      - name: poetry
+      - name: pwgen
+      - name: pyenv
+      - name: pygments
+      - name: python@3.10
+      - name: python@3.11
+      - name: python@3.9
+      - name: ruby-build
+      - name: rbenv
+      - name: rclone
+      - name: rsync
+      - name: rust
+      - name: stow
+      - name: subversion
+      - name: telnet
+      - name: thefuck
+      - name: tmux
+      - name: uv
+      - name: wireguard-tools
+      - name: youtube-dl
+      - name: zig
+      - name: zlib
+      - name: zoxide
+      - name: zsh
+      - name: leoafarias/fvm/fvm
+      - name: teamookla/speedtest/speedtest
+
+  darwin:
+    brews:
+      - name: carthage
+      - name: chezmoi
+      - name: coreutils
+      - name: libimobiledevice
+      - name: ideviceinstaller
+      - name: ios-deploy
+      - name: libksba
+      - name: swiftlint
+      - name: xcodes
+        args_str: 'link: false'
+
+    casks:
+      - name: 1password
+      - name: 1password-cli
+      - name: adobe-creative-cloud
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: alacritty
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: alfred
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: android-file-transfer
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: android-platform-tools
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: balenaetcher
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: bitwarden
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: brave-browser
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: claude
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: copilot-for-xcode
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: discord
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: easyfind
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: ente-auth
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: ferdium
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: figma
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: firefox
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: font-cascadia-code
+      - name: font-cascadia-code-pl
+      - name: font-caskaydia-cove-nerd-font
+      - name: font-fira-code
+      - name: font-fira-code-nerd-font
+      - name: font-hack-nerd-font
+      - name: font-jetbrains-mono-nerd-font
+      - name: font-meslo-lg-nerd-font
+      - name: font-microsoft-office
+      - name: font-sauce-code-pro-nerd-font
+      - name: font-source-code-pro
+      - name: forkgram-telegram
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: ghostty
+      - name: github-copilot-for-xcode
+      - name: gitkraken
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: google-chrome
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: google-drive
+      - name: hp-easy-start
+      - name: iina
+      - name: iina+
+      - name: iterm2
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: itsycal
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: jetbrains-toolbox
+      - name: karabiner-elements
+      - name: kodi
+      - name: languagetool-desktop
+      - name: little-snitch
+        args_str: 'args: { appdir: "/Applications" }'
+      - name: localsend
+      - name: macfuse
+      - name: micro-snitch
+      - name: microsoft-auto-update
+      - name: microsoft-office
+      - name: microsoft-teams
+      - name: nordvpn
+      - name: notion
+      - name: openvpn-connect
+      - name: orbstack
+      - name: postman
+      - name: qlcolorcode
+      - name: qlimagesize
+      - name: qlmarkdown
+      - name: qlstephen
+      - name: qlvideo
+      - name: quicklook-csv
+      - name: quicklook-json
+      - name: quicklookase
+      - name: readdle-spark
+      - name: rustdesk
+      - name: setapp
+      - name: simpholders
+      - name: simsim
+      - name: snagit
+      - name: sourcetree
+      - name: spotify
+      - name: stremio
+      - name: surfshark
+      - name: suspicious-package
+      - name: tailscale-app
+      - name: termius
+      - name: ticktick
+      - name: twingate
+      - name: visual-studio-code
+      - name: vlc
+      - name: vmware-fusion
+      - name: warp
+      - name: webpquicklook
+      - name: wezterm
+      - name: whatsapp@beta
+      - name: windscribe
+      - name: xcodes-app
+      - name: youtube-music
+      - name: zoom
+
+    mas:
+      - id: 1569813296
+        name: "1Password for Safari"
+      - id: 937984704
+        name: "Amphetamine"
+      - id: 1477089520
+        name: "Backtrack"
+      - id: 1489591003
+        name: "Email"
+      - id: 935235287
+        name: "Encrypto"
+      - id: 430255202
+        name: "Mactracker"
+      - id: 999025824
+        name: "Speedify"
+      - id: 1183412116
+        name: "Swiftify for Xcode"
+      - id: 1157225201
+        name: "Text Toolset"
+      - id: 1451685025
+        name: "WireGuard"
+
+  darwin_arm:
+    # brews:
+    #   - name: some-arm-only-formula
+    #     args_str: ''
+
+    casks:
+      - name: chatgpt
+        args_str: 'args: { appdir: "~/Applications" }'
+
+    # mas:
+    #   - id: 1591187265
+    #     name: "Claude"

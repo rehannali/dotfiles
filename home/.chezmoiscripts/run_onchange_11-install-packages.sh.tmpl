@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+info "chezmoi: render Brewfile and run brew bundle (global -> darwin -> darwin_arm) for {{ .chezmoi.os }}/{{ .chezmoi.arch }}"
+
+brew bundle --file=/dev/stdin <<'BrewfileEOF'
+{{- $p := .packages -}}
+
+{{- /* taps */ -}}
+{{- if hasKey $p "taps" -}}
+  {{- range $p.taps -}}
+{{ printf "\ntap %q" . -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* global brews */ -}}
+{{- if hasKey $p "global" -}}
+  {{- if hasKey $p.global "brews" -}}
+    {{- range $p.global.brews -}}
+      {{- $b := . -}}
+      {{- if hasKey $b "name" -}}
+        {{- /* print brew "name" and optionally args_str */ -}}
+        {{- if hasKey $b "args_str" -}}
+{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+        {{- else -}}
+{{ printf "\nbrew %q" (index $b "name") -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* darwin-only */ -}}
+{{- if eq .chezmoi.os "darwin" -}}
+  {{- if hasKey $p "darwin" -}}
+
+    {{- /* darwin brews */ -}}
+    {{- if hasKey $p.darwin "brews" -}}
+      {{- range $p.darwin.brews -}}
+        {{- $b := . -}}
+        {{- if hasKey $b "name" -}}
+          {{- if hasKey $b "args_str" -}}
+{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+          {{- else -}}
+{{ printf "\nbrew %q" (index $b "name") -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* darwin casks */ -}}
+    {{- if hasKey $p.darwin "casks" -}}
+      {{- range $p.darwin.casks -}}
+        {{- $c := . -}}
+        {{- if hasKey $c "name" -}}
+          {{- if hasKey $c "args_str" -}}
+{{ printf "\ncask %q, %s" (index $c "name") (index $c "args_str") -}}
+          {{- else -}}
+{{ printf "\ncask %q" (index $c "name") -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* darwin mas */ -}}
+    {{- if hasKey $p.darwin "mas" -}}
+      {{- range $p.darwin.mas -}}
+        {{- $m := . -}}
+        {{- if and (hasKey $m "name") (hasKey $m "id") -}}
+{{ printf "\nmas %q, id: %v" (index $m "name") (index $m "id") -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+  {{- end -}}
+{{- end -}}
+
+{{- /* darwin arm-specific */ -}}
+{{- if and (eq .chezmoi.os "darwin") (or (eq .chezmoi.arch "arm64") (eq .chezmoi.arch "arm")) -}}
+  {{- if hasKey $p "darwin_arm" -}}
+
+    {{- /* darwin_arm brews */ -}}
+    {{- if hasKey $p.darwin_arm "brews" -}}
+      {{- range $p.darwin_arm.brews -}}
+        {{- $b := . -}}
+        {{- if hasKey $b "name" -}}
+          {{- if hasKey $b "args_str" -}}
+{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+          {{- else -}}
+{{ printf "\nbrew %q" (index $b "name") -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* darwin_arm casks */ -}}
+    {{- if hasKey $p.darwin_arm "casks" -}}
+      {{- range $p.darwin_arm.casks -}}
+        {{- $c := . -}}
+        {{- if hasKey $c "name" -}}
+          {{- if hasKey $c "args_str" -}}
+{{ printf "\ncask %q, %s" (index $c "name") (index $c "args_str") -}}
+          {{- else -}}
+{{ printf "\ncask %q" (index $c "name") -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- /* darwin_arm mas */ -}}
+    {{- if hasKey $p.darwin_arm "mas" -}}
+      {{- range $p.darwin_arm.mas -}}
+        {{- $m := . -}}
+        {{- if and (hasKey $m "name") (hasKey $m "id") -}}
+{{ printf "\nmas %q, id: %v" (index $m "name") (index $m "id") -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+
+  {{- end -}}
+{{- end -}}
+
+{{- /* linux-only */ -}}
+{{- if eq .chezmoi.os "linux" -}}
+
+{{- end -}}
+
+BrewfileEOF
