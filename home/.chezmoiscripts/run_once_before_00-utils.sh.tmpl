@@ -59,13 +59,3 @@ function run {
 	"$@"
 }
 BASH
-
-# install only if changed (cheap idempotence)
-if ! cmp -s "$HELP_FILE.tmp" "$HELP_FILE" 2>/dev/null; then
-  mv "$HELP_FILE.tmp" "$HELP_FILE"
-  chmod 755 "$HELP_FILE"
-  printf 'installed helpers to %s\n' "$HELP_FILE"
-else
-  rm -f "$HELP_FILE.tmp"
-  printf 'helpers already up-to-date at %s\n' "$HELP_FILE"
-fi
