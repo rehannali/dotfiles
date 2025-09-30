@@ -6,7 +6,7 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 info "chezmoi: render Brewfile and run brew bundle (global -> darwin -> darwin_arm) for {{ .chezmoi.os }}/{{ .chezmoi.arch }}"
 
-brew bundle --file=/dev/stdin <<'BrewfileEOF'
+run brew bundle --file=/dev/stdin <<'BrewfileEOF'
 {{- $p := .packages -}}
 
 {{- if hasKey $p "taps" -}}
