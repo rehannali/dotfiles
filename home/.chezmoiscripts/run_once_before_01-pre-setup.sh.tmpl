@@ -141,12 +141,10 @@ if [ "$CHEZ_OS" = "darwin" ]; then
   run brew install xcodes
 
   info "Installing aria2 (for faster downloads) via brew"
-  run brew isntall aria2
+  run brew install aria2
 
   info "Installing Latest Xcode via xcodes (requires Apple ID login)"
-  run xcodes install --latest --experimental-unxip --select --empty-trash --aria2 $(which aria2c)  || {
-    error "xcodes install returned non-zero. You may need to login with 'xcodes login <apple-id>' first."
-  }
+  run xcodes install --latest --experimental-unxip --select --empty-trash --aria2 $(which aria2c)
 fi
 
 info "prepare-system completed successfully."
