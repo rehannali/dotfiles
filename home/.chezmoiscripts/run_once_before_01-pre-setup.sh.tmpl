@@ -65,7 +65,8 @@ if ! command -v brew >/dev/null 2>&1; then
   info "Homebrew not found — installing Homebrew for $CHEZ_OS"
 
   # Use official installer; it detects correct prefix. Keep non-fatal if it fails.
-  run NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
+  run export NONINTERACTIVE=1
+  run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
     error "Homebrew installer returned non-zero. If the install failed, you may need to inspect output."
   }
 else
