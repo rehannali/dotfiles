@@ -11,7 +11,7 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
 
 {{- if hasKey $p "taps" -}}
 {{- range $p.taps -}}
-{{ printf "\ntap %q" . -}}
+{{ printf "\ntap %q\n" . -}}
 {{- end -}}
 {{- end -}}
 
@@ -21,9 +21,9 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
       {{- $b := . -}}
       {{- if hasKey $b "name" -}}
         {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
         {{- else -}}
-{{ printf "\nbrew %q" (index $b "name") -}}
+{{ printf "\nbrew %q\n" (index $b "name") -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}
@@ -38,9 +38,9 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
         {{- $b := . -}}
         {{- if hasKey $b "name" -}}
           {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
           {{- else -}}
-{{ printf "\nbrew %q" (index $b "name") -}}
+{{ printf "\nbrew %q\n" (index $b "name") -}}
           {{- end -}}
         {{- end -}}
       {{- end -}}
@@ -51,9 +51,9 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
         {{- $c := . -}}
         {{- if hasKey $c "name" -}}
           {{- if hasKey $c "args_str" -}}
-{{ printf "\ncask %q, %s" (index $c "name") (index $c "args_str") -}}
+{{ printf "\ncask %q, %s\n" (index $c "name") (index $c "args_str") -}}
           {{- else -}}
-{{ printf "\ncask %q" (index $c "name") -}}
+{{ printf "\ncask %q\n" (index $c "name") -}}
           {{- end -}}
         {{- end -}}
       {{- end -}}
@@ -63,7 +63,7 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
       {{- range $p.darwin.mas -}}
         {{- $m := . -}}
         {{- if and (hasKey $m "name") (hasKey $m "id") -}}
-{{ printf "\nmas %q, id: %v" (index $m "name") (index $m "id") -}}
+{{ printf "\nmas %q, id: %v\n" (index $m "name") (index $m "id") -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}
@@ -79,9 +79,9 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
         {{- $b := . -}}
         {{- if hasKey $b "name" -}}
           {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s" (index $b "name") (index $b "args_str") -}}
+{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
           {{- else -}}
-{{ printf "\nbrew %q" (index $b "name") -}}
+{{ printf "\nbrew %q\n" (index $b "name") -}}
           {{- end -}}
         {{- end -}}
       {{- end -}}
@@ -92,9 +92,9 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
         {{- $c := . -}}
         {{- if hasKey $c "name" -}}
           {{- if hasKey $c "args_str" -}}
-{{ printf "\ncask %q, %s" (index $c "name") (index $c "args_str") -}}
+{{ printf "\ncask %q, %s\n" (index $c "name") (index $c "args_str") -}}
           {{- else -}}
-{{ printf "\ncask %q" (index $c "name") -}}
+{{ printf "\ncask %q\n" (index $c "name") -}}
           {{- end -}}
         {{- end -}}
       {{- end -}}
@@ -104,7 +104,7 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
       {{- range $p.darwin_arm.mas -}}
         {{- $m := . -}}
         {{- if and (hasKey $m "name") (hasKey $m "id") -}}
-{{ printf "\nmas %q, id: %v" (index $m "name") (index $m "id") -}}
+{{ printf "\nmas %q, id: %v\n" (index $m "name") (index $m "id") -}}
         {{- end -}}
       {{- end -}}
     {{- end -}}

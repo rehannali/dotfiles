@@ -20,3 +20,11 @@ run pyenv install pypy2.7-7.3.6
 
 info "Configuring iterm2 aliases and shell integration"
 run curl -L https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash
+
+info "Upgrade Mac App Store apps"
+run mas upgrade
+
+info "Final cleanup of brew"
+run brew cleanup && rm -rf $(brew --cache)
+
+info "Additional setup completed"
