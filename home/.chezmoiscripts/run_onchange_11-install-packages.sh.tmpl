@@ -6,7 +6,7 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 info "chezmoi: render Brewfile and run brew bundle (global -> darwin -> darwin_arm) for {{ .chezmoi.os }}/{{ .chezmoi.arch }}"
 
-run brew bundle --file=/dev/stdin <<'BrewfileEOF'
+run brew bundle -v --file=/dev/stdin <<'BrewfileEOF'
 {{- $p := .packages -}}
 
 {{- if hasKey $p "taps" -}}
@@ -115,3 +115,15 @@ run brew bundle --file=/dev/stdin <<'BrewfileEOF'
 {{- if eq .chezmoi.os "linux" -}}
 {{- end -}}
 BrewfileEOF
+
+info "Brew update"
+run brew update
+
+info "Brew upgrade"
+run brew upgrade
+
+info "Brew upgrade --cask"
+run brew upgrade --cask
+
+info "Brew cleanup"
+run brew cleanup && rm -rf "$(brew --cache)"
