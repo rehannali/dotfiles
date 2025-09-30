@@ -24,7 +24,9 @@ run rbenv global $latest_ruby_version
 info "Installed ruby version: $(ruby -v)"
 info "Installed gem version: $(gem -v)"
 
-run sudo gem install cocoapods
-run sudo gem install cocoapods-keys
+info "Installing cocoapods and cocoapods-keys gems"
 run gem install cocoapods
 run gem install cocoapods-keys
+
+run sudo gem install cocoapods
+run sudo gem install cocoapods-keys
