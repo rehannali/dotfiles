@@ -134,7 +134,19 @@ if command -v brew >/dev/null 2>&1; then
 fi
 
 if [ "$CHEZ_OS" = "darwin" ]; then
+  info "Ensuring mas (Mac App Store CLI) is installed via brew"
   run brew install mas
+
+  info "Installing Xcodes CLI for managing/Installing Xcode versions"
+  run brew install xcodes
+
+  info "Installing aria2 (for faster downloads) via brew"
+  run brew isntall aria2
+
+  info "Installing Latest Xcode via xcodes (requires Apple ID login)"
+  run xcodes install --latest --experimental-unxip --select --empty-trash --aria2 $(which aria2c)  || {
+    error "xcodes install returned non-zero. You may need to login with 'xcodes login <apple-id>' first."
+  }
 fi
 
 info "prepare-system completed successfully."
