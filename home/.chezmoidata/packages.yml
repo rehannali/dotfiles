@@ -2,8 +2,6 @@ packages:
   taps:
     - colindean/fonts-nonfree
     - ferdium/ferdium
-    - homebrew/bundle
-    - homebrew/services
     - leoafarias/fvm
     - netbirdio/tap
     - teamookla/speedtest
@@ -20,7 +18,6 @@ packages:
       - name: automake
       - name: bat
       - name: node
-      - name: bitwarden-cli
       - name: btop
       - name: glib
       - name: cmake
@@ -54,7 +51,6 @@ packages:
         args_str: 'restart_service: :changed'
       - name: nmap
       - name: openconnect
-      - name: openssl@1.1
       - name: payload-dumper-go
       - name: php
       - name: pipx
@@ -78,7 +74,6 @@ packages:
       - name: tmux
       - name: uv
       - name: wireguard-tools
-      - name: youtube-dl
       - name: zig
       - name: zlib
       - name: zoxide
@@ -95,9 +90,7 @@ packages:
       - name: ideviceinstaller
       - name: ios-deploy
       - name: libksba
-      - name: swiftlint
-      - name: xcodes
-        args_str: 'link: false'
+      - name: swiftlint # Depends on Full Xcode installation. Xcode CLT not sufficient.
 
     casks:
       - name: 1password
@@ -166,8 +159,8 @@ packages:
       - name: kodi
       - name: languagetool-desktop
       - name: little-snitch
-        args_str: 'args: { appdir: "/Applications" }'
       - name: localsend
+        args_str: 'args: { appdir: "~/Applications" }'
       - name: macfuse
       - name: micro-snitch
       - name: microsoft-auto-update
@@ -179,7 +172,6 @@ packages:
       - name: orbstack
       - name: postman
       - name: qlcolorcode
-      - name: qlimagesize
       - name: qlmarkdown
       - name: qlstephen
       - name: qlvideo
@@ -203,7 +195,6 @@ packages:
       - name: twingate
       - name: visual-studio-code
       - name: vlc
-      - name: vmware-fusion
       - name: warp
       - name: webpquicklook
       - name: wezterm
