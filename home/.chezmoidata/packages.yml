@@ -44,6 +44,7 @@ packages:
       - name: htop
       - name: imagemagick
       - name: libksba
+      - name: lsd
       - name: mkcert
       - name: neofetch
       - name: neovim
