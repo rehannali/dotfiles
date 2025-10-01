@@ -1,8 +1,6 @@
-{{- $email := promptStringOnce . "email" "What is your email address" -}}
-
 [user]
 	name = Rehan Ali
-	email = {{ $email | quote }}
+	email = {{ .email | quote }}
 	signingKey =
 [core]
 	excludesfile = {{ .chezmoi.homeDir }}/.gitignore_global
