@@ -210,8 +210,8 @@ packages:
         name: "1Password for Safari"
       - id: 937984704
         name: "Amphetamine"
-      - id: 1477089520
-        name: "Backtrack"
+      # - id: 1477089520    # Use though setapp subscription.
+      #   name: "Backtrack"
       - id: 1489591003
         name: "Email"
       - id: 935235287
