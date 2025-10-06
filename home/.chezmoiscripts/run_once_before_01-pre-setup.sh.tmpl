@@ -143,6 +143,11 @@ if [ "$CHEZ_OS" = "darwin" ]; then
   info "Installing aria2 (for faster downloads) via brew"
   run brew install aria2
 
+  info "Linking binaries of brew packages so process won't fail"
+  run brew unlink mas && brew link mas
+  run brew unlink xcodes && brew link xcodes
+  run brew unlink aria2 && brew link aria2
+
   info "Installing Latest Xcode via xcodes (requires Apple ID login)"
   run xcodes install --latest --experimental-unxip --select --empty-trash --aria2 $(which aria2c)
 fi
