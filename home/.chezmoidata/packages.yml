@@ -114,8 +114,8 @@ packages:
         args_str: 'args: { appdir: "~/Applications" }'
       - name: claude
         args_str: 'args: { appdir: "~/Applications" }'
-      - name: copilot-for-xcode
-        args_str: 'args: { appdir: "~/Applications" }'
+      # - name: copilot-for-xcode # Removed in favor of github-copilot-for-xcode
+      #   args_str: 'args: { appdir: "~/Applications" }'
       - name: discord
         args_str: 'args: { appdir: "~/Applications" }'
       - name: easyfind
@@ -226,6 +226,10 @@ packages:
         name: "Text Toolset"
       - id: 1451685025
         name: "WireGuard"
+      - id: 1377998565
+        name: "Comment Wrapper for Xcode"
+      - id: 1165321484
+        name: "XCFormat"
 
   darwin_arm:
     # brews:
