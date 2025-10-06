@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+
+info "Installing Xcode Simulator Runtime"
+
+xcode_ios_runtime_latest_version=$(xcodes runtimes | grep -E "^iOS " | awk '{print $2}' | sort -V | tail -n1)
+
+run xcodes runtimes install "iOS $xcode_ios_runtime_latest_version" --aria2 "$(which aria2c)"
+
+info "Xcode Simulator Runtime Installation completed"
