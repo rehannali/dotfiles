@@ -1,12 +1,16 @@
-
+{{ if eq .chezmoi.os "darwin" -}}
+{{ if eq .chezmoi.arch "arm64" -}}
+eval "$(/opt/homebrew/bin/brew shellenv)"
+{{ else -}}
+eval "$(/usr/local/bin/brew shellenv)"
+{{ end -}}
 
 # Added by Toolbox App
 export PATH="$PATH:/usr/local/bin"
 
-
-# Created by `pipx` on 2024-03-02 08:04:12
-export PATH="$PATH:{{ .chezmoi.homeDir }}/.local/bin"
-
 # Added by OrbStack: command-line tools and integration
-# Comment this line if you don't want it to be added again.
 source {{ .chezmoi.homeDir }}/.orbstack/shell/init.zsh 2>/dev/null || :
+{{ end -}}
+
+# Created by `pipx`
+export PATH="$PATH:{{ .chezmoi.homeDir }}/.local/bin"

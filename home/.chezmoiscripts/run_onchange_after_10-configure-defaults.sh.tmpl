@@ -1,6 +1,5 @@
+{{- if eq .chezmoi.os "darwin" -}}
 #!/usr/bin/env bash
-
-{{ if eq .chezmoi.os "darwin" -}}
 
 defaults write com.apple.dock "orientation" -string "left"
 defaults write com.apple.dock "tilesize" -int "42"
@@ -52,5 +51,4 @@ defaults write com.apple.AppleMultitouchTrackpad TrackpadTwoFingerFromRightEdgeS
 defaults write com.apple.AppleMultitouchTrackpad USBMouseStopsTrackpad -int 0
 defaults write com.apple.AppleMultitouchTrackpad UserPreferences -int 1
 defaults write com.apple.AppleMultitouchTrackpad version -int 12
-
-{{ end }}
+{{ end -}}

@@ -1,3 +1,4 @@
+{{- if eq .chezmoi.os "darwin" -}}
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -6,7 +7,7 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 info "chezmoi: render Brewfile and run brew bundle (global -> darwin -> darwin_arm) for {{ .chezmoi.os }}/{{ .chezmoi.arch }}"
 
-run brew bundle -v --file=/dev/stdin <<'BrewfileEOF'
+run brew bundle -v --no-upgrade --file=/dev/stdin <<'BrewfileEOF'
 {{- $p := .packages -}}
 
 {{- if hasKey $p "taps" -}}
@@ -116,14 +117,8 @@ run brew bundle -v --file=/dev/stdin <<'BrewfileEOF'
 {{- end -}}
 BrewfileEOF
 
-info "Brew update"
-run brew update
-
-info "Brew upgrade"
-run brew upgrade
-
-info "Brew upgrade --cask"
-run brew upgrade --cask
-
+# NOTE: no blanket "brew upgrade" here. On Intel (Tier 3) upgrades can trigger
+# source builds. Upgrade deliberately, one package at a time: brew upgrade <name>
 info "Brew cleanup"
-run brew cleanup && rm -rf "$(brew --cache)"
+run brew cleanup
+{{ end -}}

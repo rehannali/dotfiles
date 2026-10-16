@@ -1,0 +1,10 @@
+# Global runtime versions. Replaces pyenv, rbenv, rvm, sdkman and brew-installed
+# languages. Override per project with a mise.toml in that repo.
+[tools]
+node = "lts"
+python = "3.12"
+uv = "latest"
+ruby = "3.3"
+java = ["corretto-21", "corretto-17"]   # first entry is the default
+go = "latest"
+rust = "latest"

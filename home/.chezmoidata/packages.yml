@@ -8,6 +8,8 @@ packages:
     - th-ch/youtube-music
 
   global:
+    # Language runtimes (node, python, ruby, java, go, rust, uv) live in
+    # home/dot_config/mise/config.toml - they are NOT built from source via brew.
     brews:
       - name: act
       - name: openssl@3
@@ -17,7 +19,6 @@ packages:
       - name: autoconf
       - name: automake
       - name: bat
-      - name: node
       - name: btop
       - name: glib
       - name: cmake
@@ -26,7 +27,6 @@ packages:
       - name: docker-compose
       - name: dust
       - name: eza
-      - name: ruby
       - name: fastlane
       - name: unbound
       - name: harfbuzz
@@ -38,7 +38,6 @@ packages:
       - name: git-delta
       - name: git-flow
       - name: git-lfs
-      - name: go
       - name: libheif
       - name: graphicsmagick
       - name: htop
@@ -57,22 +56,14 @@ packages:
       - name: pkgconf
       - name: poetry
       - name: pwgen
-      - name: pyenv
       - name: pygments
-      - name: python@3.10
-      - name: python@3.11
-      - name: python@3.9
-      - name: ruby-build
-      - name: rbenv
       - name: rclone
       - name: rsync
-      - name: rust
       - name: stow
       - name: subversion
       - name: telnet
       - name: thefuck
       - name: tmux
-      - name: uv
       - name: wireguard-tools
       - name: zig
       - name: zlib
@@ -238,3 +229,36 @@ packages:
     # mas:
     #   - id: 1591187265
     #     name: "Claude"
+
+  linux:
+    apt:
+      - build-essential
+      - curl
+      - git
+      - pkg-config
+      - libssl-dev
+      - tmux
+      - unzip
+      - zlib1g-dev
+      - zsh
+
+  # Verify IDs once with: winget search <name>
+  windows:
+    winget:
+      - 7zip.7zip
+      - Bitwarden.Bitwarden
+      - Brave.Brave
+      - Discord.Discord
+      - Docker.DockerDesktop
+      - Git.Git
+      - GitHub.cli
+      - Google.AndroidStudio
+      - JetBrains.Toolbox
+      - Microsoft.PowerShell
+      - Microsoft.VisualStudioCode
+      - Microsoft.WindowsTerminal
+      - Neovim.Neovim
+      - Postman.Postman
+      - Tailscale.Tailscale
+      - jdx.mise
+      - wez.wezterm

@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -8,6 +9,19 @@ mkdir -p "$HELP_DIR"
 
 cat > "$HELP_FILE" << 'BASH'
 #!/usr/bin/env bash
+
+# mise (official installer) lives in ~/.local/bin; its shims expose every installed runtime/tool
+export PATH="{{ .chezmoi.destDir }}/.local/bin:{{ .chezmoi.destDir }}/.local/share/mise/shims:$PATH"
+{{ if eq .chezmoi.os "darwin" -}}
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+{{ if ne .chezmoi.arch "arm64" -}}
+# Intel Macs: Homebrew no longer builds bottles (Tier 3). Never update, upgrade or compile implicitly.
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_UPGRADE=1
+export HOMEBREW_MAKE_JOBS=2
+{{ end -}}
+{{ end -}}
 
 function bail {
 	error "$*"
@@ -61,3 +75,4 @@ function run {
 BASH
 
 chmod +x "$HELP_FILE"
+{{ end -}}

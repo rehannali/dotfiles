@@ -1,0 +1,18 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/usr/bin/env bash
+# mise config hash (re-runs when it changes): {{ include "dot_config/mise/config.toml" | sha256sum }}
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+if ! command -v mise >/dev/null 2>&1; then
+  info "Installing mise (official installer, prebuilt binary)"
+  run sh -c "$(curl -fsSL https://mise.run)"
+fi
+
+# Limit parallel compile jobs in case a runtime has no prebuilt binary on this machine
+export MISE_JOBS=2
+info "Installing tools from ~/.config/mise/config.toml"
+run mise install
+run mise doctor || true
+{{ end -}}

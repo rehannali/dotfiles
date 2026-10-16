@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
 
 DEST_DIR="{{ .chezmoi.destDir }}"
@@ -15,3 +16,4 @@ if [[ -d "${DEST_DIR}/.oh-my-zsh" ]]; then
 fi
 
 run sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+{{ end -}}

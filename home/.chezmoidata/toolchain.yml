@@ -1,0 +1,5 @@
+# Pin toolchain versions that must match what your Mac can actually run.
+# Leave empty to skip the step. Find values with: xcodes list / xcodes runtimes
+toolchain:
+  xcode_version: ""   # e.g. "26.2" - pick one your macOS supports
+  ios_runtime: ""     # e.g. "26.2"
