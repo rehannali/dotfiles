@@ -1,124 +1,119 @@
 {{- if eq .chezmoi.os "darwin" -}}
+{{- $plan := includeTemplate "tool-plan" . | fromJson -}}
+{{- $appleSilicon := eq .chezmoi.arch "arm64" -}}
 #!/usr/bin/env bash
+# Homebrew packages for macOS/{{ .chezmoi.arch }}. What brew installs here is decided by home/.chezmoitemplates/tool-plan.
+# Written for macOS's stock bash 3.2: no empty-array expansion under `set -u`, no heredocs inside $(...).
 set -euo pipefail
 
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
-info "chezmoi: render Brewfile and run brew bundle (global -> darwin -> darwin_arm) for {{ .chezmoi.os }}/{{ .chezmoi.arch }}"
+{{ if $appleSilicon -}}
+info "chezmoi: Apple Silicon - CLI tools, system packages, casks and App Store apps via Homebrew"
+{{- else -}}
+info "chezmoi: Intel Mac - casks and App Store apps via Homebrew; formulae only when a bottle exists (CLI tools come from mise)"
+{{- end }}
 
-run brew bundle -v --no-upgrade --file=/dev/stdin <<'BrewfileEOF'
-{{- $p := .packages -}}
+# Refresh the formula index on purpose. Never `brew upgrade`: on Intel (Tier 3) it can compile from source.
+run brew update || error "brew update failed; continuing with the cached formula index."
 
-{{- if hasKey $p "taps" -}}
-{{- range $p.taps -}}
-{{ printf "\ntap %q\n" . -}}
-{{- end -}}
-{{- end -}}
-
-{{- if hasKey $p "global" -}}
-  {{- if hasKey $p.global "brews" -}}
-    {{- range $p.global.brews -}}
-      {{- $b := . -}}
-      {{- if hasKey $b "name" -}}
-        {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
-        {{- else -}}
-{{ printf "\nbrew %q\n" (index $b "name") -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-
-{{- if eq .chezmoi.os "darwin" -}}
-  {{- if hasKey $p "darwin" -}}
-
-    {{- if hasKey $p.darwin "brews" -}}
-      {{- range $p.darwin.brews -}}
-        {{- $b := . -}}
-        {{- if hasKey $b "name" -}}
-          {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
-          {{- else -}}
-{{ printf "\nbrew %q\n" (index $b "name") -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if hasKey $p.darwin "casks" -}}
-      {{- range $p.darwin.casks -}}
-        {{- $c := . -}}
-        {{- if hasKey $c "name" -}}
-          {{- if hasKey $c "args_str" -}}
-{{ printf "\ncask %q, %s\n" (index $c "name") (index $c "args_str") -}}
-          {{- else -}}
-{{ printf "\ncask %q\n" (index $c "name") -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if hasKey $p.darwin "mas" -}}
-      {{- range $p.darwin.mas -}}
-        {{- $m := . -}}
-        {{- if and (hasKey $m "name") (hasKey $m "id") -}}
-{{ printf "\nmas %q, id: %v\n" (index $m "name") (index $m "id") -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-  {{- end -}}
-{{- end -}}
-
-{{- if and (eq .chezmoi.os "darwin") (or (eq .chezmoi.arch "arm64") (eq .chezmoi.arch "arm")) -}}
-  {{- if hasKey $p "darwin_arm" -}}
-
-    {{- if hasKey $p.darwin_arm "brews" -}}
-      {{- range $p.darwin_arm.brews -}}
-        {{- $b := . -}}
-        {{- if hasKey $b "name" -}}
-          {{- if hasKey $b "args_str" -}}
-{{ printf "\nbrew %q, %s\n" (index $b "name") (index $b "args_str") -}}
-          {{- else -}}
-{{ printf "\nbrew %q\n" (index $b "name") -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if hasKey $p.darwin_arm "casks" -}}
-      {{- range $p.darwin_arm.casks -}}
-        {{- $c := . -}}
-        {{- if hasKey $c "name" -}}
-          {{- if hasKey $c "args_str" -}}
-{{ printf "\ncask %q, %s\n" (index $c "name") (index $c "args_str") -}}
-          {{- else -}}
-{{ printf "\ncask %q\n" (index $c "name") -}}
-          {{- end -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if hasKey $p.darwin_arm "mas" -}}
-      {{- range $p.darwin_arm.mas -}}
-        {{- $m := . -}}
-        {{- if and (hasKey $m "name") (hasKey $m "id") -}}
-{{ printf "\nmas %q, id: %v\n" (index $m "name") (index $m "id") -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-
-  {{- end -}}
-{{- end -}}
-
-{{- if eq .chezmoi.os "linux" -}}
-{{- end -}}
+BREWFILE="$(mktemp)"
+trap 'rm -f "$BREWFILE"' EXIT
+cat > "$BREWFILE" <<'BrewfileEOF'
+{{ range .packages.taps -}}
+tap {{ . | quote }}
+{{ end -}}
+{{- if $appleSilicon -}}
+{{- range $plan.brew }}
+brew {{ .name | quote }}{{ if .args }}, {{ .args }}{{ end }}
+{{- end }}
+{{ end -}}
+{{- range .packages.darwin.casks }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+{{- end }}
+{{ range .packages.darwin.mas -}}
+mas {{ .name | quote }}, id: {{ .id }}
+{{ end -}}
+{{- if $appleSilicon -}}
+{{- range .packages.darwin_arm.casks }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+{{- end }}
+{{ end -}}
 BrewfileEOF
 
-# NOTE: no blanket "brew upgrade" here. On Intel (Tier 3) upgrades can trigger
-# source builds. Upgrade deliberately, one package at a time: brew upgrade <name>
+{{ if $appleSilicon -}}
+run brew bundle -v --no-upgrade --file="$BREWFILE"
+{{- else -}}
+# --- Intel: casks and App Store apps through the bundle -----------------------------------------
+bundle_status=0
+run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
+
+# --- Intel: formulae, bottle-only ---------------------------------------------------------------
+# Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
+# formula itself, but its dependencies are installed with force_bottle=false and WOULD be compiled.
+# So the formula and every runtime dependency that is not installed yet must have a bottle first.
+major="$(sw_vers -productVersion | cut -d. -f1)"
+tags=""
+for entry in tahoe:26 sequoia:15 sonoma:14 ventura:13 monterey:12 big_sur:11; do
+  if [ "$major" -ge "${entry#*:}" ]; then tags="$tags ${entry%%:*}"; fi   # bottles for older macOS are usable
+done
+# shellcheck disable=SC2086  # $tags is a space-separated word list
+tag_re="\"(all$(printf '|%s' $tags))\":[[:space:]]*\\{"
+
+has_intel_bottle() {
+  local json
+  json="$(brew info --json=v2 --formula "$1" 2>/dev/null)" || return 1
+  grep -Eq "$tag_re" <<< "$json"   # herestring, not a pipe: grep -q + pipefail would report SIGPIPE
+}
+
+# Print the formulae in $1 + its runtime dependencies that are not installed and have no usable bottle.
+# $2 = true skips $1 itself (tap formula that downloads a prebuilt binary).
+unbottled() {
+  local dep missing=""
+  for dep in $([ "$2" = true ] || echo "$1") $(brew deps --formula "$1" 2>/dev/null); do
+    brew list --formula "$dep" > /dev/null 2>&1 && continue
+    has_intel_bottle "$dep" || missing="$missing $dep"
+  done
+  echo "$missing"
+}
+
+installed=""
+skipped=""
+failed=""
+for entry in {{ range $plan.brew }}{{ printf "%s|%t" .name .prebuilt | quote }} {{ end }}; do
+  formula="${entry%|*}"
+  prebuilt="${entry#*|}"
+  if brew list --formula "$formula" > /dev/null 2>&1; then continue; fi   # installed: leave it alone
+
+  missing="$(unbottled "$formula" "$prebuilt")"
+  if [ -n "${missing# }" ]; then
+    skipped="$skipped
+  - $formula  (no Intel bottle:$missing)"
+    continue
+  fi
+
+  if [ "$prebuilt" = true ]; then
+    if run brew install --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
+  else
+    if run brew install --force-bottle --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
+  fi
+done
+
+[ -z "$installed" ] || info "Installed from bottles:$installed"
+if [ -n "$skipped" ]; then
+  error "Skipped - Homebrew has no Intel bottle for these (or for one of their dependencies):$skipped"
+  info "Nothing was compiled. Use the tool macOS already ships, or build one on purpose:"
+  info "  brew install --build-from-source <formula>   (slow; Intel is Tier 3)"
+fi
+[ -z "$failed" ] || error "brew install failed for:$failed"
+
+if [ "$bundle_status" -ne 0 ]; then
+  error "brew bundle (casks / App Store) exited with status $bundle_status"
+  exit "$bundle_status"
+fi
+{{- end }}
+
 info "Brew cleanup"
 run brew cleanup
 {{ end -}}

@@ -1,0 +1,59 @@
+{{- /*
+  Resolves packages.tools into one list per package manager for THIS machine and prints it as
+  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt"}, ...], "mise": ["id", ...]}
+
+  This is the only place the package policy is encoded. Consumers parse it with
+      {{ $plan := includeTemplate "tool-plan" . | fromJson }}
+  (mise config, brew script, apt script), so they can never disagree about who installs what.
+
+                   cli, or any entry with a mise key      system / apple, no mise key
+    Apple Silicon  brew (mise only if there is no brew)   brew
+    Intel Mac      mise (brew if mise_intel: false)       brew, bottle-only (checked at install time)
+    Linux          mise (apt if there is no mise key)     apt
+    Windows        nothing here (winget)
+
+  Exactly one manager is chosen per tool, so nothing is ever installed twice.
+*/ -}}
+{{- $os := .chezmoi.os -}}
+{{- $appleSilicon := and (eq $os "darwin") (eq .chezmoi.arch "arm64") -}}
+{{- $intel := and (eq $os "darwin") (not $appleSilicon) -}}
+{{- $mise := list -}}
+{{- $brew := list -}}
+{{- $apt := list -}}
+{{- if or (eq $os "darwin") (eq $os "linux") -}}
+{{- range .packages.tools -}}
+  {{- $t := . -}}
+  {{- if not (has $t.kind (list "cli" "system" "apple")) -}}
+    {{- fail (printf "packages.tools %q: kind must be cli, system or apple (got %q)" $t.name $t.kind) -}}
+  {{- end -}}
+  {{- if and (eq $t.kind "cli") (not (hasKey $t "mise")) -}}
+    {{- fail (printf "packages.tools %q: kind cli needs a mise key (use kind system for brew/apt-only tools)" $t.name) -}}
+  {{- end -}}
+
+  {{- $via := "" -}}
+  {{- if and (eq $t.kind "apple") (ne $os "darwin") -}}
+    {{- /* macOS only */ -}}
+  {{- else if $appleSilicon -}}
+    {{- if hasKey $t "brew" -}}{{- $via = "brew" -}}
+    {{- else if hasKey $t "mise" -}}{{- $via = "mise" -}}
+    {{- end -}}
+  {{- else if $intel -}}
+    {{- if and (hasKey $t "mise") (ne (get $t "mise_intel" | toString) "false") -}}{{- $via = "mise" -}}
+    {{- else if hasKey $t "brew" -}}{{- $via = "brew" -}}
+    {{- end -}}
+  {{- else -}}
+    {{- if hasKey $t "mise" -}}{{- $via = "mise" -}}
+    {{- else if hasKey $t "apt" -}}{{- $via = "apt" -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if eq $via "mise" -}}
+    {{- $mise = append $mise (get $t "mise") -}}
+  {{- else if eq $via "brew" -}}
+    {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true")) -}}
+  {{- else if eq $via "apt" -}}
+    {{- $apt = append $apt (get $t "apt") -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- dict "apt" $apt "brew" $brew "mise" $mise | toJson -}}
