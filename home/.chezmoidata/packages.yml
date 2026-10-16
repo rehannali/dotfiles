@@ -22,7 +22,7 @@
 #   Intel Mac      mise                            brew, only if a bottle exists
 #   Linux          mise                            apt
 #
-# A tool is never installed by two managers on one machine. Casks and mas apps
+# A tool is never installed by two managers on one machine. Casks, mas apps and gems
 # are macOS-only and are listed in the `darwin` section.
 packages:
   # Homebrew taps (macOS only)
@@ -119,8 +119,14 @@ packages:
     - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
     - {name: xcodes, kind: apple, mise: xcodes, brew: xcodes}
 
-  # macOS only. Casks and Mac App Store apps have no apt/mise equivalent.
+  # macOS only. Casks, Mac App Store apps and Ruby gems have no apt/mise equivalent.
   darwin:
+    # Installed into mise's Ruby (not Homebrew's) by run_onchange_after_13-install-ruby-gems.
+    gems:
+      - fastlane
+      - cocoapods
+      - cocoapods-keys
+
     casks:
       - name: 1password
       - name: 1password-cli

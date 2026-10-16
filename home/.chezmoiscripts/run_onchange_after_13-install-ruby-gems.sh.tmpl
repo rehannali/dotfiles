@@ -1,0 +1,15 @@
+{{- if eq .chezmoi.os "darwin" -}}
+#!/usr/bin/env bash
+# fastlane and CocoaPods live in mise's Ruby ({{ .packages.runtimes.ruby }}), not in Homebrew's.
+# Re-runs when the gem list or the Ruby version changes (both are part of this rendered text).
+set -euo pipefail
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+command -v mise > /dev/null 2>&1 || bail "mise not found; run_onchange_after_12-install-mise-tools should have installed it."
+
+info "Installing gems into mise's Ruby {{ .packages.runtimes.ruby }}"
+run mise exec ruby@{{ .packages.runtimes.ruby }} -- gem install --no-document{{ range .packages.darwin.gems }} {{ . }}{{ end }}
+run mise reshim
+{{ end -}}
