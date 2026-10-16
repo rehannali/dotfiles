@@ -34,6 +34,16 @@ packages:
     - teamookla/speedtest
     - th-ch/youtube-music
 
+  # Always installed by mise, on every OS (rendered into ~/.config/mise/config.toml).
+  runtimes:
+    node: lts
+    python: "3.12"
+    uv: latest
+    ruby: "3.3"
+    java: [corretto-21, corretto-17]   # first entry is the default
+    go: latest
+    rust: latest
+
   tools:
     # --- cli: prebuilt single-binary tools. brew on Apple Silicon, mise on Intel and Linux.
     - {name: act, kind: cli, mise: act, brew: act}

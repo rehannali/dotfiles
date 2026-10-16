@@ -1,18 +1,29 @@
 {{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
-# mise config hash (re-runs when it changes): {{ include "dot_config/mise/config.toml" | sha256sum }}
+# Re-runs whenever the rendered mise config changes (runtimes in packages.yml, or this machine's tool plan).
+# mise config hash: {{ includeTemplate "mise-config.toml" . | sha256sum }}
 
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
-if ! command -v mise >/dev/null 2>&1; then
+if ! command -v mise > /dev/null 2>&1; then
   info "Installing mise (official installer, prebuilt binary)"
   run sh -c "$(curl -fsSL https://mise.run)"
 fi
 
-# Limit parallel compile jobs in case a runtime has no prebuilt binary on this machine
-export MISE_JOBS=2
+install_status=0
+{{ if and (eq .chezmoi.os "darwin") (ne .chezmoi.arch "arm64") -}}
+# mise ships no prebuilt Ruby for Intel Macs, so Ruby compiles from source here. Keep the machine usable.
+info "Intel Mac: Ruby is compiled from source (several minutes; 2 jobs, low priority)"
+export MISE_JOBS=2 MAKE_OPTS=-j2 RUBY_MAKE_OPTS=-j2
 info "Installing tools from ~/.config/mise/config.toml"
-run mise install
+run nice -n 10 mise install || install_status=$?
+{{- else -}}
+info "Installing tools from ~/.config/mise/config.toml"
+run mise install || install_status=$?
+{{- end }}
+
+run mise reshim
 run mise doctor || true
+exit "$install_status"
 {{ end -}}
