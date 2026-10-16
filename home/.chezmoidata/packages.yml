@@ -13,6 +13,8 @@
 #   brew_args   Brewfile options for the formula (used by `brew bundle`, i.e. Apple Silicon)
 #   mise_intel  false = mise has no macOS x86_64 build; Intel Macs fall back to brew
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
+#   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
+#               system entries have none unless set). Used by scripts/check-install.py after an apply.
 #
 # Which manager installs a tool on each machine is decided in ONE place,
 # home/.chezmoitemplates/tool-plan (see README "Package policy"):
@@ -58,64 +60,64 @@ packages:
     - {name: eza, kind: cli, mise: eza, mise_intel: false, brew: eza, apt: eza}
     - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
     - {name: gh, kind: cli, mise: gh, brew: gh, apt: gh}
-    - {name: git-delta, kind: cli, mise: delta, mise_intel: false, brew: git-delta, apt: git-delta}
+    - {name: git-delta, kind: cli, mise: delta, mise_intel: false, brew: git-delta, apt: git-delta, bin: delta}
     - {name: git-lfs, kind: cli, mise: git-lfs, brew: git-lfs, apt: git-lfs}
     - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, apt: mkcert}
-    - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, apt: neovim}
+    - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, apt: neovim, bin: nvim}
     - {name: payload-dumper-go, kind: cli, mise: github:ssut/payload-dumper-go, brew: payload-dumper-go}
     - {name: pipx, kind: cli, mise: pipx, brew: pipx, apt: pipx}
     - {name: poetry, kind: cli, mise: pypi:poetry, brew: poetry, apt: python3-poetry}
-    - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, apt: python3-pygments}
+    - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, apt: python3-pygments, bin: pygmentize}
     - {name: rclone, kind: cli, mise: rclone, brew: rclone, apt: rclone}
     - {name: tmux, kind: cli, mise: tmux, brew: tmux, apt: tmux}
     - {name: zig, kind: cli, mise: zig, brew: zig}
     - {name: zoxide, kind: cli, mise: zoxide, brew: zoxide, apt: zoxide}
 
     # --- system: libraries, daemons and big apps. brew (Apple Silicon; Intel only with a bottle) / apt.
-    - {name: ansible, kind: system, brew: ansible, apt: ansible}
-    - {name: aria2, kind: system, brew: aria2, apt: aria2}
-    - {name: autoconf, kind: system, brew: autoconf, apt: autoconf}
-    - {name: automake, kind: system, brew: automake, apt: automake}
+    - {name: ansible, kind: system, brew: ansible, apt: ansible, bin: ansible}
+    - {name: aria2, kind: system, brew: aria2, apt: aria2, bin: aria2c}
+    - {name: autoconf, kind: system, brew: autoconf, apt: autoconf, bin: autoconf}
+    - {name: automake, kind: system, brew: automake, apt: automake, bin: automake}
     - {name: build-essential, kind: system, apt: build-essential}
     - {name: coreutils, kind: system, brew: coreutils}
-    - {name: curl, kind: system, apt: curl}
-    - {name: ffmpeg, kind: system, brew: ffmpeg, apt: ffmpeg}
+    - {name: curl, kind: system, apt: curl, bin: curl}
+    - {name: ffmpeg, kind: system, brew: ffmpeg, apt: ffmpeg, bin: ffmpeg}
     - {name: gcc, kind: system, brew: gcc, apt: gcc}
-    - {name: ghostscript, kind: system, brew: ghostscript, apt: ghostscript}
-    - {name: git, kind: system, brew: git, apt: git}
-    - {name: git-flow, kind: system, brew: git-flow, apt: git-flow}
+    - {name: ghostscript, kind: system, brew: ghostscript, apt: ghostscript, bin: gs}
+    - {name: git, kind: system, brew: git, apt: git, bin: git}
+    - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
     - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}
-    - {name: graphicsmagick, kind: system, brew: graphicsmagick, apt: graphicsmagick}
+    - {name: graphicsmagick, kind: system, brew: graphicsmagick, apt: graphicsmagick, bin: gm}
     - {name: harfbuzz, kind: system, brew: harfbuzz, apt: libharfbuzz-dev}
-    - {name: htop, kind: system, brew: htop, apt: htop}
-    - {name: imagemagick, kind: system, brew: imagemagick, apt: imagemagick}
+    - {name: htop, kind: system, brew: htop, apt: htop, bin: htop}
+    - {name: imagemagick, kind: system, brew: imagemagick, apt: imagemagick, bin: magick}
     - {name: libheif, kind: system, brew: libheif, apt: libheif-dev}
     - {name: libksba, kind: system, brew: libksba, apt: libksba-dev}
     - {name: libyaml, kind: system, brew: libyaml, apt: libyaml-dev}
     - {name: nginx, kind: system, brew: nginx, apt: nginx, brew_args: 'restart_service: :changed'}
-    - {name: nmap, kind: system, brew: nmap, apt: nmap}
-    - {name: openconnect, kind: system, brew: openconnect, apt: openconnect}
+    - {name: nmap, kind: system, brew: nmap, apt: nmap, bin: nmap}
+    - {name: openconnect, kind: system, brew: openconnect, apt: openconnect, bin: openconnect}
     - {name: openssl, kind: system, brew: openssl@3, apt: libssl-dev}
-    - {name: php, kind: system, brew: php, apt: php-cli}
-    - {name: pkgconf, kind: system, brew: pkgconf, apt: pkgconf}
-    - {name: pwgen, kind: system, brew: pwgen, apt: pwgen}
-    - {name: rsync, kind: system, brew: rsync, apt: rsync}
-    - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true}
-    - {name: stow, kind: system, brew: stow, apt: stow}
-    - {name: subversion, kind: system, brew: subversion, apt: subversion}
-    - {name: telnet, kind: system, brew: telnet, apt: telnet}
-    - {name: thefuck, kind: system, brew: thefuck, apt: thefuck}
+    - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
+    - {name: pkgconf, kind: system, brew: pkgconf, apt: pkgconf, bin: pkgconf}
+    - {name: pwgen, kind: system, brew: pwgen, apt: pwgen, bin: pwgen}
+    - {name: rsync, kind: system, brew: rsync, apt: rsync, bin: rsync}
+    - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
+    - {name: stow, kind: system, brew: stow, apt: stow, bin: stow}
+    - {name: subversion, kind: system, brew: subversion, apt: subversion, bin: svn}
+    - {name: telnet, kind: system, brew: telnet, apt: telnet, bin: telnet}
+    - {name: thefuck, kind: system, brew: thefuck, apt: thefuck, bin: thefuck}
     - {name: unbound, kind: system, brew: unbound, apt: unbound}
-    - {name: unzip, kind: system, apt: unzip}
-    - {name: wireguard-tools, kind: system, brew: wireguard-tools, apt: wireguard-tools}
+    - {name: unzip, kind: system, apt: unzip, bin: unzip}
+    - {name: wireguard-tools, kind: system, brew: wireguard-tools, apt: wireguard-tools, bin: wg}
     - {name: zlib, kind: system, brew: zlib, apt: zlib1g-dev}
-    - {name: zsh, kind: system, brew: zsh, apt: zsh}
+    - {name: zsh, kind: system, brew: zsh, apt: zsh, bin: zsh}
 
     # --- apple: Apple-developer tools, macOS only.
     - {name: carthage, kind: apple, brew: carthage}
     - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}
     - {name: ios-deploy, kind: apple, brew: ios-deploy}
-    - {name: libimobiledevice, kind: apple, brew: libimobiledevice}
+    - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}
     - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
     - {name: xcodes, kind: apple, mise: xcodes, brew: xcodes}
 

@@ -115,6 +115,8 @@ for t in tools:
     names = {"mise": t.get("mise"), "brew": t.get("brew"), "apt": t.get("apt")}
     hits = []
     for mgr, entries in plan.items():
+        if mgr == "expect":
+            continue
         for e in entries:
             val = e["name"] if isinstance(e, dict) else e
             if names[mgr] is not None and val == names[mgr]:
@@ -122,6 +124,8 @@ for t in tools:
     assert len(hits) <= 1, f"{t['name']} installed by {hits} on {target}"
     if t["kind"] == "cli" and target.split("/")[0] in ("darwin", "linux") and not hits:
         raise SystemExit(f"cli tool {t['name']} is not installed by anything on {target}")
+for e in plan["expect"]:
+    assert e["via"] in ("mise", "brew", "apt"), e
 print(f"  {target}: " + ", ".join(f"{k}={len(v)}" for k, v in sorted(plan.items())))
 PY
 done

@@ -1,6 +1,9 @@
 {{- /*
   Resolves packages.tools into one list per package manager for THIS machine and prints it as
-  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt"}, ...], "mise": ["id", ...]}
+  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt"}, ...], "mise": ["id", ...],
+         "expect": [{"name", "kind", "via", "bin"}, ...]}
+  `expect` is what scripts/check-install.py verifies after an apply: for every selected tool, the manager
+  that must provide it and the command it must put on PATH ("" = a library, nothing to run).
 
   This is the only place the package policy is encoded. Consumers parse it with
       {{ $plan := includeTemplate "tool-plan" . | fromJson }}
@@ -20,6 +23,7 @@
 {{- $mise := list -}}
 {{- $brew := list -}}
 {{- $apt := list -}}
+{{- $expect := list -}}
 {{- if or (eq $os "darwin") (eq $os "linux") -}}
 {{- range .packages.tools -}}
   {{- $t := . -}}
@@ -54,6 +58,14 @@
   {{- else if eq $via "apt" -}}
     {{- $apt = append $apt (get $t "apt") -}}
   {{- end -}}
+
+  {{- if $via -}}
+    {{- $bin := "" -}}
+    {{- if hasKey $t "bin" -}}{{- $bin = get $t "bin" -}}
+    {{- else if ne $t.kind "system" -}}{{- $bin = $t.name -}}
+    {{- end -}}
+    {{- $expect = append $expect (dict "name" $t.name "kind" $t.kind "via" $via "bin" $bin) -}}
+  {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- dict "apt" $apt "brew" $brew "mise" $mise | toJson -}}
+{{- dict "apt" $apt "brew" $brew "mise" $mise "expect" $expect | toJson -}}
