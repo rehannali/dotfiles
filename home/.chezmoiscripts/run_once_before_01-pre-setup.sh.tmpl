@@ -39,18 +39,32 @@ if [ ! -x "$BREW_BIN" ]; then
 fi
 eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile / ~/.zshenv
 
-info "Installing mas, aria2 and xcodes (bottles only - never compile on Intel)"
-run brew install --force-bottle mas aria2 || error "mas/aria2 have no bottle for this macOS."
-run brew install --force-bottle xcodes || \
-  error "No xcodes bottle. Use the xcodes-app cask (already in packages.yml) instead."
+{{ if eq .chezmoi.arch "arm64" -}}
+info "Installing mas, aria2 and xcodes (bottles only - never compile)"
+run brew install --force-bottle mas aria2 xcodes || error "mas/aria2/xcodes failed to install from bottles."
+xcodes_run() { xcodes "$@"; }
+have_xcodes() { command -v xcodes >/dev/null 2>&1; }
+{{- else -}}
+# Intel (Homebrew Tier 3): mas still has a bottle; aria2 and xcodes do not. xcodes ships a prebuilt
+# macOS x86_64 release, so mise provides it; aria2 is only a download accelerator and is skipped.
+info "Installing mas (bottle only - never compile)"
+run brew install --force-bottle mas || error "No mas bottle for this macOS; install mas from its GitHub release."
+if ! command -v mise >/dev/null 2>&1; then
+  info "Installing mise (provides xcodes on Intel)"
+  run sh -c "$(curl -fsSL https://mise.run)" || error "mise installer returned non-zero."
+fi
+xcodes_run() { mise exec xcodes@latest -- xcodes "$@"; }
+have_xcodes() { command -v mise >/dev/null 2>&1; }
+{{- end }}
 
-if [ -n "$XCODE_VERSION" ] && command -v xcodes >/dev/null 2>&1; then
+if [ -n "$XCODE_VERSION" ] && have_xcodes; then
   aria2_args=()
   if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
   info "Installing pinned Xcode $XCODE_VERSION (requires Apple ID login)"
-  run xcodes install "$XCODE_VERSION" --experimental-unxip --select --empty-trash "${aria2_args[@]}"
+  # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
+  run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"}
 else
-  info "No toolchain.xcode_version pinned (or xcodes missing) - skipping Xcode install."
+  info "No toolchain.xcode_version pinned (or xcodes unavailable) - skipping Xcode install."
 fi
 
 info "prepare-system completed successfully."

@@ -26,11 +26,13 @@
 	program =
 	allowedSignersFile =
 
+# delta is optional: Intel Macs have neither a mise build nor a Homebrew bottle for it. These run
+# through the shell, so git falls back to its normal pager when delta is not installed.
 [core]
-    pager = delta
+    pager = "if command -v delta >/dev/null 2>&1; then delta; else ${PAGER:-less}; fi"
 
 [interactive]
-    diffFilter = delta --color-only
+    diffFilter = "if command -v delta >/dev/null 2>&1; then delta --color-only; else cat; fi"
 
 [delta]
     navigate = true    # use n and N to move between diff sections

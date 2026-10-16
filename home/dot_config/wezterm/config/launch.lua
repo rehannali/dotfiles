@@ -18,7 +18,7 @@ if platform.is_win then
         },
     }
 elseif platform.is_mac then
-    options.default_prog = { '/usr/local/bin/zsh', '-l' }
+    options.default_prog = { '/bin/zsh', '-l' }  -- ships with macOS; brew's zsh is /opt/homebrew (arm) or absent (Intel, no bottle)
     options.launch_menu = {
         { label = 'Bash',    args = { 'bash', '-l' } },
         { label = 'Fish',    args = { '/usr/local/bin/fish', '-l' } },

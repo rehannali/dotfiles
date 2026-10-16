@@ -20,5 +20,5 @@ aria2_args=()
 if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
 
 info "Installing iOS $IOS_RUNTIME simulator runtime"
-run xcodes runtimes install "iOS $IOS_RUNTIME" "${aria2_args[@]}"
+run xcodes runtimes install "iOS $IOS_RUNTIME" ${aria2_args[@]+"${aria2_args[@]}"}
 {{ end -}}
