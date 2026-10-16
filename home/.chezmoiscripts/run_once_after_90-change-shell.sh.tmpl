@@ -5,8 +5,16 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
-if [ "$SHELL" != "$(which zsh)" ]; then
-    run sudo chsh -s "$(which zsh)" "$USER"
+zsh_bin="$(command -v zsh)"
+if [ -z "$zsh_bin" ]; then
+    error "zsh is not installed; leaving the login shell alone."
+elif [ "$SHELL" != "$zsh_bin" ]; then
+    # chsh only accepts shells listed in /etc/shells, and Homebrew's zsh is not listed by default.
+    if ! grep -qx "$zsh_bin" /etc/shells; then
+        info "Adding $zsh_bin to /etc/shells"
+        echo "$zsh_bin" | sudo tee -a /etc/shells > /dev/null
+    fi
+    run sudo chsh -s "$zsh_bin" "${USER:-$(id -un)}"
     info "zsh set as default shell."
 else
     info "zsh is already the default shell."
