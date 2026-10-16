@@ -35,11 +35,9 @@ fail=0
 bad() { echo "  FAIL: $*"; fail=$((fail + 1)); }
 
 render() { # render <os/arch> <template> -> stdout
-  local os="${1%/*}" arch="${1#*/}" init=()
-  # --init hides .chezmoidata, so only use it for templates that prompt (dot_gitconfig.tmpl)
-  if grep -qE 'prompt(String|Bool|Int|Choice)' "$2" 2> /dev/null; then init=(--init --promptString email=test@example.com); fi
-  chezmoi -S "$SRC" execute-template "${init[@]}" \
-    --override-data "{\"chezmoi\":{\"os\":\"$os\",\"arch\":\"$arch\"}}" < "$2"
+  local os="${1%/*}" arch="${1#*/}"
+  chezmoi -S "$SRC" execute-template \
+    --override-data "{\"email\":\"test@example.com\",\"chezmoi\":{\"os\":\"$os\",\"arch\":\"$arch\"}}" < "$2"
 }
 
 for target in "${TARGETS[@]}"; do
@@ -80,7 +78,12 @@ for target in "${TARGETS[@]}"; do
         if command -v zsh > /dev/null 2>&1; then zsh -n "$out" || bad "zsh -n: $name"; fi
         ;;
     esac
-  done < <(find "$SRC/home" -name '*.tmpl' -not -path '*/.git/*' -not -path '*/themes/*' | sort)
+  done < <(find "$SRC/home" -name '*.tmpl' -not -name '.chezmoi.toml.tmpl' -not -path '*/.git/*' -not -path '*/themes/*' | sort)
+
+  # The config template is the only place that may prompt; DOTFILES_EMAIL must make it non-interactive.
+  cfg_out="$(DOTFILES_EMAIL=test@example.com chezmoi -S "$SRC" execute-template --init \
+    < "$SRC/home/.chezmoi.toml.tmpl" 2>&1)" || bad ".chezmoi.toml.tmpl failed: $cfg_out"
+  [[ "$cfg_out" == *'email = "test@example.com"'* ]] || bad ".chezmoi.toml.tmpl did not use DOTFILES_EMAIL: $cfg_out"
 
   # mise config must be valid TOML and agree with the tool plan.
   cfg="$dir/dot_config/mise/config.toml.tmpl"

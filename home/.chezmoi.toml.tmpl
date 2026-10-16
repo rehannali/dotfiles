@@ -1,0 +1,13 @@
+{{- /*
+  Prompts happen here, in the config template: chezmoi only defines prompt* functions while it renders
+  this file during `chezmoi init`, never in regular file templates (dot_gitconfig.tmpl used to call
+  promptStringOnce itself, which fails with `function "promptStringOnce" not defined`).
+  Non-interactive runs (CI, bootstrap scripts): export DOTFILES_EMAIL and nothing is asked.
+*/ -}}
+{{- $email := env "DOTFILES_EMAIL" -}}
+{{- if not $email -}}
+{{-   $email = promptStringOnce . "email" "What is your email address" -}}
+{{- end -}}
+
+[data]
+    email = {{ $email | quote }}
