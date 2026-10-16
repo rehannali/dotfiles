@@ -42,6 +42,88 @@ cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
 {{ end -}}
 BrewfileEOF
 
+# --- Can this Mac install what the Brewfile asks for? --------------------------------------------------
+# Casks get disabled upstream, move to another tap, drop Intel or raise the minimum macOS; formulae get
+# disabled. brew bundle fails on those and would abort the whole apply, so ask Homebrew first, report, and
+# leave out what cannot work. Needs python3 (the Xcode Command Line Tools provide it); without it nothing
+# is filtered.
+#   DOTFILES_CASKS=install (default) | check (report only, install no casks) | skip
+#   DOTFILES_MAS=install (default) | skip      (App Store apps need a signed-in App Store)
+cask_mode="${DOTFILES_CASKS:-install}"
+mas_mode="${DOTFILES_MAS:-install}"
+CHECKER="$(mktemp)"
+trap 'rm -f "$BREWFILE" "$CHECKER"' EXIT
+cat > "$CHECKER" <<'PYEOF'
+import json, sys
+kind, tok, major, arch = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+NAMES = {"big_sur": 11, "monterey": 12, "ventura": 13, "sonoma": 14, "sequoia": 15, "tahoe": 26}
+item = json.load(sys.stdin)["casks" if kind == "cask" else "formulae"][0]
+if item.get("disabled"):
+    print("%s :: disabled upstream (%s)" % (tok, item.get("disable_date") or "no date"))
+    sys.exit()
+dep = item.get("depends_on") or {}
+for a in dep.get("arch") or []:
+    a = a if isinstance(a, str) else (a.get("type") or a.get("arch") or "")
+    if a in ("arm64", "intel", "x86_64") and ("arm64" if a == "arm64" else "x86_64") != arch:
+        print("%s :: only supports %s, this Mac is %s" % (tok, a, arch))
+        sys.exit()
+for op, vals in (dep.get("macos") or {}).items():
+    for v in vals:
+        n = NAMES.get(str(v).lstrip(":"))
+        if n is None:
+            try:
+                n = int(str(v).split(".")[0])
+            except ValueError:
+                continue
+        if op == ">=" and major < n:
+            print("%s :: needs macOS %s or newer, this is macOS %s" % (tok, n, major))
+            sys.exit()
+PYEOF
+
+unsupported=" "
+report=""
+if command -v python3 > /dev/null 2>&1; then
+  major="$(sw_vers -productVersion | cut -d. -f1)"
+  machine="$(uname -m)"
+{{- range .packages.taps }}
+  brew tap {{ . | quote }} > /dev/null 2>&1 || true
+{{- end }}
+  for kind in {{ if $appleSilicon }}formula {{ end }}cask; do
+    if [ "$kind" = cask ] && [ "$cask_mode" = skip ]; then continue; fi
+    keyword="$kind"; if [ "$kind" = formula ]; then keyword=brew; fi
+    for tok in $(awk -v k="$keyword" '$1==k {gsub(/[",]/,"",$2); print $2}' "$BREWFILE"); do
+      if json="$(brew info --json=v2 "--$kind" "$tok" 2> /dev/null)"; then
+        why="$(printf '%s' "$json" | python3 "$CHECKER" "$kind" "$tok" "$major" "$machine")" || why=""
+      else
+        why="$tok :: not found in any tap"
+      fi
+      if [ -n "$why" ]; then
+        unsupported="$unsupported$tok "
+        report="$report
+  - $kind ${why%% :: *}: ${why#* :: }"
+      fi
+    done
+  done
+fi
+if [ -n "$report" ]; then
+  error "Not installable on this Mac, left out of the Brewfile:$report"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '### Left out by the Homebrew support check\n```%s\n```\n' "$report" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  awk -v skip="$unsupported" '$1=="cask" || $1=="brew" { t=$2; gsub(/[",]/,"",t); if (index(skip, " " t " ")) next } { print }' \
+    "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+else
+  info "Support check: everything in the Brewfile can be installed on this Mac."
+fi
+if [ "$cask_mode" != install ]; then
+  info "DOTFILES_CASKS=$cask_mode: no casks are installed in this run."
+  awk '$1!="cask"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+fi
+if [ "$mas_mode" = skip ]; then
+  info "DOTFILES_MAS=skip: no App Store apps are installed in this run."
+  awk '$1!="mas"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+fi
+
 {{ if $appleSilicon -}}
 run brew bundle -v --no-upgrade --file="$BREWFILE"
 {{- else -}}
