@@ -15,5 +15,7 @@ if [[ -d "${DEST_DIR}/.oh-my-zsh" ]]; then
   run rm -rf "${DEST_DIR}/.oh-my-zsh"
 fi
 
-run sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+# ZSH is set explicitly: the installer honors an exported $ZSH (e.g. from an old ~/.zshenv, or a shell that
+# points at another home) and would otherwise install there, or refuse because that folder exists.
+run env ZSH="${DEST_DIR}/.oh-my-zsh" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 {{ end -}}
