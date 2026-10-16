@@ -84,6 +84,29 @@ Checked on 2026-10-17 against the Homebrew API and `mise lock`:
 Pin the Xcode and simulator versions your Mac can run in `home/.chezmoidata/toolchain.yml` before the
 first `chezmoi apply`; leave them empty to skip those steps.
 
+## CI
+
+`.github/workflows/dotfiles.yml` runs the dotfiles for real, with chezmoi, on a **Debian-based** machine
+(Ubuntu runner; same package world as WSL2), a **macOS Intel** runner and a **macOS Apple Silicon** runner.
+It runs on pull requests, on pushes to `main`, and by hand (Actions → dotfiles → *Run workflow*, where you can
+pick one platform and whether casks are only checked, really installed, or skipped).
+
+Each machine goes through the same steps:
+
+1. `render + lint` (once, ~1 min): every template for every target, `bash -n`, shellcheck, valid mise TOML,
+   one package manager per tool. See "Checking changes".
+2. `chezmoi init --source <checkout> --apply`, the README flow. `DOTFILES_EMAIL` answers the one prompt;
+   `DOTFILES_MAS=skip` (no App Store login on a runner); `DOTFILES_CASKS=check` verifies every cask is
+   installable on that Mac without installing 80-odd GUI apps.
+3. `scripts/check-install.py`, which does not trust the package lists: it asks the plan what should exist on
+   *this* machine, then checks that each command resolves in a login shell, comes from the right manager
+   (mise / brew / apt), starts, and that every binary and native library under mise, Homebrew, `~/.local/bin`
+   and gem extensions has the right format and CPU (no Mach-O on Debian, no ELF on macOS, no x86_64 on
+   Apple Silicon, no arm64 on Intel). The result is a table in the run summary; failures fail the job,
+   known gaps (a formula with no Intel bottle) are warnings.
+
+The macOS Intel label (`macos-15-intel`) is GitHub's last Intel image; change it in the workflow when it moves.
+
 ## Checking changes
 
 ```bash

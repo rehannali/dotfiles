@@ -1,0 +1,136 @@
+name: dotfiles
+
+# Runs the dotfiles for real on each supported machine type with chezmoi, then audits the result:
+# every expected command resolves, comes from the right package manager, starts, and is built for the
+# right OS and CPU (no macOS binary on Debian, no x86_64 binary on Apple Silicon, ...).
+#
+# Triggers: pull requests, pushes to main, and a manual run where you can pick one platform.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which machine type to run
+        type: choice
+        default: all
+        options: [all, debian, mac-intel, mac-arm]
+      casks:
+        description: "macOS casks: check = verify they are installable here, install = really install them, skip"
+        type: choice
+        default: check
+        options: [check, install, skip]
+
+concurrency:
+  group: dotfiles-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast gate (about a minute): render every template for every target, then bash -n, shellcheck,
+  # "other OS renders empty", valid mise TOML and "one package manager per tool".
+  static:
+    name: render + lint (all targets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install chezmoi
+        shell: bash
+        run: |
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: shellcheck and zsh available
+        shell: bash
+        run: |
+          command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+          command -v zsh >/dev/null || sudo apt-get install -y zsh
+      - name: Render and lint
+        shell: bash
+        run: scripts/verify-render.sh "$RUNNER_TEMP/rendered"
+
+  # Picks the machines: everything on PR/push, one or all on a manual run.
+  plan:
+    name: choose platforms
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          all='[
+            {"id":"debian",   "label":"Debian-based (Ubuntu runner, same as WSL2)", "os":"ubuntu-latest",   "timeout":60},
+            {"id":"mac-intel","label":"macOS Intel (x86_64)",                       "os":"macos-15-intel",  "timeout":120},
+            {"id":"mac-arm",  "label":"macOS Apple Silicon (arm64)",                "os":"macos-latest",    "timeout":120}
+          ]'
+          if [ -z "$PLATFORM" ] || [ "$PLATFORM" = all ]; then
+            matrix="$(echo "$all" | jq -c .)"
+          else
+            matrix="$(echo "$all" | jq -c --arg id "$PLATFORM" '[.[] | select(.id == $id)]')"
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Running: $matrix"
+
+  apply:
+    name: apply · ${{ matrix.label }}
+    needs: [static, plan]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      # Non-interactive first run: no email prompt, no App Store, casks only verified unless asked for.
+      DOTFILES_EMAIL: ci@dotfiles.invalid
+      DOTFILES_MAS: skip
+      DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
+      # mise resolves GitHub releases through the API; an authenticated token avoids anonymous rate limits.
+      MISE_GITHUB_TOKEN: ${{ github.token }}
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+      HOMEBREW_NO_ANALYTICS: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine
+        run: |
+          uname -a
+          if [ "$(uname -s)" = Darwin ]; then sw_vers; sysctl -n machdep.cpu.brand_string; fi
+          echo "chezmoi will see: $(uname -s)/$(uname -m)"
+
+      - name: Install chezmoi
+        run: |
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The same thing README.md tells you to run, against this checkout instead of GitHub.
+      - name: chezmoi init --apply
+        id: apply
+        run: |
+          set -o pipefail
+          chezmoi init --source "$GITHUB_WORKSPACE" --apply --verbose 2>&1 | tee "$RUNNER_TEMP/chezmoi-apply.log"
+
+      - name: Audit (expected tools, architecture, runtimes, shell)
+        if: ${{ !cancelled() && steps.apply.conclusion != 'skipped' }}
+        run: python3 scripts/check-install.py --source "$GITHUB_WORKSPACE" | tee "$RUNNER_TEMP/audit.md"
+
+      - name: Keep the logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/chezmoi-apply.log
+            ${{ runner.temp }}/audit.md
+          if-no-files-found: ignore
+          retention-days: 14
