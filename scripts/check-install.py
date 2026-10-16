@@ -372,9 +372,14 @@ def check_mise():
         add(FAIL, "mise", "tools from config.toml that are not installed", missing[:600])
     else:
         add(OK, "mise", "every tool in config.toml is installed")
-    rc, out = run([MISE, "doctor"], timeout=120)
-    problems = [l for l in out.splitlines() if re.search(r"\b(error|warn|problem)", l, re.I)]
-    add(WARN if problems else OK, "mise", "mise doctor", "; ".join(p.strip() for p in problems)[:400])
+    # In a login shell, like a real session: from a bare CI step mise rightly complains it is not activated.
+    shell = shutil.which("zsh") or shutil.which("bash")
+    rc, out = run([shell, "-l", "-c", "mise doctor 2>&1"], timeout=120)
+    if "No problems found" in out:
+        add(OK, "mise", "mise doctor", "no problems found")
+    else:
+        detail = out.split("problem", 1)[-1] if "problem" in out else out
+        add(WARN, "mise", "mise doctor", " ".join(detail.split())[:400])
 
 
 NOISE = re.compile(r"command not found|not found|No such file|error|cannot|failed", re.I)
