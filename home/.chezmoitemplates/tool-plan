@@ -53,7 +53,10 @@
   {{- end -}}
 
   {{- if eq $via "mise" -}}
-    {{- $mise = append $mise (get $t "mise") -}}
+    {{- $id := get $t "mise" -}}
+    {{- /* mise_intel: "cargo:foo" = Intel installs that mise tool instead (mise_intel: false means brew) */ -}}
+    {{- if and $intel (hasKey $t "mise_intel") (kindIs "string" (get $t "mise_intel")) -}}{{- $id = get $t "mise_intel" -}}{{- end -}}
+    {{- $mise = append $mise $id -}}
   {{- else if eq $via "brew" -}}
     {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true") "source" (eq (get $t "mise_intel" | toString) "false")) -}}
   {{- else if eq $via "apt" -}}

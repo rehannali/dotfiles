@@ -74,17 +74,19 @@ mise registry bat
 mise lock --platform macos-x64,linux-x64 bat    # every platform must get a url
 ```
 
-If macOS x86_64 is missing, set `mise_intel: false` (Intel then falls back to Homebrew). If the
+If macOS x86_64 is missing, set `mise_intel: "cargo:<crate>"` for a Rust tool (Intel builds it), or
+`mise_intel: false` to have Intel use Homebrew instead. If the
 tool is not a prebuilt binary at all, use `kind: system` with `brew` / `apt` names.
 
 ### Intel Macs: what to expect
 
 Checked on 2026-10-17 against the Homebrew API and `mise lock`:
 
-- **No Intel build in mise** (`mise_intel: false`): `atuin`, `eza`, `git-delta` (macOS releases are
-  arm64-only or absent) and `btop` (no macOS release). On Intel they are installed with Homebrew, from a
-  bottle if there is one and otherwise **built from source** (slow, two jobs). They are expected to be
-  there, so the CI audit fails if they are not.
+- **No Intel build in mise**: `atuin`, `eza` and `git-delta` (macOS releases are arm64-only or absent) are
+  built with `cargo:` through mise on Intel, using mise's prebuilt Rust (a few minutes each). They are not
+  built by Homebrew on purpose: Homebrew's `rust` has no Intel bottle, so it compiles LLVM, which ran for
+  over 4 hours in CI. `btop` (no macOS release at all) comes from Homebrew, from its bottle or built from
+  source (small C++). All four are expected, so the CI audit fails if one is missing.
 - **Most system formulae have no Intel bottle** at their current version, directly or through a
   dependency (`git`, `ffmpeg`, `imagemagick`, `ghostscript`, `nginx`, `nmap`, `rsync`, `php`, ...).
   `brew install --force-bottle` does not extend to dependencies, so the Homebrew script checks the formula

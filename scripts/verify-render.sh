@@ -112,14 +112,15 @@ for target in "${TARGETS[@]}"; do
 import json, sys
 target, plan, tools = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
 for t in tools:
-    names = {"mise": t.get("mise"), "brew": t.get("brew"), "apt": t.get("apt")}
+    names = {"mise": [t.get("mise"), t.get("mise_intel") if isinstance(t.get("mise_intel"), str) else None],
+             "brew": [t.get("brew")], "apt": [t.get("apt")]}
     hits = []
     for mgr, entries in plan.items():
         if mgr == "expect":
             continue
         for e in entries:
             val = e["name"] if isinstance(e, dict) else e
-            if names[mgr] is not None and val == names[mgr]:
+            if val is not None and val in names[mgr]:
                 hits.append(mgr)
     assert len(hits) <= 1, f"{t['name']} installed by {hits} on {target}"
     if t["kind"] == "cli" and target.split("/")[0] in ("darwin", "linux") and not hits:
