@@ -34,7 +34,7 @@ packages:
   # Homebrew taps (macOS only)
   taps:
     - colindean/fonts-nonfree
-    - ferdium/ferdium
+    # - ferdium/ferdium   # only for the ferdium cask, which is commented out
     - leoafarias/fvm
     - netbirdio/tap
     - teamookla/speedtest
@@ -136,8 +136,10 @@ packages:
       - cocoapods-keys
 
     casks:
-      - name: 1password
-      - name: 1password-cli
+      # - name: alacritty   # not used; the cask is also disabled upstream (2026-09-01)
+      #   args_str: 'args: { appdir: "~/Applications" }'
+      # - name: 1password   # not used
+      # - name: 1password-cli   # not used
       - name: adobe-creative-cloud
         args_str: 'args: { appdir: "~/Applications" }'
       - name: alfred
@@ -150,7 +152,11 @@ packages:
         args_str: 'args: { appdir: "~/Applications" }'
       - name: bitwarden
         args_str: 'args: { appdir: "~/Applications" }'
-      - name: brave-browser
+      - name: brave-origin
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: bruno
+        args_str: 'args: { appdir: "~/Applications" }'
+      - name: chatgpt
         args_str: 'args: { appdir: "~/Applications" }'
       - name: claude
         args_str: 'args: { appdir: "~/Applications" }'
@@ -162,8 +168,8 @@ packages:
         args_str: 'args: { appdir: "~/Applications" }'
       - name: ente-auth
         args_str: 'args: { appdir: "~/Applications" }'
-      - name: ferdium
-        args_str: 'args: { appdir: "~/Applications" }'
+      # - name: ferdium   # not used
+      #   args_str: 'args: { appdir: "~/Applications" }'
       - name: figma
         args_str: 'args: { appdir: "~/Applications" }'
       - name: firefox
@@ -192,9 +198,9 @@ packages:
       - name: itsycal
         args_str: 'args: { appdir: "~/Applications" }'
       - name: jetbrains-toolbox
-      - name: karabiner-elements
+      # - name: karabiner-elements   # not used
       - name: kodi
-      - name: languagetool-desktop
+      # - name: languagetool-desktop   # not used
       - name: little-snitch
       - name: localsend
         args_str: 'args: { appdir: "~/Applications" }'
@@ -205,9 +211,10 @@ packages:
       - name: microsoft-teams
       - name: nordvpn
       - name: notion
+      - name: netbird-ui   # GUI client from the netbirdio/tap tap
       - name: openvpn-connect
       - name: orbstack
-      - name: postman
+      # - name: postman   # not used
       - name: qlmarkdown
       - name: qlvideo
       - name: readdle-spark
@@ -222,32 +229,25 @@ packages:
       - name: suspicious-package
       - name: tailscale-app
       - name: termius
-      - name: ticktick
+      # - name: ticktick   # not used
       - name: twingate
       - name: visual-studio-code
+      - name: vscodium
+        args_str: 'args: { appdir: "~/Applications" }'
       - name: vlc
-      - name: warp
+      # - name: warp   # not used
       - name: wezterm
       - name: whatsapp@beta
       - name: windscribe
-      - name: xcodes-app
+      - name: wordcraft
+      # - name: xcodes-app   # not used
       - name: zoom
 
     mas:
-      - id: 1569813296
-        name: "1Password for Safari"
-      - id: 937984704
-        name: "Amphetamine"
       # - id: 1477089520    # Use though setapp subscription.
       #   name: "Backtrack"
-      - id: 1489591003
-        name: "Email"
-      - id: 935235287
-        name: "Encrypto"
       - id: 430255202
         name: "Mactracker"
-      - id: 999025824
-        name: "Speedify"
       - id: 1183412116
         name: "Swiftify for Xcode"
       - id: 1157225201
@@ -260,13 +260,11 @@ packages:
         name: "XCFormat"
 
   darwin_arm:
+    # Apple Silicon-only entries. chatgpt used to live here; it installs on Intel too now.
     # brews:
     #   - name: some-arm-only-formula
     #     args_str: ''
-
-    casks:
-      - name: chatgpt
-        args_str: 'args: { appdir: "~/Applications" }'
+    casks: []
 
     # mas:
     #   - id: 1591187265
