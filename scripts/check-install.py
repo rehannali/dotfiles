@@ -253,6 +253,8 @@ def check_expected(plan):
 
 
 RUNTIME_BINS = ["node", "npm", "python3", "pip3", "ruby", "gem", "java", "javac", "go", "rustc", "cargo", "uv", "mise"]
+if SYSTEM == "Darwin":  # gems installed into mise's Ruby by run_onchange_after_13-install-ruby-gems
+    RUNTIME_BINS += ["pod", "fastlane"]
 
 
 def check_runtimes():

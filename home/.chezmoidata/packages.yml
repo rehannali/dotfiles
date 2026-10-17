@@ -12,7 +12,8 @@
 #   apt         Debian/Ubuntu package
 #   brew_args   Brewfile options for the formula (used by `brew bundle`, i.e. Apple Silicon)
 #   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
-#               mise's prebuilt Rust (minutes). false = Intel Macs use Homebrew, from a bottle if there is one,
+#               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
+#               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,
 #               otherwise built from source. (Do not use false for Rust tools: Homebrew's rust has no Intel
 #               bottle either, so it compiles LLVM, which took >4 hours in CI.)
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
@@ -61,7 +62,7 @@ packages:
     - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose}
     - {name: dust, kind: cli, mise: dust, brew: dust}
     - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}
-    - {name: fastfetch, kind: cli, mise: fastfetch, brew: fastfetch, apt: fastfetch}   # replaces neofetch (archived, gone from homebrew-core)
+    - {name: fastfetch, kind: cli, mise: fastfetch, mise_intel: "github:fastfetch-cli/fastfetch", brew: fastfetch, apt: fastfetch}   # replaces neofetch (archived, gone from homebrew-core)
     - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
     - {name: gh, kind: cli, mise: gh, brew: gh, apt: gh}
     - {name: git-delta, kind: cli, mise: delta, mise_intel: "cargo:git-delta", brew: git-delta, apt: git-delta, bin: delta}

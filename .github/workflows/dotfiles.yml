@@ -109,10 +109,12 @@ jobs:
           if [ "$(uname -s)" = Darwin ]; then sw_vers; sysctl -n machdep.cpu.brand_string; fi
           echo "chezmoi will see: $(uname -s)/$(uname -m)"
 
+      # Like the README bootstrap, the chezmoi that starts everything lives outside $HOME: ~/.local/bin is
+      # where mise and the dotfiles' own PATH look, and a copy there would shadow the managed one.
       - name: Install chezmoi
         run: |
-          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/chezmoi-bin"
+          echo "$RUNNER_TEMP/chezmoi-bin" >> "$GITHUB_PATH"
 
       # The same thing README.md tells you to run, against this checkout instead of GitHub.
       - name: chezmoi init --apply
