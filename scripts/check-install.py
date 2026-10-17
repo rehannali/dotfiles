@@ -230,7 +230,7 @@ def check_expected(plan):
         path = resolved.get(e["bin"], "")
         strict = e["kind"] in ("cli", "apple")
         if not path or not os.path.exists(path):
-            known_gap = INTEL_MAC and e["via"] == "brew"
+            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source")
             level = WARN if (known_gap or not strict and INTEL_MAC) else FAIL
             why = "no bottle expected on Intel (Homebrew Tier 3)" if known_gap else "not found on PATH"
             add(level, "tools", e["name"], "%s via %s: %s" % (e["bin"], e["via"], why))

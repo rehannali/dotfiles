@@ -163,14 +163,27 @@ unbottled() {
 }
 
 installed=""
+built=""
 skipped=""
 failed=""
-for entry in {{ range $plan.brew }}{{ printf "%s|%t" .name .prebuilt | quote }} {{ end }}; do
-  formula="${entry%|*}"
-  prebuilt="${entry#*|}"
+for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t" .name .prebuilt .source | quote }} {{ end }}; do
+  formula="${entry%%|*}"
+  flags="${entry#*|}"
+  prebuilt="${flags%|*}"
+  source_ok="${flags#*|}"
   if brew list --formula "$formula" > /dev/null 2>&1; then continue; fi   # installed: leave it alone
 
+  # source_ok: mise has no Intel build of this tool (mise_intel: false), so Homebrew is the only way to get
+  # it and it is installed even when that means compiling (slow, 2 jobs); everything else is bottle-only.
   missing="$(unbottled "$formula" "$prebuilt")"
+  if [ "$source_ok" = true ]; then
+    if [ -n "${missing# }" ]; then
+      info "$formula has no Intel bottle (missing:$missing): building from source, this takes a while"
+      built="$built $formula"
+    fi
+    if run brew install --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
+    continue
+  fi
   if [ -n "${missing# }" ]; then
     skipped="$skipped
   - $formula  (no Intel bottle:$missing)"
@@ -184,7 +197,8 @@ for entry in {{ range $plan.brew }}{{ printf "%s|%t" .name .prebuilt | quote }} 
   fi
 done
 
-[ -z "$installed" ] || info "Installed from bottles:$installed"
+[ -z "$installed" ] || info "Installed:$installed"
+[ -z "$built" ] || info "Built from source (no Intel bottle):$built"
 if [ -n "$skipped" ]; then
   error "Skipped - Homebrew has no Intel bottle for these (or for one of their dependencies):$skipped"
   info "Nothing was compiled. Use the tool macOS already ships, or build one on purpose:"

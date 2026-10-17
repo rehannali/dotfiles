@@ -65,14 +65,14 @@ tool is not a prebuilt binary at all, use `kind: system` with `brew` / `apt` nam
 Checked on 2026-10-17 against the Homebrew API and `mise lock`:
 
 - **No Intel build in mise** (`mise_intel: false`): `atuin`, `eza`, `git-delta` (macOS releases are
-  arm64-only or absent) and `btop` (no macOS release). On Intel they come from Homebrew; only `btop` has a
-  bottle today, the others are skipped with a message. Shell aliases and the git pager are guarded, so
-  nothing breaks when they are missing.
+  arm64-only or absent) and `btop` (no macOS release). On Intel they are installed with Homebrew, from a
+  bottle if there is one and otherwise **built from source** (slow, two jobs). They are expected to be
+  there, so the CI audit fails if they are not.
 - **Most system formulae have no Intel bottle** at their current version, directly or through a
   dependency (`git`, `ffmpeg`, `imagemagick`, `ghostscript`, `nginx`, `nmap`, `rsync`, `php`, ...).
   `brew install --force-bottle` does not extend to dependencies, so the Homebrew script checks the formula
   *and* its not-yet-installed runtime dependencies for an Intel bottle first. If any is missing the formula
-  is skipped and listed at the end; nothing is compiled. macOS already ships `git`, `zsh`, `rsync` and `curl`.
+  is skipped and listed at the end; these are never compiled. macOS already ships `git`, `zsh`, `rsync` and `curl`.
   To build one on purpose: `brew install --build-from-source <formula>`.
 - **Ruby compiles from source on Intel**: mise only ships a prebuilt Ruby for arm64 and Linux. The
   install script runs it with two jobs at low priority (expect several minutes once).
@@ -89,7 +89,8 @@ first `chezmoi apply`; leave them empty to skip those steps.
 `.github/workflows/dotfiles.yml` runs the dotfiles for real, with chezmoi, on a **Debian-based** machine
 (Ubuntu runner; same package world as WSL2), a **macOS Intel** runner and a **macOS Apple Silicon** runner.
 It runs on pull requests, on pushes to `main`, and by hand (Actions → dotfiles → *Run workflow*, where you can
-pick one platform and whether casks are only checked, really installed, or skipped).
+pick one platform and whether casks are only checked, really installed (the default for manual runs), or
+skipped; pull requests and pushes only check them).
 
 Each machine goes through the same steps:
 

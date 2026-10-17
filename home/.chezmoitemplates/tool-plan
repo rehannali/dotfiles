@@ -1,7 +1,7 @@
 {{- /*
   Resolves packages.tools into one list per package manager for THIS machine and prints it as
-  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt"}, ...], "mise": ["id", ...],
-         "expect": [{"name", "kind", "via", "bin"}, ...]}
+  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt", "source"}, ...], "mise": ["id", ...],
+         "expect": [{"name", "kind", "via", "bin", "source"}, ...]}
   `expect` is what scripts/check-install.py verifies after an apply: for every selected tool, the manager
   that must provide it and the command it must put on PATH ("" = a library, nothing to run).
 
@@ -12,6 +12,7 @@
                    cli, or any entry with a mise key      system / apple, no mise key
     Apple Silicon  brew (mise only if there is no brew)   brew
     Intel Mac      mise (brew if mise_intel: false)       brew, bottle-only (checked at install time)
+                   ... brew fallback for mise_intel: false tools may build from source: they must be installed
     Linux          mise (apt if there is no mise key)     apt
     Windows        nothing here (winget)
 
@@ -54,7 +55,7 @@
   {{- if eq $via "mise" -}}
     {{- $mise = append $mise (get $t "mise") -}}
   {{- else if eq $via "brew" -}}
-    {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true")) -}}
+    {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true") "source" (eq (get $t "mise_intel" | toString) "false")) -}}
   {{- else if eq $via "apt" -}}
     {{- $apt = append $apt (get $t "apt") -}}
   {{- end -}}
@@ -64,7 +65,7 @@
     {{- if hasKey $t "bin" -}}{{- $bin = get $t "bin" -}}
     {{- else if ne $t.kind "system" -}}{{- $bin = $t.name -}}
     {{- end -}}
-    {{- $expect = append $expect (dict "name" $t.name "kind" $t.kind "via" $via "bin" $bin) -}}
+    {{- $expect = append $expect (dict "name" $t.name "kind" $t.kind "via" $via "bin" $bin "source" (eq (get $t "mise_intel" | toString) "false")) -}}
   {{- end -}}
 {{- end -}}
 {{- end -}}

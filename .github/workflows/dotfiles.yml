@@ -18,10 +18,10 @@ on:
         default: all
         options: [all, debian, mac-intel, mac-arm]
       casks:
-        description: "macOS casks: check = verify they are installable here, install = really install them, skip"
+        description: "macOS casks: install = really install them, check = only verify they are installable here, skip"
         type: choice
-        default: check
-        options: [check, install, skip]
+        default: install
+        options: [install, check, skip]
 
 concurrency:
   group: dotfiles-${{ github.ref }}
@@ -67,8 +67,8 @@ jobs:
         run: |
           all='[
             {"id":"debian",   "label":"Debian-based (Ubuntu runner, same as WSL2)", "os":"ubuntu-latest",   "timeout":60},
-            {"id":"mac-intel","label":"macOS Intel (x86_64)",                       "os":"macos-15-intel",  "timeout":120},
-            {"id":"mac-arm",  "label":"macOS Apple Silicon (arm64)",                "os":"macos-latest",    "timeout":120}
+            {"id":"mac-intel","label":"macOS Intel (x86_64)",                       "os":"macos-15-intel",  "timeout":240},
+            {"id":"mac-arm",  "label":"macOS Apple Silicon (arm64)",                "os":"macos-latest",    "timeout":240}
           ]'
           if [ -z "$PLATFORM" ] || [ "$PLATFORM" = all ]; then
             matrix="$(echo "$all" | jq -c .)"
@@ -88,7 +88,8 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      # Non-interactive first run: no email prompt, no App Store, casks only verified unless asked for.
+      # Non-interactive first run: no email prompt, no App Store. Pull requests and pushes only verify the
+      # casks (about 75 GUI apps); a manual run installs them unless you choose otherwise.
       DOTFILES_EMAIL: ci@dotfiles.invalid
       DOTFILES_MAS: skip
       DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
