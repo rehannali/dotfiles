@@ -11,7 +11,8 @@
 #   brew        Homebrew formula (tap formulae fully qualified)
 #   apt         Debian/Ubuntu package
 #   brew_args   Brewfile options for the formula (used by `brew bundle`, i.e. Apple Silicon)
-#   mise_intel  false = mise has no macOS x86_64 build; Intel Macs fall back to brew
+#   mise_intel  false = mise has no macOS x86_64 build; Intel Macs install it with brew instead, from a
+#               bottle if there is one and otherwise built from source (slow, but it gets installed)
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
 #   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
 #               system entries have none unless set). Used by scripts/check-install.py after an apply.
@@ -58,6 +59,7 @@ packages:
     - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose}
     - {name: dust, kind: cli, mise: dust, brew: dust}
     - {name: eza, kind: cli, mise: eza, mise_intel: false, brew: eza, apt: eza}
+    - {name: fastfetch, kind: cli, mise: fastfetch, brew: fastfetch, apt: fastfetch}   # replaces neofetch (archived, gone from homebrew-core)
     - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
     - {name: gh, kind: cli, mise: gh, brew: gh, apt: gh}
     - {name: git-delta, kind: cli, mise: delta, mise_intel: false, brew: git-delta, apt: git-delta, bin: delta}
@@ -134,8 +136,6 @@ packages:
       - name: 1password-cli
       - name: adobe-creative-cloud
         args_str: 'args: { appdir: "~/Applications" }'
-      - name: alacritty
-        args_str: 'args: { appdir: "~/Applications" }'
       - name: alfred
         args_str: 'args: { appdir: "~/Applications" }'
       - name: android-file-transfer
@@ -186,7 +186,6 @@ packages:
       - name: google-drive
       - name: hp-easy-start
       - name: iina
-      - name: iina+
       - name: iterm2
         args_str: 'args: { appdir: "~/Applications" }'
       - name: itsycal
@@ -208,18 +207,12 @@ packages:
       - name: openvpn-connect
       - name: orbstack
       - name: postman
-      - name: qlcolorcode
       - name: qlmarkdown
-      - name: qlstephen
       - name: qlvideo
-      - name: quicklook-csv
-      - name: quicklook-json
-      - name: quicklookase
       - name: readdle-spark
       - name: rustdesk
       - name: setapp
       - name: simpholders
-      - name: simsim
       - name: snagit
       - name: sourcetree
       - name: spotify
@@ -233,7 +226,6 @@ packages:
       - name: visual-studio-code
       - name: vlc
       - name: warp
-      - name: webpquicklook
       - name: wezterm
       - name: whatsapp@beta
       - name: windscribe
