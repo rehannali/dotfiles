@@ -100,8 +100,9 @@ Checked on 2026-10-17 against the Homebrew API and `mise lock`:
 
 ## Toolchain pins
 
-Pin the Xcode and simulator versions your Mac can run in `home/.chezmoidata/toolchain.yml` before the
-first `chezmoi apply`; leave them empty to skip those steps.
+Xcode and the iOS simulator runtime are pinned in `home/.chezmoidata/toolchain.yml` (currently 26.6 for both;
+leave a value empty to skip that step). `xcodes` asks for your Apple ID the first time. Set
+`DOTFILES_XCODE=skip` to leave Xcode out of a run, which is what the CI does.
 
 ## CI
 

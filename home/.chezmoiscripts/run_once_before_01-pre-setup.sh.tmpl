@@ -78,7 +78,12 @@ xcodes_run() { mise exec xcodes@latest -- xcodes "$@"; }
 have_xcodes() { command -v mise >/dev/null 2>&1; }
 {{- end }}
 
-if [ -n "$XCODE_VERSION" ] && have_xcodes; then
+# DOTFILES_XCODE=skip: no Xcode in this run (CI runners have no Apple ID to log in with and would wait forever)
+if [ "${DOTFILES_XCODE:-install}" = skip ]; then
+  info "DOTFILES_XCODE=skip: not installing Xcode."
+elif [ -n "$XCODE_VERSION" ] && have_xcodes && xcodes_run installed 2>/dev/null | grep -q "^$XCODE_VERSION"; then
+  info "Xcode $XCODE_VERSION is already installed."
+elif [ -n "$XCODE_VERSION" ] && have_xcodes; then
   aria2_args=()
   if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
   info "Installing pinned Xcode $XCODE_VERSION (requires Apple ID login)"

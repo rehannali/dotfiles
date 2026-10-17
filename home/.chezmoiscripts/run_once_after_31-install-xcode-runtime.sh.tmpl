@@ -6,6 +6,11 @@ IOS_RUNTIME="{{ .toolchain.ios_runtime }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+if [ "${DOTFILES_XCODE:-install}" = skip ]; then
+  info "DOTFILES_XCODE=skip: not installing the simulator runtime."
+  exit 0
+fi
+
 if [ -z "$IOS_RUNTIME" ]; then
   info "No toolchain.ios_runtime pinned - skipping simulator runtime install."
   exit 0

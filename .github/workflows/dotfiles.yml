@@ -92,6 +92,7 @@ jobs:
       # casks (about 75 GUI apps); a manual run installs them unless you choose otherwise.
       DOTFILES_EMAIL: ci@dotfiles.invalid
       DOTFILES_MAS: skip
+      DOTFILES_XCODE: skip   # xcode_version / ios_runtime are pinned in toolchain.yml; installing needs an Apple ID
       DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
       # mise resolves GitHub releases through the API; an authenticated token avoids anonymous rate limits.
       MISE_GITHUB_TOKEN: ${{ github.token }}
