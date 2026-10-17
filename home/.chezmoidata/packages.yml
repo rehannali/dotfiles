@@ -244,10 +244,20 @@ packages:
       - name: zoom
 
     mas:
+      # - id: 1569813296
+      #   name: "1Password for Safari"
+      # - id: 937984704
+      #   name: "Amphetamine"
       # - id: 1477089520    # Use though setapp subscription.
       #   name: "Backtrack"
+      # - id: 1489591003
+      #   name: "Email"
+      # - id: 935235287
+      #   name: "Encrypto"
       - id: 430255202
         name: "Mactracker"
+      # - id: 999025824
+      #   name: "Speedify"
       - id: 1183412116
         name: "Swiftify for Xcode"
       - id: 1157225201
