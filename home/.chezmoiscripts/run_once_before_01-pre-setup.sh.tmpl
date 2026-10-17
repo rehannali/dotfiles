@@ -41,7 +41,11 @@ eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile /
 
 {{ if eq .chezmoi.arch "arm64" -}}
 info "Installing mas, aria2 and xcodes (bottles only - never compile)"
-run brew install --force-bottle mas aria2 xcodes || error "mas/aria2/xcodes failed to install from bottles."
+run brew install --force-bottle mas aria2 xcodesorg/made/xcodes || error "mas/aria2/xcodes failed to install from bottles."
+info "Linking binaries of brew packages so process won't fail"
+for pkg in mas xcodes aria2; do
+  if run brew unlink "$pkg" && run brew link "$pkg"; then :; else error "could not relink $pkg"; fi
+done
 xcodes_run() { xcodes "$@"; }
 have_xcodes() { command -v xcodes >/dev/null 2>&1; }
 {{- else -}}
@@ -49,6 +53,7 @@ have_xcodes() { command -v xcodes >/dev/null 2>&1; }
 # macOS x86_64 release, so mise provides it; aria2 is only a download accelerator and is skipped.
 info "Installing mas (bottle only - never compile)"
 run brew install --force-bottle mas || error "No mas bottle for this macOS; install mas from its GitHub release."
+if run brew unlink mas && run brew link mas; then :; else error "could not relink mas"; fi
 if ! command -v mise >/dev/null 2>&1; then
   info "Installing mise (provides xcodes on Intel)"
   run sh -c "$(curl -fsSL https://mise.run)" || error "mise installer returned non-zero."

@@ -4,6 +4,23 @@ This repo contains my personal dotfiles and configuration files for various tool
 
 One repo, three targets: **macOS on Apple Silicon**, **macOS on Intel**, and **Linux** (Ubuntu, including WSL2). Windows (winget) is supported on a best-effort basis.
 
+## Prerequisites
+
+`chezmoi` needs the Xcode Command Line Tools on macOS (the first script installs them if they are missing,
+but you can do it up front):
+
+```bash
+sudo xcode-select --install
+```
+
+**Your email** (used in `~/.gitconfig`): `chezmoi init` asks for it once and stores it. To skip the question,
+set `DOTFILES_EMAIL=you@example.com` for the run, or put it in `~/.config/chezmoi/chezmoi.toml` yourself:
+
+```toml
+[data]
+email = "your_email_address"
+```
+
 ## How to Use
 
 ```bash
