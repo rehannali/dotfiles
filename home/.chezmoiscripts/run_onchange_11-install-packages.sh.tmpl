@@ -1,6 +1,7 @@
 {{- if eq .chezmoi.os "darwin" -}}
 {{- $plan := includeTemplate "tool-plan" . | fromJson -}}
 {{- $appleSilicon := eq .chezmoi.arch "arm64" -}}
+{{- $profile := (index . "profile") | default "full" -}}
 #!/usr/bin/env bash
 # Homebrew packages for macOS/{{ .chezmoi.arch }}. What brew installs here is decided by home/.chezmoitemplates/tool-plan.
 # Written for macOS's stock bash 3.2: no empty-array expansion under `set -u`, no heredocs inside $(...).
@@ -10,7 +11,7 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
 {{ if $appleSilicon -}}
-info "chezmoi: Apple Silicon - CLI tools, system packages, casks and App Store apps via Homebrew"
+info "chezmoi: Apple Silicon - CLI tools, system packages{{ if ne $profile "cli" }}, casks and App Store apps{{ end }} via Homebrew"
 {{- else -}}
 info "chezmoi: Intel Mac - casks and App Store apps via Homebrew; formulae only when a bottle exists (CLI tools come from mise)"
 {{- end }}
@@ -29,6 +30,7 @@ tap {{ . | quote }}
 brew {{ .name | quote }}{{ if .args }}, {{ .args }}{{ end }}
 {{- end }}
 {{ end -}}
+{{- if ne $profile "cli" -}}
 {{- range .packages.darwin.casks }}
 cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
 {{- end }}
@@ -40,6 +42,7 @@ mas {{ .name | quote }}, id: {{ .id }}
 cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
 {{- end }}
 {{ end -}}
+{{- end -}}
 BrewfileEOF
 
 # --- Can this Mac install what the Brewfile asks for? --------------------------------------------------

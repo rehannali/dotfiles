@@ -1,22 +1,43 @@
 {{- if eq .chezmoi.os "darwin" -}}
+{{- $profile := (index . "profile") | default "full" -}}
 #!/usr/bin/env bash
 set -euo pipefail
 
 DEST_DIR="{{ .chezmoi.destDir }}"
 CHEZ_ARCH="{{ .chezmoi.arch }}"
-XCODE_VERSION="{{ .toolchain.xcode_version }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
 info "chezmoi prepare: macOS ARCH=$CHEZ_ARCH DEST_DIR=$DEST_DIR"
 
-# --- Rosetta (Apple Silicon only) ---
+{{ if ne $profile "cli" -}}
+# --- Rosetta (Apple Silicon only; for GUI apps, so not in the cli profile) ---
 if [ "$CHEZ_ARCH" = "arm64" ]; then
   run /usr/sbin/softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || \
     error "Rosetta install returned non-zero; continuing (may already be installed)."
 fi
 
+{{ end -}}
 # --- Xcode Command Line Tools ---
+# Headless first (the softwareupdate route Homebrew's own installer uses: no dialog to click), then the
+# GUI prompt as a fallback. bootstrap.sh does the same before chezmoi starts, because on a bare Mac the
+# first `git` call (which `chezmoi init <repo>` makes) is what pops up that dialog.
+install_clt_headless() {
+  local trigger=/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress-file label
+  touch "$trigger"
+  label="$(softwareupdate -l 2>/dev/null | grep -B 1 -E 'Command Line Tools' | awk -F'*' '/^ *\*/ {print $2}' \
+    | sed -e 's/^ *Label: //' -e 's/^ *//' | sort -V | tail -n1)"
+  if [ -n "$label" ]; then
+    info "Installing $label"
+    run sudo softwareupdate -i "$label" --verbose || true
+    run sudo xcode-select --switch /Library/Developer/CommandLineTools || true
+  fi
+  rm -f "$trigger"
+}
+
+if ! xcode-select -p >/dev/null 2>&1; then
+  install_clt_headless
+fi
 if ! xcode-select -p >/dev/null 2>&1; then
   info "Installing Xcode Command Line Tools (GUI prompt)"
   run xcode-select --install >/dev/null 2>&1 || error "xcode-select --install returned non-zero."
@@ -25,20 +46,24 @@ if ! xcode-select -p >/dev/null 2>&1; then
     sleep 6; elapsed=$((elapsed + 6))
     if [ "$elapsed" -ge 900 ]; then error "Timed out waiting for Xcode CLT."; break; fi
   done
-else
-  info "Xcode Command Line Tools already present."
 fi
+if xcode-select -p >/dev/null 2>&1; then info "Xcode Command Line Tools are installed."; fi
 
 # --- Homebrew (casks + a few CLI tools only; runtimes come from mise) ---
 if [ "$CHEZ_ARCH" = "arm64" ]; then BREW_BIN="/opt/homebrew/bin/brew"; else BREW_BIN="/usr/local/bin/brew"; fi
 
 if [ ! -x "$BREW_BIN" ]; then
   info "Installing Homebrew"
+  # Homebrew's installer waits for RETURN and asks for the sudo password. With sudo already unlocked
+  # (bootstrap.sh does `sudo -v`) it can run without asking anything.
+  if sudo -n true >/dev/null 2>&1; then export NONINTERACTIVE=1; fi
   run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || \
     error "Homebrew installer returned non-zero."
 fi
 eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile / ~/.zshenv
 
+{{ if ne $profile "cli" -}}
+XCODE_VERSION="{{ .toolchain.xcode_version }}"
 {{ if eq .chezmoi.arch "arm64" -}}
 info "Installing mas, aria2 and xcodes (bottles only - never compile)"
 # One at a time: a failure (or xcodes already installed from homebrew/core, which cannot coexist with the
@@ -92,6 +117,8 @@ elif [ -n "$XCODE_VERSION" ] && have_xcodes; then
 else
   info "No toolchain.xcode_version pinned (or xcodes unavailable) - skipping Xcode install."
 fi
-
+{{ else -}}
+info "Profile cli: no App Store tools, Xcode or simulator runtime."
+{{ end }}
 info "prepare-system completed successfully."
 {{ end -}}

@@ -16,9 +16,14 @@
     Linux          mise (apt if there is no mise key)     apt
     Windows        nothing here (winget)
 
+  profile "cli" (servers) additionally drops every kind: apple tool; casks, App Store apps and GUI configs
+  are handled by the scripts and .chezmoiignore.
+
   Exactly one manager is chosen per tool, so nothing is ever installed twice.
 */ -}}
 {{- $os := .chezmoi.os -}}
+{{- /* profile lives in chezmoi.toml; machines that never re-ran `chezmoi init` have none: full */ -}}
+{{- $profile := (index . "profile") | default "full" -}}
 {{- $appleSilicon := and (eq $os "darwin") (eq .chezmoi.arch "arm64") -}}
 {{- $intel := and (eq $os "darwin") (not $appleSilicon) -}}
 {{- $mise := list -}}
@@ -36,8 +41,8 @@
   {{- end -}}
 
   {{- $via := "" -}}
-  {{- if and (eq $t.kind "apple") (ne $os "darwin") -}}
-    {{- /* macOS only */ -}}
+  {{- if and (eq $t.kind "apple") (or (ne $os "darwin") (eq $profile "cli")) -}}
+    {{- /* macOS only, and not part of the command-line-only profile */ -}}
   {{- else if $appleSilicon -}}
     {{- if hasKey $t "brew" -}}{{- $via = "brew" -}}
     {{- else if hasKey $t "mise" -}}{{- $via = "mise" -}}

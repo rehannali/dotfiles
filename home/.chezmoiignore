@@ -16,3 +16,9 @@
 .config/spaceship
 .config/thefuck
 {{ end }}
+{{ if eq ((index . "profile") | default "full") "cli" }}
+.config/alacritty
+.config/wezterm
+.config/karabiner
+.hyper.js
+{{ end }}

@@ -2,12 +2,25 @@
   Prompts happen here, in the config template: chezmoi only defines prompt* functions while it renders
   this file during `chezmoi init`, never in regular file templates (dot_gitconfig.tmpl used to call
   promptStringOnce itself, which fails with `function "promptStringOnce" not defined`).
-  Non-interactive runs (CI, bootstrap scripts): export DOTFILES_EMAIL and nothing is asked.
+
+  Non-interactive runs (CI, bootstrap scripts, servers over ssh without a tty): export DOTFILES_EMAIL and
+  DOTFILES_PROFILE (or use bootstrap.sh --email/--cli) and nothing is asked.
+
+  profile: full = everything; cli = command-line tools and the terminal setup only (no casks, App Store
+  apps, Xcode, GUI app configs): what you want on a server.
 */ -}}
 {{- $email := env "DOTFILES_EMAIL" -}}
 {{- if not $email -}}
 {{-   $email = promptStringOnce . "email" "What is your email address" -}}
 {{- end -}}
+{{- $profile := env "DOTFILES_PROFILE" -}}
+{{- if not $profile -}}
+{{-   $profile = promptChoiceOnce . "profile" "Install profile: full (everything) or cli (command-line tools + terminal setup only, no GUI apps)" (list "full" "cli") "full" -}}
+{{- end -}}
+{{- if not (has $profile (list "full" "cli")) -}}
+{{-   fail (printf "DOTFILES_PROFILE must be full or cli, got %q" $profile) -}}
+{{- end -}}
 
 [data]
     email = {{ $email | quote }}
+    profile = {{ $profile | quote }}

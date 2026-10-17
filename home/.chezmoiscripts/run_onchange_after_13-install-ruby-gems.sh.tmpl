@@ -1,4 +1,4 @@
-{{- if eq .chezmoi.os "darwin" -}}
+{{- if and (eq .chezmoi.os "darwin") (ne ((index . "profile") | default "full") "cli") -}}
 #!/usr/bin/env bash
 # fastlane and CocoaPods live in mise's Ruby ({{ .packages.runtimes.ruby }}), not in Homebrew's.
 # Re-runs when the gem list or the Ruby version changes (both are part of this rendered text).
