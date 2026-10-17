@@ -45,7 +45,7 @@ cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
 {{- end -}}
 BrewfileEOF
 
-# --- Can this Mac install what the Brewfile asks for? --------------------------------------------------
+# Can this Mac install what the Brewfile asks for?
 # Taps disappear, casks get disabled upstream, move to another tap, drop Intel or raise the minimum macOS; formulae get
 # disabled. brew bundle fails on those and would abort the whole apply, so ask Homebrew first, report, and
 # leave out what cannot work. Needs python3 (the Xcode Command Line Tools provide it); without it nothing
@@ -147,11 +147,11 @@ fi
 {{ if $appleSilicon -}}
 run brew bundle -v --no-upgrade --file="$BREWFILE"
 {{- else -}}
-# --- Intel: casks and App Store apps through the bundle -----------------------------------------
+# Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
 
-# --- Intel: formulae, bottle-only ---------------------------------------------------------------
+# Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
 # formula itself, but its dependencies are installed with force_bottle=false and WOULD be compiled.
 # So the formula and every runtime dependency that is not installed yet must have a bottle first.

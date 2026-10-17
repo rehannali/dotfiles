@@ -12,7 +12,14 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$(mktemp -d)}"
 export HOME="${VERIFY_HOME:-$(mktemp -d)}"   # keep chezmoi away from the real home
 
-TARGETS=("darwin/arm64" "darwin/amd64" "linux/amd64" "windows/amd64")
+# os/arch[/profile]; no profile = full
+TARGETS=("darwin/arm64" "darwin/amd64" "linux/amd64" "windows/amd64" "darwin/arm64/cli" "linux/amd64/cli")
+# quicker local run on a few targets: VERIFY_TARGETS="linux/amd64 darwin/arm64/cli" scripts/verify-render.sh
+if [ -n "${VERIFY_TARGETS:-}" ]; then read -r -a TARGETS <<< "$VERIFY_TARGETS"; fi
+
+# Scripts that must render empty in the cli (server) profile even though the OS would run them.
+CLI_EMPTY=" run_onchange_after_10-configure-defaults.sh.tmpl run_onchange_after_13-install-ruby-gems.sh.tmpl run_once_after_31-install-xcode-runtime.sh.tmpl "
+
 
 # Which targets a script must render NON-empty for. Anything not listed must be empty.
 declare -A RUNS_ON=(
@@ -34,14 +41,20 @@ declare -A RUNS_ON=(
 fail=0
 bad() { echo "  FAIL: $*"; fail=$((fail + 1)); }
 
-render() { # render <os/arch> <template> -> stdout
-  local os="${1%/*}" arch="${1#*/}"
-  chezmoi -S "$SRC" execute-template \
-    --override-data "{\"email\":\"test@example.com\",\"chezmoi\":{\"os\":\"$os\",\"arch\":\"$arch\"}}" < "$2"
+target_os() { echo "${1%%/*}"; }
+target_arch() { local r="${1#*/}"; echo "${r%%/*}"; }
+target_profile() { local r="${1#*/}"; if [[ "$r" == */* ]]; then echo "${r#*/}"; else echo full; fi; }
+override() { # override <target> -> --override-data JSON (email only matters to file templates)
+  echo "{\"name\":\"Test User\",\"email\":\"test@example.com\",\"bitwarden\":false,\"profile\":\"$(target_profile "$1")\",\"chezmoi\":{\"os\":\"$(target_os "$1")\",\"arch\":\"$(target_arch "$1")\"}}"
+}
+
+render() { # render <target> <template> -> stdout
+  chezmoi -S "$SRC" execute-template --override-data "$(override "$1")" < "$2"
 }
 
 for target in "${TARGETS[@]}"; do
-  os="${target%/*}"
+  os="$(target_os "$target")"
+  profile="$(target_profile "$target")"
   dir="$OUT/${target//\//-}"
   mkdir -p "$dir"
   echo "== $target"
@@ -58,11 +71,14 @@ for target in "${TARGETS[@]}"; do
     grep -q '[^[:space:]]' "$out" && nonempty=true
 
     if [[ -n "${RUNS_ON[$name]+x}" ]]; then
-      if [[ " ${RUNS_ON[$name]} " == *" $os "* ]]; then
+      if [[ " ${RUNS_ON[$name]} " == *" $os "* ]] && ! { [ "$profile" = cli ] && [[ "$CLI_EMPTY" == *" $name "* ]]; }; then
         $nonempty || bad "$name should render for $target but is empty"
       else
         $nonempty && bad "$name must render empty on $target"
       fi
+    fi
+    if [ "$profile" = cli ] && [ "$name" = run_onchange_11-install-packages.sh.tmpl ] && grep -qE '^(cask|mas) ' "$out"; then
+      bad "cli profile still has casks / App Store apps in the Brewfile on $target"
     fi
 
     $nonempty || continue
@@ -80,10 +96,20 @@ for target in "${TARGETS[@]}"; do
     esac
   done < <(find "$SRC/home" -name '*.tmpl' -not -name '.chezmoi.toml.tmpl' -not -path '*/.git/*' -not -path '*/themes/*' | sort)
 
-  # The config template is the only place that may prompt; DOTFILES_EMAIL must make it non-interactive.
-  cfg_out="$(DOTFILES_EMAIL=test@example.com chezmoi -S "$SRC" execute-template --init \
-    < "$SRC/home/.chezmoi.toml.tmpl" 2>&1)" || bad ".chezmoi.toml.tmpl failed: $cfg_out"
-  [[ "$cfg_out" == *'email = "test@example.com"'* ]] || bad ".chezmoi.toml.tmpl did not use DOTFILES_EMAIL: $cfg_out"
+  # The config template is the only place that may prompt; the DOTFILES_* variables must make it non-interactive.
+  for want in full cli; do
+    cfg_out="$(DOTFILES_NAME="Test User" DOTFILES_EMAIL=test@example.com DOTFILES_PROFILE=$want DOTFILES_BITWARDEN=false \
+      chezmoi -S "$SRC" execute-template --init < "$SRC/home/.chezmoi.toml.tmpl" 2>&1)" \
+      || bad ".chezmoi.toml.tmpl failed for profile $want: $cfg_out"
+    [[ "$cfg_out" == *'name = "Test User"'* && "$cfg_out" == *'email = "test@example.com"'* \
+      && "$cfg_out" == *"profile = \"$want\""* && "$cfg_out" == *"bitwarden = false"* ]] \
+      || bad ".chezmoi.toml.tmpl did not honor the DOTFILES_* variables for profile $want: $cfg_out"
+  done
+  cfg_out="$(DOTFILES_NAME=x DOTFILES_EMAIL=x@y.z DOTFILES_PROFILE=full DOTFILES_BITWARDEN=true \
+    chezmoi -S "$SRC" execute-template --init < "$SRC/home/.chezmoi.toml.tmpl" 2>&1)"
+  [[ "$cfg_out" == *'unlock = "auto"'* ]] || bad "Bitwarden enabled but chezmoi's unlock = auto is missing"
+  if DOTFILES_NAME=x DOTFILES_EMAIL=x@y.z DOTFILES_PROFILE=bogus DOTFILES_BITWARDEN=false chezmoi -S "$SRC" \
+      execute-template --init < "$SRC/home/.chezmoi.toml.tmpl" > /dev/null 2>&1; then bad ".chezmoi.toml.tmpl accepted profile 'bogus'"; fi
 
   # mise config must be valid TOML and agree with the tool plan.
   cfg="$dir/dot_config/mise/config.toml.tmpl"
@@ -101,9 +127,8 @@ PY
 done
 
 # One manager per tool, per target (policy: never brew AND mise for the same tool).
-render_str() { # render_str <os/arch> '<template text>'
-  chezmoi -S "$SRC" execute-template \
-    --override-data "{\"chezmoi\":{\"os\":\"${1%/*}\",\"arch\":\"${1#*/}\"}}" "$2"
+render_str() { # render_str <target> '<template text>'
+  chezmoi -S "$SRC" execute-template --override-data "$(override "$1")" "$2"
 }
 for target in "${TARGETS[@]}"; do
   plan="$(render_str "$target" '{{ includeTemplate "tool-plan" . }}')" || { bad "tool-plan failed for $target"; continue; }
@@ -130,6 +155,20 @@ for e in plan["expect"]:
 print(f"  {target}: " + ", ".join(f"{k}={len(v)}" for k, v in sorted(plan.items())))
 PY
 done
+
+# Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.
+stub="$(mktemp -d)"
+cat > "$stub/bw" << 'BW'
+#!/bin/sh
+echo '{"name":"x","notes":"n","login":{"username":"u","password":"it'"'"'s $ecret"},"fields":[{"name":"token","value":"t0k"}]}'
+BW
+chmod +x "$stub/bw"
+secrets_data='{"name":"T","email":"t@e.x","profile":"full","bitwarden":true,"secrets":{"env":{"A":{"item":"i"},"B":{"item":"i","field":"token"}}},"chezmoi":{"os":"linux","arch":"amd64"}}'
+got="$(PATH="$stub:$PATH" chezmoi -S "$SRC" execute-template --override-data "$secrets_data" < "$SRC/home/dot_config/dotfiles/private_secrets.zsh.tmpl" 2>&1)"
+[[ "$got" == *"export A='it'\\''s \$ecret'"* && "$got" == *"export B='t0k'"* ]] || bad "secrets template output wrong: $got"
+off="$(PATH="$stub:$PATH" chezmoi -S "$SRC" execute-template --override-data "${secrets_data/\"bitwarden\":true/\"bitwarden\":false}" < "$SRC/home/dot_config/dotfiles/private_secrets.zsh.tmpl" 2>&1)"
+[ -z "${off//[[:space:]]/}" ] || bad "secrets are rendered although Bitwarden is off: $off"
+echo "  bitwarden secrets template ok"
 
 echo "rendered into $OUT"
 if [ "$fail" -gt 0 ]; then echo "$fail check(s) FAILED"; exit 1; fi

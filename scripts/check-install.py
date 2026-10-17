@@ -68,9 +68,7 @@ def add(level, section, subject, message=""):
     findings.append((level, section, subject, message))
 
 
-# --------------------------------------------------------------------------------------------------------
 # file classification
-# --------------------------------------------------------------------------------------------------------
 def classify(desc):
     """`file -b` text -> (format, set of archs) or None for anything that is not a native binary."""
     if "Mach-O" in desc:
@@ -138,9 +136,7 @@ def native_candidates(root):
     return found
 
 
-# --------------------------------------------------------------------------------------------------------
 # environment discovery
-# --------------------------------------------------------------------------------------------------------
 def brew_prefix():
     brew = shutil.which("brew")
     for cand in ([brew] if brew else []) + ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]:
@@ -178,9 +174,7 @@ def mise_installs():
         return {}
 
 
-# --------------------------------------------------------------------------------------------------------
 # 1. expected tools
-# --------------------------------------------------------------------------------------------------------
 BAD_RUN = re.compile(
     r"Exec format error|Bad CPU type|cannot execute|error while loading shared libraries|Library not loaded|"
     r"dyld\[|dyld:|GLIBC_[0-9.]+' not found|image not found|cannot open shared object|bad interpreter",
@@ -278,9 +272,7 @@ def check_runtimes():
     return rows
 
 
-# --------------------------------------------------------------------------------------------------------
 # 2. architecture audit
-# --------------------------------------------------------------------------------------------------------
 def collect_roots(installs):
     roots = []  # (label, directory-or-file list)
     for tool, entries in sorted(installs.items()):
@@ -362,9 +354,7 @@ def check_architecture():
     return summary, total, apps
 
 
-# --------------------------------------------------------------------------------------------------------
 # 3. mise, 4. shell
-# --------------------------------------------------------------------------------------------------------
 def check_mise():
     rc, out = run([MISE, "ls", "--missing"], timeout=120)
     missing = out.strip()
@@ -387,6 +377,37 @@ def check_mise():
 NOISE = re.compile(r"command not found|not found|No such file|error|cannot|failed", re.I)
 
 
+def configured_profile():
+    """full | cli, from the environment or the chezmoi config `chezmoi init` wrote."""
+    if os.environ.get("DOTFILES_PROFILE"):
+        return os.environ["DOTFILES_PROFILE"]
+    try:
+        with open(os.path.join(HOME, ".config", "chezmoi", "chezmoi.toml")) as fh:
+            m = re.search(r'^\s*profile\s*=\s*"(\w+)"', fh.read(), re.M)
+            return m.group(1) if m else "full"
+    except OSError:
+        return "full"
+
+
+GUI_PATHS = [".config/alacritty", ".config/wezterm", ".config/karabiner", ".hyper.js"]
+
+
+def check_profile():
+    profile = configured_profile()
+    if profile != "cli":
+        add(OK, "profile", "full", "everything is installed")
+        return
+    present = [p for p in GUI_PATHS if os.path.exists(os.path.join(HOME, p))]
+    if present:
+        add(FAIL, "profile", "cli", "GUI configs present on a cli machine: " + ", ".join(present))
+    else:
+        add(OK, "profile", "cli", "no GUI app configs (alacritty, wezterm, karabiner, hyper)")
+    if SYSTEM == "Darwin":
+        apps = [a for base in ("/Applications", os.path.join(HOME, "Applications")) if os.path.isdir(base)
+                for a in os.listdir(base) if a.endswith(".app")]
+        add(WARN if apps else OK, "profile", "Mac apps", "%d apps installed (runner images ship some)" % len(apps))
+
+
 def check_shell():
     zsh = shutil.which("zsh")
     if not zsh:
@@ -403,9 +424,7 @@ def check_shell():
         add(OK, "shell", "zsh -l -i -c exit", "starts without errors")
 
 
-# --------------------------------------------------------------------------------------------------------
 # report
-# --------------------------------------------------------------------------------------------------------
 def table(headers, rows):
     out = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
     out += ["| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |" for r in rows]
@@ -426,6 +445,7 @@ def main():
     runtime_rows = check_runtimes()
     arch_rows, native_total, apps = check_architecture()
     check_mise()
+    check_profile()
     if not args.no_shell:
         check_shell()
 
