@@ -1,0 +1,27 @@
+# Defaults for everything that is a matter of taste or differs between people and machines.
+#
+# To change one on a single machine, don't edit this file: put the key in ~/.config/chezmoi/chezmoi.toml,
+# for example
+#
+#   [data.settings.git]
+#       default_branch = "trunk"
+#       signing_key    = "ABCD1234"
+#
+# Only the keys you write there change, the rest keep the values below. Your name, email, install profile
+# and Bitwarden choice are asked for once by `chezmoi init` (see README.md), they are not set here.
+settings:
+  git:
+    default_branch: main
+    sign_commits: false
+    signing_key: ""            # a GPG key id, or the path of an SSH public key when signing_format is ssh
+    signing_format: openpgp    # openpgp | ssh
+    gpg_program: gpg
+    commit_template: "~/.stCommitMsg"   # commit message template (Sourcetree writes it); empty for none
+
+  locale: en_US.UTF-8
+
+  terminal:
+    font: Hack Nerd Font Mono
+    font_size: 14              # alacritty, and wezterm on macOS
+    font_size_other: 11        # wezterm on Linux and Windows
+    alacritty_theme: blood_moon  # file name (without .toml) from https://github.com/alacritty/alacritty-theme

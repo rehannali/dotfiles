@@ -4,7 +4,7 @@
 typeset -U path PATH
 
 export ZSH="$HOME/.oh-my-zsh"
-export LANG=en_US.UTF-8
+export LANG={{ .settings.locale }}
 export SPACESHIP_CONFIG="$HOME/.config/spaceship/spaceship.zsh"
 
 {{ if eq .chezmoi.os "darwin" -}}
