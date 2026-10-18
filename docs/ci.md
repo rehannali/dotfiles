@@ -42,7 +42,19 @@ that, but you do need to pick how.
 gh secret set FASTLANE_SESSION          # paste the value, then Ctrl-D
 ```
 
-**3. Run it.**
+Never print the session in a workflow step. This repository is public, and so are its run logs. That is why the
+`apple-session` workflow hands you a terminal instead of running the command itself.
+
+**3. Check that it works.** Run the `apple-session-check` workflow. It starts the download of an Xcode with the
+session and stops as soon as Apple has accepted the login, so it costs a minute and installs nothing:
+
+```sh
+gh workflow run apple-session-check.yml
+```
+
+Green means the session is good. Red means it has expired or is wrong, make a new one.
+
+**4. Run the real thing.**
 
 ```sh
 gh workflow run dotfiles.yml -f platform=mac-arm -f xcode=install -f xcode_version=<version> -f casks=check
@@ -52,7 +64,7 @@ GitHub's macOS images already have several Xcodes. If you ask for one that is on
 downloads nothing, which doesn't test anything. Look at the image's list and pick a version it doesn't have. With
 `xcode_version` empty the newest release the runner can run is used, which may well be on the image already.
 
-**4. Read the result.** The log shows the download and install, and the audit summary has an `xcode` row: it checks
+**5. Read the result.** The log shows the download and install, and the audit summary has an `xcode` row: it checks
 that the Xcode you asked for is selected and that its app is built for the runner's CPU.
 
 ## When it fails

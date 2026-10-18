@@ -98,6 +98,22 @@ older macOS gets an older Xcode too. Betas and release candidates are never pick
 [xcodereleases.com](https://xcodereleases.com) data (required macOS, supported CPUs), by `xcode-pick.py`, because
 `xcodes install --latest` only warns when the newest Xcode is too new for the Mac and then installs it anyway.
 
+`xcodes` has its own idea of what suits a Mac, and the pick follows it: `xcodes list` shows only `[Universal]` builds on
+an Intel Mac and only `[Apple Silicon]` builds on an Apple Silicon one, which is why an Intel Mac stops at the last
+universal Xcode. You can look at it yourself:
+
+```sh
+xcodes list                                          # what this Mac is offered
+xcodes list --architecture universal                 # Intel-compatible builds
+xcodes list --architecture appleSilicon              # arm64-only builds
+xcodes list --architecture x86_64                    # Intel-only builds
+```
+
+The script asks `xcodes list` for the builds that fit this CPU (universal and Intel-only on Intel, Apple Silicon and
+universal on Apple Silicon) and takes the newest release among them that this Mac's macOS can run, because `xcodes
+list` does not look at the macOS version. If `xcodes list` fails it goes by the release data alone. When a version
+exists as both an Apple Silicon and a universal build, `xcodes install` prefers the universal one.
+
 The iOS simulator runtime defaults to the one that belongs to the Xcode that was installed.
 
 To pin a version, in order of priority:

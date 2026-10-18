@@ -9,7 +9,12 @@ installs it anyway. An Intel Mac, which stops at macOS 26, would get an Xcode 27
 made here from the xcodereleases.com data: only plain releases (no beta, no release candidate), whose required
 macOS is not newer than this one and whose download supports this CPU.
 
-Options for testing: --macos 26.6 --arch x86_64 --data some-data.json
+xcodes also has its own view of what suits a Mac: `xcodes list` shows only [Universal] builds on an Intel Mac and
+only [Apple Silicon] builds on an Apple Silicon Mac (override with --architecture). Pass that output with
+--listed and only versions it lists are considered, so the pick is one xcodes itself offers for this CPU. xcodes
+does not look at the macOS version, which is why the check above stays.
+
+Options for testing: --macos 26.6 --arch x86_64 --data some-data.json --listed xcodes-list.txt
 Prints one line on stdout and exits 0, or prints nothing and exits 1 when nothing fits or the data can't be read.
 """
 import argparse
@@ -62,8 +67,29 @@ def usable(entry, macos, arch):
     return not archs or arch in archs
 
 
-def candidates(data, macos, arch):
+def normal(text):
+    """26.6 and 26.6.0 are the same version: drop trailing zeros"""
+    parts = list(numbers(text))
+    while parts and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def listed_releases(text):
+    """Versions of the released (not beta, RC or GM) rows in `xcodes list` output, e.g. `26.6 (17F113) [Universal]`."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    found = set()
+    for line in text.splitlines():
+        row = re.match(r"^\s*(\d+(?:\.\d+){0,2})([^(]*)\(", line)
+        if row and not row.group(2).strip():
+            found.add(normal(row.group(1)))
+    return found
+
+
+def candidates(data, macos, arch, listed=None):
     found = [e for e in data if is_release(e) and usable(e, macos, arch)]
+    if listed:
+        found = [e for e in found if normal(e["version"]["number"]) in listed]
     return sorted(found, key=lambda e: (numbers(e["version"]["number"]), e.get("_dateOrder", 0)), reverse=True)
 
 
@@ -74,6 +100,7 @@ def main():
     ap.add_argument("--macos", help="default: this Mac's macOS version")
     ap.add_argument("--arch", choices=["arm64", "x86_64"], help="default: this Mac's CPU")
     ap.add_argument("--data", help="read this file instead of downloading xcodereleases.com/data.json")
+    ap.add_argument("--listed", help="output of `xcodes list --architecture ...`; only the releases in it are considered")
     args = ap.parse_args()
 
     macos = args.macos or command("sw_vers", "-productVersion")
@@ -89,7 +116,16 @@ def main():
         print("cannot read the Xcode release data: %s" % err, file=sys.stderr)
         return 1
 
-    found = candidates(data, macos, arch)
+    listed = None
+    if args.listed:
+        try:
+            with open(args.listed) as fh:
+                listed = listed_releases(fh.read())
+        except OSError:
+            listed = None
+        if not listed:
+            print("no usable `xcodes list` output, going by the release data alone", file=sys.stderr)
+    found = candidates(data, macos, arch, listed)
     if args.what == "xcode":
         if not found:
             print("no Xcode release fits macOS %s on %s" % (macos, arch), file=sys.stderr)

@@ -1,0 +1,63 @@
+name: apple-session-check
+
+# Checks that the FASTLANE_SESSION secret still works, without installing Xcode: it starts the download of an Xcode
+# with that session and stops it as soon as Apple has accepted the login. Manual only.
+#
+# Make the secret first (apple-session.yml, or `fastlane spaceauth` on your own machine), see docs/ci.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      xcode_version:
+        description: Xcode to start downloading, empty = the newest this runner can run
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      FASTLANE_SESSION: ${{ secrets.FASTLANE_SESSION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is the secret there?
+        run: |
+          if [ -z "$FASTLANE_SESSION" ]; then
+            echo "::error::The FASTLANE_SESSION secret is not set. See docs/ci.md"
+            exit 1
+          fi
+
+      - name: Install xcodes
+        run: brew install xcodesorg/made/xcodes
+
+      - name: What xcodes offers on this machine
+        run: |
+          echo "Default view (this runner's CPU):"; xcodes list | tail -4
+          echo; echo "All architectures:";          xcodes list --architecture universal --architecture appleSilicon --architecture x86_64 | tail -6
+
+      - name: Start the download with the session
+        env:
+          VERSION: ${{ inputs.xcode_version }}
+        run: |
+          if [ -z "$VERSION" ]; then
+            xcodes list --architecture appleSilicon --architecture universal > "$RUNNER_TEMP/listed.txt"
+            VERSION="$(python3 home/.chezmoitemplates/xcode-pick.py xcode --listed "$RUNNER_TEMP/listed.txt")"
+          fi
+          echo "Trying Xcode $VERSION"
+          mkdir -p "$RUNNER_TEMP/download"
+          # xcodes only prints a "Downloading" line once Apple has accepted the login; stop it right after that
+          set +e
+          timeout 150 xcodes download "$VERSION" --use-fastlane-auth --directory "$RUNNER_TEMP/download" > "$RUNNER_TEMP/out.txt" 2>&1
+          set -e
+          sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/out.txt" | tr '\r' '\n' | grep -v '^\s*$' | tail -15
+          if grep -aq "Downloading" "$RUNNER_TEMP/out.txt"; then
+            echo "::notice::The session works: Apple accepted the login and the download started."
+          else
+            echo "::error::No download started. The session has probably expired or is wrong; make a new one (docs/ci.md)."
+            exit 1
+          fi

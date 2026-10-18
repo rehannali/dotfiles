@@ -194,6 +194,13 @@ expect_pick 26.3 xcode --macos 15.7 --arch arm64      # older macOS, older Xcode
 expect_pick 26.5 runtime --xcode 26.6 --macos 26.6 --arch x86_64
 expect_pick 27.1 runtime --xcode 27.1 --macos 26.6 --arch arm64
 expect_pick ""   runtime --xcode 27.1 --macos 26.6 --arch x86_64   # that Xcode can't run on this Mac
+listed_intel="$(mktemp)"; listed_arm="$(mktemp)"
+printf '%s\n' "26.3 (17C529) [Universal]" "26.6 (17F113) [Universal] (Installed)" > "$listed_intel"
+printf '%s\n' "26.6 (17F113) [Apple Silicon]" "27.1 (27A9275) [Apple Silicon]" "27.2 Beta 3 (27B5038j) [Apple Silicon]" > "$listed_arm"
+expect_pick 26.6 xcode --macos 26.6 --arch x86_64 --listed "$listed_intel"
+expect_pick 27.1 xcode --macos 26.6 --arch arm64 --listed "$listed_arm"      # the beta row is ignored
+expect_pick 26.3 xcode --macos 26.6 --arch x86_64 --listed <(printf '26.3 (17C529) [Universal]\n')   # xcodes lists less
+expect_pick 27.1 xcode --macos 26.6 --arch arm64 --listed /nonexistent        # unusable list: release data alone
 echo "  xcode-pick.py ok"
 
 echo "rendered into $OUT"

@@ -112,8 +112,22 @@ elif ! have_xcodes; then
 else
   if [ -z "$XCODE_VERSION" ]; then
     # not `xcodes install --latest`: that installs the newest Xcode even when this Mac is too old (or, for
-    # Xcode 27, an Intel Mac) to run it. xcode-pick.py only considers releases this Mac can run.
-    if XCODE_VERSION="$(python3 "$DEST_DIR/.local/lib/xcode-pick.py" xcode)"; then
+    # Xcode 27, an Intel Mac) to run it. xcode-pick.py only considers releases this Mac can run, and, when xcodes
+    # can list them, only builds xcodes offers for this CPU (`xcodes list` itself shows
+{{- if eq .chezmoi.arch "arm64" }} Apple Silicon builds on an Apple Silicon Mac,
+    # so ask for the universal ones too).
+    xcodes_listed="$(mktemp)"
+    if xcodes_run list --architecture appleSilicon --architecture universal > "$xcodes_listed" 2>/dev/null; then
+{{- else }} universal builds on an Intel Mac, so ask for Intel-only ones too).
+    xcodes_listed="$(mktemp)"
+    if xcodes_run list --architecture universal --architecture x86_64 > "$xcodes_listed" 2>/dev/null; then
+{{- end }}
+      pick_args=(--listed "$xcodes_listed")
+    else
+      pick_args=()
+    fi
+    if XCODE_VERSION="$(python3 "$DEST_DIR/.local/lib/xcode-pick.py" xcode ${pick_args[@]+"${pick_args[@]}"})" \
+        || XCODE_VERSION="$(python3 "$DEST_DIR/.local/lib/xcode-pick.py" xcode)"; then
       info "No Xcode version set, the newest release this Mac can run is $XCODE_VERSION"
     else
       XCODE_VERSION=""
