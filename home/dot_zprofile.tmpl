@@ -1,12 +1,18 @@
-
+{{ if eq .chezmoi.os "darwin" -}}
+# Login shells on macOS run /etc/zprofile -> path_helper, which re-sorts PATH and pushes the entries
+# set in ~/.zshenv behind /usr/bin. Put Homebrew and mise back in front.
+{{ if eq .chezmoi.arch "arm64" -}}
+[ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+{{ else -}}
+[ -x /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+{{ end -}}
 
 # Added by Toolbox App
 export PATH="$PATH:/usr/local/bin"
 
-
-# Created by `pipx` on 2024-03-02 08:04:12
-export PATH="$PATH:{{ .chezmoi.homeDir }}/.local/bin"
-
 # Added by OrbStack: command-line tools and integration
-# Comment this line if you don't want it to be added again.
 source {{ .chezmoi.homeDir }}/.orbstack/shell/init.zsh 2>/dev/null || :
+{{ end -}}
+
+# mise shims and ~/.local/bin (mise, pipx, uv tools) ahead of the system directories
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"

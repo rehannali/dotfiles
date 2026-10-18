@@ -1,0 +1,10 @@
+{{- /* GUI terminal themes: not part of the cli (server) profile. .chezmoiignore does not cover externals. */ -}}
+{{- if ne ((index . "profile") | default "full") "cli" -}}
+# Pinned to the commit that used to be vendored in this repo (47 MB incl. a nested .git and PNG previews).
+# Bump the SHA to update. Only the theme files are extracted: no images, no .git.
+[".config/alacritty/themes"]
+    type = "archive"
+    url = "https://github.com/alacritty/alacritty-theme/archive/94e1dc0b9511969a426208fbba24bd7448493785.tar.gz"
+    stripComponents = 1
+    include = ["*/themes", "*/themes/*.toml", "*/LICENSE"]
+{{ end -}}

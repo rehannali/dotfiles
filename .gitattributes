@@ -1,0 +1,6 @@
+# Everything in this repo is rendered/executed on macOS and Linux (including WSL2): keep LF on every checkout.
+# A Windows checkout with core.autocrlf would otherwise turn the shell scripts and templates into CRLF
+# ("bad interpreter: bash\r") and make every file show up as modified when opened from WSL.
+* text=auto eol=lf
+*.png binary
+*.zwc binary

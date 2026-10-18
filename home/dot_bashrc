@@ -1,3 +1,7 @@
+# mise: runtime versions and mise-managed CLI tools (replaces rvm/sdkman/pyenv/rbenv).
+# Shims first so non-interactive bash (IDEs, scripts) finds them; `mise activate` adds the real paths.
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+command -v mise >/dev/null 2>&1 && eval "$(mise activate bash)"
 
-# Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
-export PATH="$PATH:$HOME/.rvm/bin"
+# tokens fetched from Bitwarden (empty unless Bitwarden is enabled)
+[ -f "$HOME/.config/dotfiles/secrets.zsh" ] && . "$HOME/.config/dotfiles/secrets.zsh"

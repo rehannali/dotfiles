@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -8,6 +9,60 @@ mkdir -p "$HELP_DIR"
 
 cat > "$HELP_FILE" << 'BASH'
 #!/usr/bin/env bash
+
+# mise (official installer) lives in ~/.local/bin; its shims expose every installed runtime/tool
+export PATH="{{ .chezmoi.destDir }}/.local/bin:{{ .chezmoi.destDir }}/.local/share/mise/shims:$PATH"
+{{ if eq .chezmoi.os "darwin" -}}
+# Homebrew is installed by run_once_before_01 in its own process, so later scripts don't have it on PATH
+for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+  if [ -x "$brew_bin" ]; then eval "$("$brew_bin" shellenv)"; break; fi
+done
+unset brew_bin
+export HOMEBREW_NO_ANALYTICS=1
+
+# Apple ID for xcodes, read from a Bitwarden item. Exported into the calling script only (never on a command
+# line or into a file): xcodes reads XCODES_USERNAME and XCODES_PASSWORD, and FASTLANE_SESSION together with
+# --use-fastlane-auth. The item's custom field FASTLANE_SESSION is optional.
+function load_apple_credentials {
+	local item="$1" json
+	[ -z "${XCODES_USERNAME:-}" ] || return 0   # already given in the environment
+	command -v bw > /dev/null 2>&1 || { info "bw is not installed, xcodes will ask for the Apple ID."; return 0; }
+	[ -n "${BW_SESSION:-}" ] || { info "Bitwarden is not unlocked in this run (BW_SESSION), xcodes will ask for the Apple ID."; return 0; }
+	json="$(bw get item "$item" 2> /dev/null)" || { info "No Bitwarden item \"$item\", xcodes will ask for the Apple ID."; return 0; }
+	eval "$(printf '%s' "$json" | python3 -c '
+import json, shlex, sys
+item = json.load(sys.stdin)
+login = item.get("login") or {}
+values = {"XCODES_USERNAME": login.get("username"), "XCODES_PASSWORD": login.get("password")}
+for field in item.get("fields") or []:
+	if field.get("name") == "FASTLANE_SESSION":
+		values["FASTLANE_SESSION"] = field.get("value")
+for name, value in values.items():
+	if value:
+		print("export %s=%s" % (name, shlex.quote(value)))
+')"
+}
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+
+# Homebrew 6 and newer refuse to load a formula or cask from a tap that was not trusted (docs.brew.sh/Tap-Trust):
+# `brew info`, `brew deps` and `brew bundle` fail on it until it is. Trust the one formula or cask that is used,
+# not the whole tap, and do it before anything looks the item up. (`brew install tap/repo/name` trusts that item
+# by itself.) Older Homebrew has no `brew trust`, there is nothing to do there.
+function brew_has_trust {
+	brew trust --help > /dev/null 2>&1 < /dev/null
+}
+function brew_trust { # brew_trust --formula|--cask tap/repo/name
+	local out
+	brew_has_trust || return 0
+	out="$(brew trust "$@" 2>&1 < /dev/null)" || { error "brew trust $*: $out"; return 1; }
+}
+{{ if ne .chezmoi.arch "arm64" -}}
+# Intel Macs: Homebrew no longer builds bottles (Tier 3). Never update, upgrade or compile implicitly.
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_UPGRADE=1
+export HOMEBREW_MAKE_JOBS=2
+{{ end -}}
+{{ end -}}
 
 function bail {
 	error "$*"
@@ -61,3 +116,12 @@ function run {
 BASH
 
 chmod +x "$HELP_FILE"
+{{ if eq .chezmoi.os "darwin" -}}
+
+# picks the Xcode and iOS runtime this Mac can run (used by the pre-setup and runtime scripts)
+cat > "$HELP_DIR/xcode-pick.py" << 'PYTHON'
+{{ template "xcode-pick.py" . }}
+PYTHON
+chmod +x "$HELP_DIR/xcode-pick.py"
+{{ end -}}
+{{ end -}}

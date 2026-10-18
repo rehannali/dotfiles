@@ -1,0 +1,47 @@
+{{- /*
+  The questions chezmoi asks on `chezmoi init`, and where each answer can come from instead, so that a run
+  does not have to be interactive:
+
+    name       DOTFILES_NAME       full name used for git commits
+    email      DOTFILES_EMAIL      email used for git commits
+    profile    DOTFILES_PROFILE    full | cli   (cli = command-line tools and terminal setup, no GUI apps)
+    bitwarden  DOTFILES_BITWARDEN  true | false (fetch secrets from Bitwarden, see README.md)
+
+  Answers are stored in ~/.config/chezmoi/chezmoi.toml and not asked again. The prompt functions only exist
+  while this file is rendered, which is why they are here and not in the other templates.
+*/ -}}
+{{- $name := env "DOTFILES_NAME" -}}
+{{- if not $name -}}
+{{-   $name = promptStringOnce . "name" "Your full name (for git commits)" -}}
+{{- end -}}
+
+{{- $email := env "DOTFILES_EMAIL" -}}
+{{- if not $email -}}
+{{-   $email = promptStringOnce . "email" "Your email address (for git commits)" -}}
+{{- end -}}
+
+{{- $profile := env "DOTFILES_PROFILE" -}}
+{{- if not $profile -}}
+{{-   $profile = promptChoiceOnce . "profile" "Install profile: full, or cli (command-line tools and terminal setup only, no GUI apps)" (list "full" "cli") "full" -}}
+{{- end -}}
+{{- if not (has $profile (list "full" "cli")) -}}
+{{-   fail (printf "DOTFILES_PROFILE must be full or cli, not %q" $profile) -}}
+{{- end -}}
+
+{{- $bitwarden := false -}}
+{{- if env "DOTFILES_BITWARDEN" -}}
+{{-   $bitwarden = eq (env "DOTFILES_BITWARDEN") "true" -}}
+{{- else -}}
+{{-   $bitwarden = promptBoolOnce . "bitwarden" "Fetch secrets from Bitwarden" false -}}
+{{- end }}
+
+[data]
+    name = {{ $name | quote }}
+    email = {{ $email | quote }}
+    profile = {{ $profile | quote }}
+    bitwarden = {{ $bitwarden }}
+{{ if $bitwarden }}
+# Lets chezmoi run `bw unlock` itself when BW_SESSION is not set.
+[bitwarden]
+    unlock = "auto"
+{{ end }}

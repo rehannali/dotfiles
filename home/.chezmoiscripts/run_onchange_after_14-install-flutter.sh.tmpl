@@ -1,0 +1,27 @@
+{{- if and (or (eq .chezmoi.os "darwin") (eq .chezmoi.os "linux")) (ne ((index . "profile") | default "full") "cli") .settings.flutter.version -}}
+#!/usr/bin/env bash
+# Flutter through fvm: install the version from settings.flutter.version and make it the global one.
+# fvm links the global SDK to ~/fvm/default, and ~/fvm/default/bin is on PATH (see ~/.zshenv).
+
+DEST_DIR="{{ .chezmoi.destDir }}"
+VERSION="{{ .settings.flutter.version }}"
+
+[[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
+
+if [ "${DOTFILES_FLUTTER:-install}" = skip ]; then
+  info "DOTFILES_FLUTTER=skip: not installing Flutter."
+  exit 0
+fi
+
+if ! command -v fvm > /dev/null 2>&1; then
+  error "fvm is not installed, so Flutter is skipped."
+  exit 1
+fi
+
+info "Flutter $VERSION with fvm"
+run fvm install "$VERSION" || exit 1
+run fvm global "$VERSION" || exit 1
+
+# fvm says "setup" even when it could not unpack the Dart SDK (no unzip), so run Flutter itself
+run "$DEST_DIR/fvm/default/bin/flutter" --version || { error "flutter does not run after the install"; exit 1; }
+{{ end -}}

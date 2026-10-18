@@ -14,11 +14,11 @@ if platform.is_win then
         { label = 'Nushell',            args = { 'nu' } },
         {
             label = 'Git Bash',
-            args = { 'C:\\Users\\kevin\\scoop\\apps\\git\\current\\bin\\bash.exe' },
+            args = { (os.getenv('USERPROFILE') or '') .. '\\scoop\\apps\\git\\current\\bin\\bash.exe' },
         },
     }
 elseif platform.is_mac then
-    options.default_prog = { '/usr/local/bin/zsh', '-l' }
+    options.default_prog = { '/bin/zsh', '-l' }  -- ships with macOS; brew's zsh is /opt/homebrew (arm) or absent (Intel, no bottle)
     options.launch_menu = {
         { label = 'Bash',    args = { 'bash', '-l' } },
         { label = 'Fish',    args = { '/usr/local/bin/fish', '-l' } },

@@ -1,14 +1,49 @@
+{{- if and (eq .chezmoi.os "darwin") (ne ((index . "profile") | default "full") "cli") -}}
 #!/usr/bin/env bash
+# The iOS simulator runtime. This is a nice-to-have: whatever goes wrong here is reported and skipped, because
+# Xcode can download the runtime itself (open Xcode once, then Settings > Components).
 
 DEST_DIR="{{ .chezmoi.destDir }}"
+IOS_RUNTIME="${DOTFILES_IOS_RUNTIME:-{{ .toolchain.ios_runtime }}}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+skip() {
+  info "$*"
+  info "Install the simulator runtime later from Xcode (open it once, then Settings > Components)."
+  exit 0
+}
 
-info "Installing Xcode Simulator Runtime"
+if [ "${DOTFILES_XCODE:-install}" = skip ]; then
+  info "DOTFILES_XCODE=skip: not installing the simulator runtime."
+  exit 0
+fi
 
-xcode_ios_runtime_latest_version=$(xcodes runtimes | grep -E "^iOS " | awk '{print $2}' | sort -V | tail -n1)
+if [ "${DOTFILES_RUNTIME:-install}" = skip ]; then
+  info "DOTFILES_RUNTIME=skip: not installing the simulator runtime."
+  exit 0
+fi
 
-run xcodes runtimes install "iOS $xcode_ios_runtime_latest_version" --aria2 "$(which aria2c)"
+command -v xcodes > /dev/null 2>&1 || skip "xcodes is not available, no simulator runtime."
 
-info "Xcode Simulator Runtime Installation completed"
+# the runtime has to go with the Xcode that is selected
+xcode_version="$(xcodes installed 2> /dev/null | awk '/Selected/ {print $1; exit}')"
+[ -n "$xcode_version" ] || skip "No Xcode is installed and selected, no simulator runtime."
+
+if [ -z "$IOS_RUNTIME" ]; then
+  IOS_RUNTIME="$(python3 "$DEST_DIR/.local/lib/xcode-pick.py" runtime --xcode "$xcode_version")" || IOS_RUNTIME=""
+  [ -n "$IOS_RUNTIME" ] || skip "Could not tell which iOS runtime goes with Xcode $xcode_version."
+  info "No runtime set, iOS $IOS_RUNTIME goes with Xcode $xcode_version"
+fi
+
+{{ if (index . "bitwarden") -}}
+load_apple_credentials "{{ .settings.apple.bitwarden_item }}"
+{{ end -}}
+aria2_args=()
+if command -v aria2c > /dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
+
+info "Installing the iOS $IOS_RUNTIME simulator runtime"
+# ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
+run xcodes runtimes install "iOS $IOS_RUNTIME" ${aria2_args[@]+"${aria2_args[@]}"} \
+  || skip "The iOS $IOS_RUNTIME runtime did not install."
+{{ end -}}

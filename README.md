@@ -1,28 +1,133 @@
-# Dotfiles
+# dotfiles
 
-This repo contains my personal dotfiles and configuration files for various tools and applications. Feel free to explore and use them as a reference for your own setup. This uses [Chezmoi](https://chezmoi.io/) to manage the dotfiles.
+My shell, terminal and tool setup, managed with [chezmoi](https://www.chezmoi.io). It runs on macOS (Apple
+Silicon and Intel) and on Debian-based Linux, including WSL2. Windows only gets a winget list and the terminal
+configs, and I don't test it.
 
-## Prerequisites 
+You are welcome to take what is useful. Most things you'd want to change (name, email, fonts, theme, which
+apps get installed) are settings, not code, see [docs/configuration.md](docs/configuration.md).
 
-Although i have taken care of everything but i think `chezmoi` itself needs to install command line tools to run.
+## Install
 
-**Install Command line Tools**
-```bash
-sudo xcode-select --install
+On a new machine, one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash
 ```
 
-**Add Email**
-`~/.config/chezmoi/chezmoi.toml`
+For a server where you only want the command-line tools and the terminal setup, no GUI apps:
 
-```toml
-[data]
-email="your_email_address"
+```sh
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --cli
 ```
 
+`bootstrap.sh` takes care of what has to happen before chezmoi can even start, then hands over to
+`chezmoi init --apply`:
 
-## How to Use
+1. asks for your sudo password once and keeps it unlocked for the rest of the run
+2. macOS: installs the Xcode Command Line Tools without the click-through dialog. (On a bare Mac the first
+   `git` call, which `chezmoi init` makes, is what opens that dialog and aborts, so it can't be left to chezmoi.)
+   Linux: makes sure `git` and `curl` are there
+3. downloads chezmoi to a temporary folder
+4. runs `chezmoi init --apply`, which installs packages, runtimes and configs
 
-```bash
-export GITHUB_USERNAME=your_github_username
-sh -c "$(curl -fsLS chezmoi.io/get)" -- init --apply $GITHUB_USERNAME
+You can also skip the script and run chezmoi yourself, if you already have it and git:
+
+```sh
+chezmoi init --apply rehannali/dotfiles
 ```
+
+## What it asks
+
+Four questions, once, on the first run. The answers go to `~/.config/chezmoi/chezmoi.toml`.
+
+| Question | Environment variable | `bootstrap.sh` flag |
+|---|---|---|
+| Your name (git commits) | `DOTFILES_NAME` | `--name "Ada Lovelace"` |
+| Your email (git commits) | `DOTFILES_EMAIL` | `--email ada@example.com` |
+| Install profile, `full` or `cli` | `DOTFILES_PROFILE` | `--full`, `--cli` |
+| Fetch secrets from Bitwarden | `DOTFILES_BITWARDEN` (`true`/`false`) | `--bitwarden` |
+
+Set them and nothing is asked. Apart from these, a run can also stop and wait for you at:
+
+- the sudo password, once, at the start
+- your Apple ID (and two-factor code) when it installs Xcode. `--no-xcode` leaves Xcode out
+- the Mac App Store, which has to be signed in already for the App Store apps. `--no-appstore` leaves them out
+- Bitwarden, if you turned it on (see below)
+- a few casks that install system extensions (macfuse, Little Snitch) want a click in System Settings
+
+I have not run `bootstrap.sh` on a factory-fresh Mac. The Command Line Tools step uses the same
+`softwareupdate` route Homebrew's own installer uses, and falls back to the normal dialog if it doesn't work.
+
+### Fully unattended
+
+```sh
+export DOTFILES_NAME="Ada Lovelace" DOTFILES_EMAIL=ada@example.com DOTFILES_PROFILE=full
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --no-xcode --no-appstore
+```
+
+You still type the sudo password once. If you want that gone too, make `sudo` passwordless for the run
+(a `NOPASSWD` line in `/etc/sudoers.d/`, remove it afterwards). Xcode and the App Store apps need a person,
+so they are the two things to leave out; install them by hand later.
+
+## Profiles
+
+- `full`: everything below.
+- `cli`: command-line tools and the terminal setup (zsh, oh-my-zsh, tmux, neovim, git, mise runtimes). No casks,
+  no App Store apps, no Xcode, no alacritty/wezterm/karabiner configs.
+
+## Where things come from
+
+Homebrew stopped building bottles for Intel Macs, so on those a normal `brew install` can mean compiling
+(one try pulled in LLVM and ran for hours). So the package manager depends on the machine:
+
+| | CLI tools | System packages | Apps | Languages |
+|---|---|---|---|---|
+| Apple Silicon | Homebrew | Homebrew | casks | mise |
+| Intel Mac | mise | Homebrew, only if there is a bottle | casks | mise |
+| Linux | mise | apt | | mise |
+
+A tool is never installed twice by two managers. The rule lives in one place,
+`home/.chezmoitemplates/tool-plan`, and `home/.chezmoidata/packages.yml` lists every tool with the name each
+manager knows it by. Adding a tool is one line there, see [docs/configuration.md](docs/configuration.md).
+
+Languages (node, python, ruby, java, go, rust, uv) always come from mise. fastlane and CocoaPods are gems
+installed into mise's Ruby, and the Flutter SDK is installed with fvm (`settings.flutter.version`, `stable` by default).
+
+On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its
+Rust (a few minutes), btop comes from Homebrew. Some Homebrew formulae (ffmpeg, nmap, ansible and others)
+have no Intel bottle and are skipped with a message instead of being compiled. Ruby has no prebuilt Intel
+build either and is compiled once.
+
+## Secrets from Bitwarden
+
+Optional. Tokens and keys stay in your vault, they are never written into this repo. Turn it on with
+`--bitwarden` (or `DOTFILES_BITWARDEN=true`), list which environment variables you want in
+`home/.chezmoidata/secrets.yml`, and chezmoi writes them to `~/.config/dotfiles/secrets.zsh` (mode 600).
+How to log in on your own machine versus a work machine is in [docs/bitwarden.md](docs/bitwarden.md).
+
+## Xcode
+
+By default the newest Xcode release this Mac can run is installed, plus the iOS simulator runtime that goes with it, so an
+Intel Mac and an Apple Silicon Mac end up on different versions. `xcodes` does the install and asks for your Apple ID.
+Pin versions with `DOTFILES_XCODE_VERSION` / `DOTFILES_IOS_RUNTIME` or in `chezmoi.toml`, see
+[docs/configuration.md](docs/configuration.md). A runtime that can't be installed is skipped, you can add it from Xcode.
+
+## Checks and CI
+
+`.github/workflows/dotfiles.yml` runs `bootstrap.sh` for real on an Ubuntu runner (full and cli), a macOS Intel
+runner and a macOS Apple Silicon runner, then `scripts/check-install.py` looks at what ended up on the
+machine: every expected command is there, comes from the right package manager, starts, and every binary is
+built for that OS and CPU. It runs for pull requests to `main`, pushes to `main` and when started by hand.
+
+Manual runs can also install Xcode for real on a runner, using a saved Apple session instead of the two-factor
+code: see [docs/ci.md](docs/ci.md).
+
+To check a change without installing anything:
+
+```sh
+scripts/verify-render.sh
+```
+
+It renders every template for every OS, architecture and profile and runs `bash -n` and shellcheck on the
+results. It needs chezmoi, shellcheck and python3. `VERIFY_TARGETS="linux/amd64"` limits it to some targets.

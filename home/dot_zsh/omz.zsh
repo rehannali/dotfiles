@@ -5,15 +5,21 @@ DISABLE_MAGIC_FUNCTIONS=true
 ENABLE_CORRECTION="true"
 COMPLETION_WAITING_DOTS="true"
 
-plugins=(
-  poetry
+# Plugins that wrap a command print an error on every shell start when it is missing, and several of
+# these tools are absent on Intel Macs (no mise build, no Homebrew bottle). Load them only when installed.
+# Order is unchanged. `mise activate` already ran in .zshrc, so mise-managed tools count as installed.
+plugins=()
+(( $+commands[poetry] )) && plugins+=(poetry)
+plugins+=(
   zsh-autosuggestions
   zsh-256color
   fast-syntax-highlighting
   zsh-autocomplete
-  zsh-lsd
-  zsh-bat
-  thefuck
+)
+(( $+commands[lsd] ))     && plugins+=(zsh-lsd)
+(( $+commands[bat] ))     && plugins+=(zsh-bat)
+(( $+commands[thefuck] )) && plugins+=(thefuck)
+plugins+=(
   you-should-use
   ohmyzsh-full-autoupdate
 )
