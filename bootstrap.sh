@@ -21,6 +21,9 @@
 #   --bitwarden         fetch secrets from Bitwarden, see "Bitwarden" in the README   (DOTFILES_BITWARDEN=true)
 #   --no-xcode          do not install Xcode / the simulator runtime (they need your Apple ID)
 #                                                                                 (DOTFILES_XCODE=skip)
+#   --xcode VERSION     install this Xcode instead of the newest one this Mac can run (DOTFILES_XCODE_VERSION)
+#   --ios-runtime V     install this iOS simulator runtime instead of the one for that Xcode
+#                                                                                 (DOTFILES_IOS_RUNTIME)
 #   --no-flutter        do not install the Flutter SDK with fvm                  (DOTFILES_FLUTTER=skip)
 #   --no-casks          macOS: only check the cask list, install none            (DOTFILES_CASKS=check)
 #   --no-appstore       macOS: skip Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
@@ -48,6 +51,8 @@ while [ $# -gt 0 ]; do
     --full)        export DOTFILES_PROFILE=full ;;
     --email)       [ $# -ge 2 ] || die "--email needs a value"; export DOTFILES_EMAIL="$2"; shift ;;
     --no-xcode)    export DOTFILES_XCODE=skip ;;
+    --xcode)       [ $# -ge 2 ] || die "--xcode needs a version"; export DOTFILES_XCODE_VERSION="$2"; shift ;;
+    --ios-runtime) [ $# -ge 2 ] || die "--ios-runtime needs a version"; export DOTFILES_IOS_RUNTIME="$2"; shift ;;
     --no-flutter)  export DOTFILES_FLUTTER=skip ;;
     --no-casks)    export DOTFILES_CASKS=check ;;
     --no-appstore) export DOTFILES_MAS=skip ;;

@@ -63,7 +63,6 @@ fi
 eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile / ~/.zshenv
 
 {{ if ne $profile "cli" -}}
-XCODE_VERSION="{{ .toolchain.xcode_version }}"
 {{ if eq .chezmoi.arch "arm64" -}}
 info "Installing mas, aria2 and xcodes (bottles only - never compile)"
 # One at a time: a failure (or xcodes already installed from homebrew/core, which cannot coexist with the
@@ -103,19 +102,47 @@ xcodes_run() { mise exec xcodes@latest -- xcodes "$@"; }
 have_xcodes() { command -v mise >/dev/null 2>&1; }
 {{- end }}
 
-# DOTFILES_XCODE=skip: no Xcode in this run (CI runners have no Apple ID to log in with and would wait forever)
+# Which Xcode: DOTFILES_XCODE_VERSION, else toolchain.xcode_version, else the newest release this Mac can run.
+# DOTFILES_XCODE=skip leaves Xcode out (a CI runner has no Apple ID to log in with).
+XCODE_VERSION="${DOTFILES_XCODE_VERSION:-{{ .toolchain.xcode_version }}}"
 if [ "${DOTFILES_XCODE:-install}" = skip ]; then
   info "DOTFILES_XCODE=skip: not installing Xcode."
-elif [ -n "$XCODE_VERSION" ] && have_xcodes && xcodes_run installed 2>/dev/null | grep -q "^$XCODE_VERSION"; then
-  info "Xcode $XCODE_VERSION is already installed."
-elif [ -n "$XCODE_VERSION" ] && have_xcodes; then
-  aria2_args=()
-  if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
-  info "Installing pinned Xcode $XCODE_VERSION (requires Apple ID login)"
-  # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
-  run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"}
+elif ! have_xcodes; then
+  info "xcodes is not available - skipping the Xcode install."
 else
-  info "No toolchain.xcode_version pinned (or xcodes unavailable) - skipping Xcode install."
+  if [ -z "$XCODE_VERSION" ]; then
+    # not `xcodes install --latest`: that installs the newest Xcode even when this Mac is too old (or, for
+    # Xcode 27, an Intel Mac) to run it. xcode-pick.py only considers releases this Mac can run.
+    if XCODE_VERSION="$(python3 "$DEST_DIR/.local/lib/xcode-pick.py" xcode)"; then
+      info "No Xcode version set, the newest release this Mac can run is $XCODE_VERSION"
+    else
+      XCODE_VERSION=""
+      error "Could not work out the newest Xcode for this Mac, skipping. Set one with DOTFILES_XCODE_VERSION."
+    fi
+  fi
+  if [ -z "$XCODE_VERSION" ]; then
+    :
+  elif xcodes_run installed 2>/dev/null | grep -q "^$XCODE_VERSION"; then
+    info "Xcode $XCODE_VERSION is already installed."
+  else
+    aria2_args=()
+    if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
+    info "Installing Xcode $XCODE_VERSION (requires Apple ID login)"
+    # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
+    if run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"}; then
+      # a version can exist as an Apple Silicon build and a universal build; make sure this Mac got a usable one
+      xcode_app="$(xcode-select -p 2>/dev/null)"; xcode_app="${xcode_app%/Contents/Developer}"
+      if [ -x "$xcode_app/Contents/MacOS/Xcode" ]; then
+        xcode_archs="$(lipo -archs "$xcode_app/Contents/MacOS/Xcode" 2>/dev/null)"
+        case " $xcode_archs " in
+          *" {{ if eq .chezmoi.arch "arm64" }}arm64{{ else }}x86_64{{ end }} "*) ;;
+          *) error "$xcode_app is built for: $xcode_archs, not for this Mac. Reinstall it with xcodes." ;;
+        esac
+      fi
+    else
+      error "The Xcode install did not finish. Run \`xcodes install $XCODE_VERSION\` again later."
+    fi
+  fi
 fi
 {{ else -}}
 info "Profile cli: no App Store tools, Xcode or simulator runtime."

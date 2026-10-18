@@ -34,6 +34,8 @@ Not stored anywhere, they only affect the run they are set for.
 | Variable | `bootstrap.sh` | Effect |
 |---|---|---|
 | `DOTFILES_XCODE=skip` | `--no-xcode` | don't install Xcode or the simulator runtime (they need your Apple ID) |
+| `DOTFILES_XCODE_VERSION` | `--xcode 26.6` | install this Xcode (see "Xcode" below) |
+| `DOTFILES_IOS_RUNTIME` | `--ios-runtime 26.5` | install this iOS simulator runtime |
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
@@ -83,6 +85,30 @@ tmux and neovim settings. Those are plain files you edit in `home/`.
 
 Other data files you can edit: `packages.yml` (what gets installed), `toolchain.yml` (Xcode and simulator
 version), `secrets.yml` (Bitwarden, see [bitwarden.md](bitwarden.md)).
+
+## Xcode and the iOS runtime
+
+Unless you say otherwise, the dotfiles install the newest Xcode release **that this Mac can run**, so two machines
+can end up with different versions: an Intel Mac stops at an older Xcode than an Apple Silicon one, and a Mac on an
+older macOS gets an older Xcode too. Betas and release candidates are never picked. It is worked out from the
+[xcodereleases.com](https://xcodereleases.com) data (required macOS, supported CPUs), by `xcode-pick.py`, because
+`xcodes install --latest` only warns when the newest Xcode is too new for the Mac and then installs it anyway.
+
+The iOS simulator runtime defaults to the one that belongs to the Xcode that was installed.
+
+To pin a version, in order of priority:
+
+1. `DOTFILES_XCODE_VERSION` / `DOTFILES_IOS_RUNTIME` (or `bootstrap.sh --xcode 26.6 --ios-runtime 26.5`) for one run
+2. `[data.toolchain]` in `~/.config/chezmoi/chezmoi.toml` for one machine:
+   ```toml
+   [data.toolchain]
+       xcode_version = "26.6"
+       ios_runtime = "26.5"
+   ```
+3. `home/.chezmoidata/toolchain.yml` for every machine (both are empty there)
+
+The runtime is optional. If it can't be installed (no Xcode yet, Xcode's license not accepted, the download fails)
+the run says so and carries on; open Xcode once and add it under Settings, Components.
 
 ## packages.yml
 

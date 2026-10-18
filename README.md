@@ -108,8 +108,10 @@ How to log in on your own machine versus a work machine is in [docs/bitwarden.md
 
 ## Xcode
 
-`home/.chezmoidata/toolchain.yml` pins the Xcode and simulator runtime versions (26.6 for both right now).
-Leave one empty to skip that step. `xcodes` does the install and asks for your Apple ID.
+By default the newest Xcode release this Mac can run is installed, plus the iOS simulator runtime that goes with it, so an
+Intel Mac and an Apple Silicon Mac end up on different versions. `xcodes` does the install and asks for your Apple ID.
+Pin versions with `DOTFILES_XCODE_VERSION` / `DOTFILES_IOS_RUNTIME` or in `chezmoi.toml`, see
+[docs/configuration.md](docs/configuration.md). A runtime that can't be installed is skipped, you can add it from Xcode.
 
 ## Checks and CI
 

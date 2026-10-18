@@ -171,6 +171,31 @@ off="$(PATH="$stub:$PATH" chezmoi -S "$SRC" execute-template --override-data "${
 [ -z "${off//[[:space:]]/}" ] || bad "secrets are rendered although Bitwarden is off: $off"
 echo "  bitwarden secrets template ok"
 
+# xcode-pick.py: newest release the Mac can run, never a beta, and a runtime that goes with it (tiny made-up data)
+pick="$SRC/home/.chezmoitemplates/xcode-pick.py"
+pickdata="$(mktemp)"
+cat > "$pickdata" << 'JSON'
+[
+ {"_dateOrder": 5, "version": {"number": "27.2", "release": {"beta": 1}},    "requires": "26.6", "links": {"download": {"architectures": ["arm64"]}}, "sdks": {"iOS": [{"number": "27.2"}]}},
+ {"_dateOrder": 4, "version": {"number": "27.1", "release": {"release": true}}, "requires": "26.6", "links": {"download": {"architectures": ["arm64"]}}, "sdks": {"iOS": [{"number": "27.1"}]}},
+ {"_dateOrder": 3, "version": {"number": "26.6", "release": {"release": true}}, "requires": "26.2", "links": {"download": {"architectures": ["arm64"]}}, "sdks": {"iOS": [{"number": "26.5"}]}},
+ {"_dateOrder": 3, "version": {"number": "26.6", "release": {"release": true}}, "requires": "26.2", "links": {"download": {"architectures": ["arm64", "x86_64"]}}, "sdks": {"iOS": [{"number": "26.5"}]}},
+ {"_dateOrder": 1, "version": {"number": "26.3", "release": {"release": true}}, "requires": "15.6", "links": {"download": {"architectures": ["arm64", "x86_64"]}}, "sdks": {"iOS": [{"number": "26.2"}]}}
+]
+JSON
+expect_pick() { # expect_pick <expected> <args...>
+  local want="$1"; shift
+  local got; got="$(python3 "$pick" "$@" --data "$pickdata" 2> /dev/null)"
+  [ "$got" = "$want" ] || bad "xcode-pick.py $* gave '$got', expected '$want'"
+}
+expect_pick 27.1 xcode --macos 26.6 --arch arm64      # newest release, not the 27.2 beta
+expect_pick 26.6 xcode --macos 26.6 --arch x86_64     # 27.1 is Apple Silicon only
+expect_pick 26.3 xcode --macos 15.7 --arch arm64      # older macOS, older Xcode
+expect_pick 26.5 runtime --xcode 26.6 --macos 26.6 --arch x86_64
+expect_pick 27.1 runtime --xcode 27.1 --macos 26.6 --arch arm64
+expect_pick ""   runtime --xcode 27.1 --macos 26.6 --arch x86_64   # that Xcode can't run on this Mac
+echo "  xcode-pick.py ok"
+
 echo "rendered into $OUT"
 if [ "$fail" -gt 0 ]; then echo "$fail check(s) FAILED"; exit 1; fi
 echo "all checks passed"

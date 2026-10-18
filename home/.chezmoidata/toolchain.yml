@@ -1,5 +1,17 @@
-# Pin toolchain versions that must match what your Mac can actually run.
-# Leave empty to skip the step. Find values with: xcodes list / xcodes runtimes
+# Xcode and the iOS simulator runtime installed by xcodes (it asks for your Apple ID).
+#
+# Empty means: the newest release this Mac can run. That differs per machine, an Intel Mac stops at an older
+# Xcode than an Apple Silicon one (Xcode needs a recent macOS and, lately, Apple Silicon). Betas are never picked.
+# The runtime defaults to the one that goes with the Xcode that was chosen.
+#
+# To pin a version for everyone, write it here. To pin it on one machine, put it in
+# ~/.config/chezmoi/chezmoi.toml instead:
+#
+#   [data.toolchain]
+#       xcode_version = "26.6"
+#       ios_runtime = "26.5"
+#
+# or set DOTFILES_XCODE_VERSION / DOTFILES_IOS_RUNTIME for a single run.
 toolchain:
-  xcode_version: "26.6"   # installed with xcodes (needs an Apple ID login, once)
-  ios_runtime: "26.6"     # simulator runtime installed after Xcode
+  xcode_version: ""
+  ios_runtime: ""

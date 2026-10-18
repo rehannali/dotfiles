@@ -80,4 +80,12 @@ function run {
 BASH
 
 chmod +x "$HELP_FILE"
+{{ if eq .chezmoi.os "darwin" -}}
+
+# picks the Xcode and iOS runtime this Mac can run (used by the pre-setup and runtime scripts)
+cat > "$HELP_DIR/xcode-pick.py" << 'PYTHON'
+{{ template "xcode-pick.py" . }}
+PYTHON
+chmod +x "$HELP_DIR/xcode-pick.py"
+{{ end -}}
 {{ end -}}
