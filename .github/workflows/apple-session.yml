@@ -3,14 +3,18 @@ name: apple-session
 # Creates the FASTLANE_SESSION secret that lets dotfiles.yml install Xcode on a runner without anyone typing
 # Apple's two-factor code. Manual only, and only needed now and then (the session runs out after about a month).
 #
-# A runner can't answer the code prompt, so this opens a terminal on the runner for you (tmate, limited to the
-# GitHub user who started the run): you run one command there, type the code, copy the output into the secret.
-# It runs on Ubuntu: fastlane only talks to Apple's web service, it doesn't need a Mac, and on Linux the action
-# fetches its own tmate binary (the Homebrew formula is deprecated and gets disabled on 2026-12-11).
+# A runner can't answer the code prompt, so this opens an SSH terminal on the runner for you (upterm). In it you
+# log in to GitHub once (a device code you approve in your browser), run `get-session`, type the Apple password
+# and the code, and the session goes straight into the repository secret. It is never put in a variable (variables
+# are plain text) and never in a workflow log.
 #
-# Read docs/ci.md first. The terminal goes through the public tmate.io relay, so the code and the session string
-# pass through a server you don't run. Use a dedicated Apple ID for this, or make the session on your own
-# machine instead (scripts/apple-session.sh) and skip this workflow.
+# This is a public repository, so who may run this is locked down in four places:
+#   1. the Actions variable APPLE_SESSION_USER holds the only GitHub user allowed to start it (guard job)
+#   2. only that user's SSH keys are accepted in the terminal (limit-access-to-users)
+#   3. the job uses the "apple-session" environment, where you can require your own approval (docs/ci.md)
+#   4. the third-party actions are pinned to an exact commit
+#
+# Read docs/ci.md first: it explains the relay (default server or your own) and the settings to switch on.
 
 on:
   workflow_dispatch:
@@ -24,31 +28,104 @@ permissions:
   contents: read
 
 jobs:
-  session:
+  guard:
+    name: only the allowed user
     runs-on: ubuntu-latest
+    steps:
+      - name: Check who started this
+        env:
+          ALLOWED: ${{ vars.APPLE_SESSION_USER }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$ALLOWED" ]; then
+            echo "::error::Set the Actions variable APPLE_SESSION_USER to your GitHub username first (docs/ci.md)."
+            exit 1
+          fi
+          if [ "${ACTOR,,}" != "${ALLOWED,,}" ]; then
+            echo "::error::This workflow can only be started by $ALLOWED, not by $ACTOR."
+            exit 1
+          fi
+
+  session:
+    needs: guard
+    runs-on: macos-latest
     timeout-minutes: 30
+    environment: apple-session
     env:
       FASTLANE_OPT_OUT_USAGE: "YES"      # no usage analytics from fastlane
       FASTLANE_SKIP_UPDATE_CHECK: "1"
     steps:
-      - name: Install fastlane
-        run: |
-          gem install fastlane --no-document --user-install
-          # gem's own launcher looks for a ruby beside itself, so give the terminal a plain command that works
-          entry="$(gem contents fastlane | grep '/bin/fastlane$' | head -1)"
-          mkdir -p "$HOME/.local/bin"
-          printf '#!/bin/sh\nexec ruby "%s" "$@"\n' "$entry" > "$HOME/.local/bin/fastlane"
-          chmod +x "$HOME/.local/bin/fastlane"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          fastlane --version
-
-      - name: Open a terminal for you
-        uses: mxschmitt/action-tmate@v3
+      # fastlane wants Ruby 3.3 or newer (v1.329.0)
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a
         with:
-          limit-access-to-actor: true
+          ruby-version: "3.3"
+
+      - name: Install fastlane and the get-session / save-session commands
         env:
           APPLE_ID: ${{ inputs.apple_id }}
+        run: |
+          gem install fastlane --no-document
+
+          # values go in files, never into the scripts' text, so nothing in them needs quoting
+          state="$HOME/.apple-session"
+          mkdir -p "$state" "$HOME/.local/bin"
+          chmod 700 "$state"
+          printf '%s' "$APPLE_ID" > "$state/apple-id"
+          printf '%s' "$GITHUB_REPOSITORY" > "$state/repo"
+          printf '%s' "$(command -v ruby)" > "$state/ruby"
+          # gem's own launcher looks for a ruby beside itself, so start fastlane's real entry point with ruby
+          gem contents fastlane | grep '/bin/fastlane$' | head -1 > "$state/fastlane"
+
+          cat > "$HOME/.local/bin/get-session" << 'SCRIPT'
+          #!/bin/bash
+          # Sign in to Apple and store the session as the repository secret FASTLANE_SESSION.
+          set -euo pipefail
+          state="$HOME/.apple-session"
+          out="$state/spaceauth.txt"
+          "$(cat "$state/ruby")" "$(cat "$state/fastlane")" spaceauth -u "$(cat "$state/apple-id")" | tee "$out"
+          # fastlane prints the value after this line; it starts with --- and ends at the next blank line
+          session="$(awk '/FASTLANE_SESSION environment variable/ {on = 1; next} on && /^---/ {grab = 1} grab && /^$/ {exit} grab {print}' "$out")"
+          rm -f "$out"
+          if [ -z "$session" ]; then
+            echo "Could not find the session in the output above." >&2
+            exit 1
+          fi
+          printf '%s\n' "$session" > "$state/session"
+          chmod 600 "$state/session"
+          if gh auth status > /dev/null 2>&1; then
+            save-session
+          else
+            echo
+            echo "Signed in. Now run:  gh auth login -w    (approve the code in your browser)"
+            echo "then:                save-session"
+          fi
+          SCRIPT
+
+          cat > "$HOME/.local/bin/save-session" << 'SCRIPT'
+          #!/bin/bash
+          # Put the session into the repository secret FASTLANE_SESSION and delete it from this machine.
+          set -euo pipefail
+          state="$HOME/.apple-session"
+          [ -s "$state/session" ] || { echo "No session yet, run get-session first." >&2; exit 1; }
+          gh secret set FASTLANE_SESSION --repo "$(cat "$state/repo")" < "$state/session"
+          rm -f "$state/session"
+          echo "Saved as the secret FASTLANE_SESSION. Type exit to end this run."
+          SCRIPT
+
+          chmod +x "$HOME/.local/bin/get-session" "$HOME/.local/bin/save-session"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$(cat "$state/ruby")" "$(cat "$state/fastlane")" --version
+
+      # Prints the "ssh ..." line to run, in the log of this step. Ends by itself if nobody connects within 15 minutes.
+      # The server is upterm's public one unless the variables UPTERM_SERVER and UPTERM_KNOWN_HOSTS point at your own.
+      - name: Open a terminal for you (run the ssh line from this log)
+        uses: owenthereal/action-upterm@b9dfa526f890bbd5162d781f8d9c69b97731d73d   # v2.7.0
+        with:
+          limit-access-to-users: ${{ vars.APPLE_SESSION_USER }}
+          upterm-server: ${{ vars.UPTERM_SERVER || 'ssh://uptermd.upterm.dev:22' }}
+          known-hosts: ${{ vars.UPTERM_KNOWN_HOSTS }}
+          wait-timeout-minutes: 15
       # In the terminal:
-      #   fastlane spaceauth -u "$APPLE_ID"
-      # enter the password and the code Apple sends to your device, copy the whole value it prints, and save it as
-      # the repository secret FASTLANE_SESSION. Then `exit` the terminal (or close it) to end this run.
+      #   gh auth login -w      (once; approve the code on github.com/login/device in your browser)
+      #   get-session           (Apple password and the code Apple sends to your device)
+      #   exit

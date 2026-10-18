@@ -17,7 +17,22 @@ permissions:
   contents: read
 
 jobs:
+  guard:
+    name: only the allowed user
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check who started this
+        env:
+          ALLOWED: ${{ vars.APPLE_SESSION_USER }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$ALLOWED" ] || [ "${ACTOR,,}" != "${ALLOWED,,}" ]; then
+            echo "::error::Only the user in the Actions variable APPLE_SESSION_USER may run this (docs/ci.md)."
+            exit 1
+          fi
+
   check:
+    needs: guard
     runs-on: macos-latest
     timeout-minutes: 20
     env:
