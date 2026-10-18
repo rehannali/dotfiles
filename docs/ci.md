@@ -169,10 +169,14 @@ have not deployed a relay myself.
 
 ```sh
 gh workflow run apple-session-check.yml                 # starts an Xcode download with the secret, stops after login
+gh workflow run apple-session-check.yml -f runner=intel  # the same on the Intel runner (macOS 15, x86_64)
 gh workflow run dotfiles.yml -f platform=mac-arm -f xcode=install -f xcode_version=<version> -f casks=check
 ```
 
-The check costs a minute and installs nothing. Green means the session works; red means it expired or is wrong.
+The check costs a minute and installs nothing. Green means the session works; red means it expired or is wrong
+(read the output first, it can also be something else). It prints which Xcode and iOS runtime the dotfiles would
+install on that runner, picked by the same script as a real install, so running it for `arm` and for `intel` shows
+the two choices side by side.
 
 GitHub's macOS images already have several Xcodes. If you ask for one that is on the image, `xcodes` finds it and
 downloads nothing, which doesn't test anything. Look at the image's list and pick a version it doesn't have. With
