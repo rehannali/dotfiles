@@ -36,6 +36,8 @@ Not stored anywhere, they only affect the run they are set for.
 | `DOTFILES_XCODE=skip` | `--no-xcode` | don't install Xcode or the simulator runtime (they need your Apple ID) |
 | `DOTFILES_XCODE_VERSION` | `--xcode 26.6` | install this Xcode (see "Xcode" below) |
 | `DOTFILES_IOS_RUNTIME` | `--ios-runtime 26.5` | install this iOS simulator runtime |
+| `DOTFILES_XCODE_XIP` | | path of an Xcode `.xip` you downloaded yourself, installed without any Apple ID login |
+| `XCODES_USERNAME`, `XCODES_PASSWORD`, `FASTLANE_SESSION` | | Apple ID for `xcodes`; see [bitwarden.md](bitwarden.md) for keeping them in Bitwarden |
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
@@ -69,6 +71,7 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.git.signing_format` | `openpgp` | `gpg.format`, `openpgp` or `ssh` |
 | `settings.git.gpg_program` | `gpg` | `gpg.program` |
 | `settings.git.commit_template` | `~/.stCommitMsg` | `commit.template`, a file path; empty for none |
+| `settings.apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
 | `settings.flutter.version` | `stable` | Flutter SDK that fvm installs and makes global (`stable`, `beta`, `3.35.0`...); empty to skip. Not installed in the `cli` profile |
 | `settings.terminal.font` | `Hack Nerd Font Mono` | alacritty and wezterm |

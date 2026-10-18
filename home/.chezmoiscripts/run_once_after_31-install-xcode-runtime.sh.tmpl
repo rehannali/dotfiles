@@ -31,6 +31,9 @@ if [ -z "$IOS_RUNTIME" ]; then
   info "No runtime set, iOS $IOS_RUNTIME goes with Xcode $xcode_version"
 fi
 
+{{ if (index . "bitwarden") -}}
+load_apple_credentials "{{ .settings.apple.bitwarden_item }}"
+{{ end -}}
 aria2_args=()
 if command -v aria2c > /dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
 

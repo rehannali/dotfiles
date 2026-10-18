@@ -28,3 +28,8 @@ settings:
 
   flutter:
     version: stable            # installed with fvm and made the global one; empty to skip. Anything fvm accepts: stable, beta, 3.35.0
+
+  apple:
+    # Bitwarden item with your Apple ID (username and password), used by xcodes when Bitwarden is on. An optional
+    # custom field FASTLANE_SESSION lets it skip the two-factor code, see docs/bitwarden.md.
+    bitwarden_item: Apple ID

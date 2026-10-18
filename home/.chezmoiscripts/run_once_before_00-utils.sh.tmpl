@@ -19,6 +19,29 @@ for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
 done
 unset brew_bin
 export HOMEBREW_NO_ANALYTICS=1
+
+# Apple ID for xcodes, read from a Bitwarden item. Exported into the calling script only (never on a command
+# line or into a file): xcodes reads XCODES_USERNAME and XCODES_PASSWORD, and FASTLANE_SESSION together with
+# --use-fastlane-auth. The item's custom field FASTLANE_SESSION is optional.
+function load_apple_credentials {
+	local item="$1" json
+	[ -z "${XCODES_USERNAME:-}" ] || return 0   # already given in the environment
+	command -v bw > /dev/null 2>&1 || { info "bw is not installed, xcodes will ask for the Apple ID."; return 0; }
+	[ -n "${BW_SESSION:-}" ] || { info "Bitwarden is not unlocked in this run (BW_SESSION), xcodes will ask for the Apple ID."; return 0; }
+	json="$(bw get item "$item" 2> /dev/null)" || { info "No Bitwarden item \"$item\", xcodes will ask for the Apple ID."; return 0; }
+	eval "$(printf '%s' "$json" | python3 -c '
+import json, shlex, sys
+item = json.load(sys.stdin)
+login = item.get("login") or {}
+values = {"XCODES_USERNAME": login.get("username"), "XCODES_PASSWORD": login.get("password")}
+for field in item.get("fields") or []:
+	if field.get("name") == "FASTLANE_SESSION":
+		values["FASTLANE_SESSION"] = field.get("value")
+for name, value in values.items():
+	if value:
+		print("export %s=%s" % (name, shlex.quote(value)))
+')"
+}
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 {{ if ne .chezmoi.arch "arm64" -}}
 # Intel Macs: Homebrew no longer builds bottles (Tier 3). Never update, upgrade or compile implicitly.

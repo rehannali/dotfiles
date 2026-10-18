@@ -71,6 +71,36 @@ export BW_SESSION=$(bw unlock --raw)          # or: bw login you@example.com --r
 chezmoi apply
 ```
 
+## Apple ID for Xcode (and the two-factor code)
+
+`xcodes` downloads Xcode with your Apple ID. It finds the credentials in this order:
+
+1. the environment: `XCODES_USERNAME` and `XCODES_PASSWORD`
+2. the Bitwarden item named in `settings.apple.bitwarden_item` (default `Apple ID`), with the Apple ID as the
+   login username and password. Only if Bitwarden is on and unlocked in that run
+3. otherwise `xcodes` asks
+
+They go into the environment of the one script that installs Xcode. They are never put on a command line or
+written to a file.
+
+The two-factor code cannot be automated, `xcodes` only reads it from a prompt. What you can do:
+
+- **Type it.** Apple sends a 6-digit code to one of your trusted devices. Once per machine.
+- **Reuse a session.** Run `fastlane spaceauth -u you@example.com` once (the dotfiles install fastlane on Macs),
+  enter the code there, and save the session string it prints as a custom field called `FASTLANE_SESSION` on the
+  same Bitwarden item. Other machines then install Xcode with `--use-fastlane-auth` and are not asked for the code,
+  until Apple expires the session (about a month, then you repeat it). Treat that string like a password: whoever
+  has it is signed in as you.
+- **Skip the login.** Download the `.xip` in your browser from developer.apple.com/download/all and run with
+  `DOTFILES_XCODE_XIP=~/Downloads/Xcode_26.6.xip` (the version has to match `DOTFILES_XCODE_VERSION`, or what gets
+  picked automatically).
+
+The iOS runtime download has no session option, so it uses the login and may still ask for the code. It is
+optional anyway, see "Xcode and the iOS runtime" in [configuration.md](configuration.md).
+
+I tested all of this against stand-ins for `bw` and `xcodes` (the credentials arrive in the environment, the flag is
+added, nothing shows up in an argument or in the output). I have not signed in to Apple with it.
+
 ## Self-hosted or EU server
 
 Set `DOTFILES_BW_SERVER=https://vault.example.com` (for the EU cloud, `https://vault.bitwarden.eu`) and

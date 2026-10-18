@@ -127,9 +127,19 @@ else
   else
     aria2_args=()
     if command -v aria2c >/dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
-    info "Installing Xcode $XCODE_VERSION (requires Apple ID login)"
+    # Apple ID: from the environment (XCODES_USERNAME/XCODES_PASSWORD/FASTLANE_SESSION), else from Bitwarden if it
+    # is on, else xcodes asks. The two-factor code can't be automated, only skipped by reusing a fastlane session.
+{{- if (index . "bitwarden") }}
+    if [ -z "${DOTFILES_XCODE_XIP:-}" ]; then load_apple_credentials "{{ .settings.apple.bitwarden_item }}"; fi
+{{- end }}
+    auth_args=()
+    if [ -n "${FASTLANE_SESSION:-}" ]; then auth_args=(--use-fastlane-auth); fi
+    # DOTFILES_XCODE_XIP=/path/Xcode_26.6.xip installs a download you made yourself: no Apple ID, no code
+    xip_args=()
+    if [ -n "${DOTFILES_XCODE_XIP:-}" ]; then xip_args=(--path "$DOTFILES_XCODE_XIP"); fi
+    info "Installing Xcode $XCODE_VERSION"
     # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
-    if run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"}; then
+    if run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"} ${auth_args[@]+"${auth_args[@]}"} ${xip_args[@]+"${xip_args[@]}"}; then
       # a version can exist as an Apple Silicon build and a universal build; make sure this Mac got a usable one
       xcode_app="$(xcode-select -p 2>/dev/null)"; xcode_app="${xcode_app%/Contents/Developer}"
       if [ -x "$xcode_app/Contents/MacOS/Xcode" ]; then
