@@ -36,14 +36,21 @@
 # entry says where it comes from when only one of brew / apt could drop it. Build-only dependencies do not
 # count: a bottle or a prebuilt binary never installs them.
 packages:
-  # Homebrew taps (macOS only)
+  # Homebrew taps (macOS only). Homebrew 6 loads nothing from a tap you have not trusted (docs.brew.sh/Tap-Trust),
+  # and a tap's formulae and casks are Ruby code that runs as you. So a tap lists the exact formulae and casks that
+  # are used from it, and only those are trusted, never the whole tap: run_onchange_11-install-packages runs
+  # `brew trust --formula|--cask` for each before anything is looked up, and writes the same list into the Brewfile as
+  # `tap "...", trusted: {...}`. A tool or cask that comes from a tap needs its entry here, scripts/verify-render.sh
+  # fails if it is missing.
   taps:
-    - colindean/fonts-nonfree
-    # - ferdium/ferdium   # only for the ferdium cask, which is commented out
-    - leoafarias/fvm
-    - netbirdio/tap
-    - teamookla/speedtest
-    - xcodesorg/made
+    # nothing from this tap is used (the font-* casks below all come from homebrew/cask); to use one of its casks,
+    # list it: {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
+    # - {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
+    # - {name: ferdium/ferdium, casks: [ferdium]}   # only for the ferdium cask, which is commented out
+    - {name: leoafarias/fvm, formulae: [fvm]}
+    - {name: netbirdio/tap, casks: [netbird-ui]}
+    - {name: teamookla/speedtest, formulae: [speedtest]}
+    - {name: xcodesorg/made, formulae: [xcodes]}
 
   # Always installed by mise, on every OS (rendered into ~/.config/mise/config.toml).
   runtimes:

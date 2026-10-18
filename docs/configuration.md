@@ -162,6 +162,24 @@ that merely needs `go` or `cmake` to be compiled does not bring them. Check a fo
 have no Homebrew bottle for most formulae, so something that comes with another package on Apple Silicon may be
 the only copy there.
 
+### Taps and trust
+
+Homebrew 6 and newer load nothing from a tap you have not trusted ([Tap Trust](https://docs.brew.sh/Tap-Trust)),
+because a tap's formulae and casks are Ruby code that runs as you. Each tap under `taps:` therefore lists what is
+used from it:
+
+```yaml
+taps:
+  - {name: xcodesorg/made, formulae: [xcodes]}
+  - {name: netbirdio/tap, casks: [netbird-ui]}
+```
+
+The install script clones the tap, runs `brew trust --formula xcodesorg/made/xcodes` (or `--cask`) for exactly
+those items, and writes the same list into the Brewfile as `tap "xcodesorg/made", trusted: { formulae: ["xcodes"] }`.
+The whole tap is never trusted. If trusting an item fails, the tap and its items are left out and reported instead
+of failing the whole run; on a Homebrew without `brew trust` nothing is done. A formula or cask from a tap that is
+missing here makes `scripts/verify-render.sh` fail. `brew trust` lists what is trusted on a machine.
+
 Before trusting a new `cli` tool on every platform, check what mise has:
 
 ```sh

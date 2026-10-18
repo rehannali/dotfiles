@@ -157,6 +157,33 @@ print(f"  {target}: " + ", ".join(f"{k}={len(v)}" for k, v in sorted(plan.items(
 PY
 done
 
+# Homebrew 6 refuses formulae and casks from taps that are not trusted: every formula or cask used from a tap has
+# to be listed under that tap in packages.yml (that list is what gets trusted), and nothing listed may be unused.
+packages="$(render_str darwin/arm64 '{{ .packages | toJson }}')" || bad "could not render packages for the tap check"
+python3 - "$packages" << 'PY' || bad "tap trust list does not match what is used from taps"
+import json, sys
+pk = json.loads(sys.argv[1])
+trusted = {"formula": set(), "cask": set()}
+taps = {}
+for t in pk["taps"]:
+    assert set(t) <= {"name", "formulae", "casks"}, f"tap entry {t}: only name, formulae and casks are known"
+    taps[t["name"]] = t
+    trusted["formula"] |= {t["name"] + "/" + f for f in t.get("formulae", [])}
+used_formulae = {x["brew"] for x in pk["tools"] if x.get("brew") and x["brew"].count("/") == 2}
+casks = {c["name"] for c in pk["darwin"]["casks"] + pk["darwin_arm"]["casks"]}
+for name in sorted(used_formulae):
+    assert name in trusted["formula"], f"{name} comes from a tap but is not in that tap's formulae list"
+for name in sorted(c for c in casks if c.count("/") == 2):
+    assert name.rsplit("/", 1)[0] in taps and name.rsplit("/", 1)[1] in taps[name.rsplit("/", 1)[0]].get("casks", []), \
+        f"cask {name} comes from a tap but is not in that tap's casks list"
+for tap, t in taps.items():
+    for f in t.get("formulae", []):
+        assert tap + "/" + f in used_formulae, f"{tap}/{f} is trusted but no tool uses it"
+    for c in t.get("casks", []):
+        assert c in casks or tap + "/" + c in casks, f"cask {c} is trusted for {tap} but is not in darwin.casks"
+print(f"  taps: {len(taps)}, trusted items: {sum(len(t.get('formulae', [])) + len(t.get('casks', [])) for t in taps.values())}, all used")
+PY
+
 # Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.
 stub="$(mktemp -d)"
 cat > "$stub/bw" << 'BW'

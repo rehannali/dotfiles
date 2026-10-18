@@ -22,10 +22,7 @@ run brew update || error "brew update failed; continuing with the cached formula
 BREWFILE="$(mktemp)"
 trap 'rm -f "$BREWFILE"' EXIT
 cat > "$BREWFILE" <<'BrewfileEOF'
-{{ range .packages.taps -}}
-tap {{ . | quote }}
-{{ end -}}
-{{- if $appleSilicon -}}
+{{ if $appleSilicon -}}
 {{- range $plan.brew }}
 brew {{ .name | quote }}{{ if .args }}, {{ .args }}{{ end }}
 {{- end }}
@@ -86,17 +83,47 @@ PYEOF
 unsupported=" "
 report=""
 
-# Taps first: one that cannot be cloned (repository gone or private) fails the whole bundle, and recent
-# Homebrew refuses formulae from taps that were not explicitly trusted.
-for tap in {{ range .packages.taps }}{{ . | quote }} {{ end }}; do
-  if brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
-    brew trust "$tap" > /dev/null 2>&1 < /dev/null || true
-  else
+# Taps first: one that cannot be cloned (repository gone or private) fails the whole bundle. Homebrew 6 and newer
+# also load nothing from a tap that is not trusted (https://docs.brew.sh/Tap-Trust), and `brew info` below, `brew deps`
+# and `brew bundle` all fail on it. So each tap is cloned, then exactly the formulae and casks used from it are
+# trusted (never the whole tap), and only then does it go into the Brewfile, with the same list as `trusted:` so
+# `brew bundle` trusts them again by itself. Entry format: tap|formulae|casks (space separated lists).
+ruby_list() { local out="" x; for x in "$@"; do out="$out${out:+, }\"$x\""; done; printf '[%s]' "$out"; }
+taplines=""
+for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (get . "formulae" | default (list))) (join " " (get . "casks" | default (list))) | quote }} {{ end }}; do
+  tap="${entry%%|*}"
+  rest="${entry#*|}"
+  formulae="${rest%%|*}"
+  casks="${rest#*|}"
+  if ! brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
     unsupported="$unsupported$tap "
     report="$report
   - tap $tap: cannot be cloned (repository gone or private)"
+    continue
   fi
+  trust_failed=""
+  # shellcheck disable=SC2086  # the lists are space separated words
+  for item in $formulae; do brew_trust --formula "$tap/$item" || trust_failed="$trust_failed $tap/$item"; done
+  # shellcheck disable=SC2086
+  for item in $casks; do brew_trust --cask "$tap/$item" || trust_failed="$trust_failed $item"; done
+  if [ -n "$trust_failed" ]; then
+    unsupported="$unsupported$tap$trust_failed "
+    report="$report
+  - tap $tap: could not trust$trust_failed (is the name right? see https://docs.brew.sh/Tap-Trust)"
+    continue
+  fi
+  hash=""
+  if brew_has_trust; then
+    # shellcheck disable=SC2086
+    [ -z "$formulae" ] || hash="formulae: $(ruby_list $formulae)"
+    # shellcheck disable=SC2086
+    [ -z "$casks" ] || hash="$hash${hash:+, }casks: $(ruby_list $casks)"
+  fi
+  if [ -n "$hash" ]; then taplines="$taplines
+tap \"$tap\", trusted: { $hash }"; else taplines="$taplines
+tap \"$tap\""; fi
 done
+{ printf '%s\n' "${taplines#?}"; cat "$BREWFILE"; } > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
 
 if command -v python3 > /dev/null 2>&1; then
   major="$(sw_vers -productVersion | cut -d. -f1)"
