@@ -2,6 +2,8 @@
 
 Everything you might want to change, and how. Nothing here needs a code change.
 
+Looking for an environment variable? [environment.md](environment.md) lists all of them by scenario.
+
 ## Answers chezmoi asks for
 
 Asked by `chezmoi init`, once, stored in `~/.config/chezmoi/chezmoi.toml`. Each can be given up front instead.

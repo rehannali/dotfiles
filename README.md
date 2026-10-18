@@ -59,6 +59,8 @@ Set them and nothing is asked. Apart from these, a run can also stop and wait fo
 I have not run `bootstrap.sh` on a factory-fresh Mac. The Command Line Tools step uses the same
 `softwareupdate` route Homebrew's own installer uses, and falls back to the normal dialog if it doesn't work.
 
+Every variable, grouped by what you want to do: [docs/environment.md](docs/environment.md).
+
 ### Fully unattended
 
 ```sh
