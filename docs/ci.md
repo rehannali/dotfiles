@@ -76,8 +76,17 @@ Run the `apple-session` workflow from `main` (Actions, apple-session, Run workfl
 `main`; give the Apple ID), approve the run if you set yourself as the reviewer, and:
 
 1. Open the log of the last step ("Open a terminal for you"). After about a minute it prints an
-   `ssh ...@uptermd.upterm.dev` line. Run it from your own terminal (WSL is fine). It needs the private key that
-   goes with an SSH public key on your GitHub profile.
+   `ssh ...@uptermd.upterm.dev` line. Run it from your own terminal (WSL is fine), not from a server. It needs the
+   private key that goes with an SSH public key on your GitHub profile.
+
+   With your own relay over `wss://` the line is `ssh -o ProxyCommand='upterm proxy '\''***upterm.example.com:443'\''' TOKEN@upterm.example.com:443`.
+   The `***` is GitHub hiding the join URL (it contains the session token), so that command cannot be pasted
+   as it is. The token is in plain sight as the part before the `@` at the end. Use it yourself (needs the `upterm`
+   program installed, `ssh://` relays and the public relay do not):
+   ```sh
+   TOKEN='AbCdEf...:Wzo6XToyMjEyMw=='        # the part before the last @, copied from the log
+   upterm join "wss://$TOKEN@upterm.example.com"
+   ```
 2. In the terminal on the runner:
    ```sh
    get-session           # Apple password, then the code Apple sends to your device
