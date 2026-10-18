@@ -3,13 +3,22 @@ name: apple-session-check
 # Checks that the FASTLANE_SESSION secret still works, without installing Xcode: it starts the download of an Xcode
 # with that session and stops it as soon as Apple has accepted the login. Manual only.
 #
+# It also shows which Xcode the dotfiles would install on that runner, picked by the same script
+# (home/.chezmoitemplates/xcode-pick.py) from what `xcodes list` offers for the CPU: run it once for the Apple
+# Silicon runner and once for the Intel one to compare.
+#
 # Make the secret first (apple-session.yml, or `fastlane spaceauth` on your own machine), see docs/ci.md.
 
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: "Which Mac: arm = Apple Silicon (macos-latest), intel = macOS 15 on Intel (macos-15-intel)"
+        type: choice
+        default: arm
+        options: [arm, intel]
       xcode_version:
-        description: Xcode to start downloading, empty = the newest release xcodes lists for this runner
+        description: Xcode to start downloading, empty = the one the dotfiles would pick on this runner
         type: string
         default: ""
 
@@ -33,11 +42,15 @@ jobs:
 
   check:
     needs: guard
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner == 'intel' && 'macos-15-intel' || 'macos-latest' }}
     timeout-minutes: 20
     env:
       FASTLANE_SESSION: ${{ secrets.FASTLANE_SESSION }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Is the secret there?
         run: |
           if [ -z "$FASTLANE_SESSION" ]; then
@@ -52,21 +65,27 @@ jobs:
           command -v xcodes > /dev/null || brew install xcodesorg/made/xcodes
           xcodes version
 
-      - name: What xcodes offers on this machine
+      - name: Machine and what xcodes offers on it
         run: |
-          echo "Default view (this runner's CPU):"; xcodes list | tail -4
-          echo; echo "All architectures:";          xcodes list --architecture universal --architecture appleSilicon --architecture x86_64 | tail -6
+          sw_vers; uname -m
+          echo "hardware arm64: $(sysctl -n hw.optional.arm64 2> /dev/null || echo 0)"
+          echo; echo "Default view (this runner's CPU):"; xcodes list | tail -4
+          echo; echo "All architectures:";               xcodes list --architecture universal --architecture appleSilicon --architecture x86_64 | tail -6
 
       - name: Start the download with the session
         env:
           VERSION: ${{ inputs.xcode_version }}
         run: |
+          if [ "$(sysctl -n hw.optional.arm64 2> /dev/null || echo 0)" = 1 ]; then
+            archs=(--architecture appleSilicon --architecture universal)
+          else
+            archs=(--architecture universal --architecture x86_64)
+          fi
+          xcodes list "${archs[@]}" > "$RUNNER_TEMP/listed.txt"
+          picked="$(python3 home/.chezmoitemplates/xcode-pick.py xcode --listed "$RUNNER_TEMP/listed.txt" || true)"
+          echo "The dotfiles would install on this runner: Xcode ${picked:-<nothing fits>}, iOS runtime $(python3 home/.chezmoitemplates/xcode-pick.py runtime --xcode "${picked:-0}" 2> /dev/null || echo '<none>')"
           if [ -z "$VERSION" ]; then
-            # newest released (not beta, RC or GM) row of the list this machine is offered
-            xcodes list --architecture appleSilicon --architecture universal \
-              | sed 's/\x1b\[[0-9;]*m//g' \
-              | awk '/^[0-9]/ { rest = $0; sub(/^[0-9.]+/, "", rest); sub(/\(.*/, "", rest); if (rest ~ /^ *$/) last = $1 } END { print last }' > "$RUNNER_TEMP/version.txt"
-            VERSION="$(cat "$RUNNER_TEMP/version.txt")"
+            VERSION="$picked"
           fi
           [ -n "$VERSION" ] || { echo "::error::could not find an Xcode version in the xcodes list"; exit 1; }
           echo "Trying Xcode $VERSION"
