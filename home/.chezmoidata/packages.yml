@@ -231,6 +231,8 @@ packages:
       - name: tailscale-app
       - name: termius
       # - name: ticktick   # not used
+      - name: tower   # Git Tower; needs macOS 14 or newer (universal binary)
+        args_str: 'args: { appdir: "~/Applications" }'
       - name: twingate
       - name: visual-studio-code
       - name: vscodium
