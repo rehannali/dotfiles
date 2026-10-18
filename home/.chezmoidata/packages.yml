@@ -30,6 +30,11 @@
 #
 # A tool is never installed by two managers on one machine. Casks, mas apps and gems
 # are macOS-only and are listed in the `darwin` section.
+#
+# List what you want, not what it needs. A package that another listed package already installs as a runtime
+# dependency, with the same manager on the same machine, is left out (glib, libimobiledevice, ...), and the
+# entry says where it comes from when only one of brew / apt could drop it. Build-only dependencies do not
+# count: a bottle or a prebuilt binary never installs them.
 packages:
   # Homebrew taps (macOS only)
   taps:
@@ -83,30 +88,30 @@ packages:
     # --- system: libraries, daemons and big apps. brew (Apple Silicon; Intel only with a bottle) / apt.
     - {name: ansible, kind: system, brew: ansible, apt: ansible, bin: ansible}
     - {name: aria2, kind: system, brew: aria2, apt: aria2, bin: aria2c}
-    - {name: autoconf, kind: system, brew: autoconf, apt: autoconf, bin: autoconf}
+    - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
     - {name: automake, kind: system, brew: automake, apt: automake, bin: automake}
     - {name: build-essential, kind: system, apt: build-essential}
     - {name: coreutils, kind: system, brew: coreutils}
     - {name: curl, kind: system, apt: curl, bin: curl}
     - {name: ffmpeg, kind: system, brew: ffmpeg, apt: ffmpeg, bin: ffmpeg}
-    - {name: gcc, kind: system, brew: gcc, apt: gcc}
+    - {name: gcc, kind: system, brew: gcc}   # apt: comes with build-essential
     - {name: ghostscript, kind: system, brew: ghostscript, apt: ghostscript, bin: gs}
-    - {name: git, kind: system, brew: git, apt: git, bin: git}
+    - {name: git, kind: system, brew: git, bin: git}   # apt: comes with git-flow (and bootstrap.sh installs it first)
     - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
-    - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}
     - {name: graphicsmagick, kind: system, brew: graphicsmagick, apt: graphicsmagick, bin: gm}
-    - {name: harfbuzz, kind: system, brew: harfbuzz, apt: libharfbuzz-dev}
+    # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
+    - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
     - {name: htop, kind: system, brew: htop, apt: htop, bin: htop}
     - {name: imagemagick, kind: system, brew: imagemagick, apt: imagemagick, bin: convert}
-    - {name: libheif, kind: system, brew: libheif, apt: libheif-dev}
+    - {name: libheif, kind: system, apt: libheif-dev}   # brew: comes with imagemagick and graphicsmagick (their apt packages only need the runtime library)
     - {name: libksba, kind: system, brew: libksba, apt: libksba-dev}
-    - {name: libyaml, kind: system, brew: libyaml, apt: libyaml-dev}
+    - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
     - {name: nginx, kind: system, brew: nginx, apt: nginx, brew_args: 'restart_service: :changed'}
     - {name: nmap, kind: system, brew: nmap, apt: nmap, bin: nmap}
     - {name: openconnect, kind: system, brew: openconnect, apt: openconnect, bin: openconnect}
     - {name: openssl, kind: system, brew: openssl@3, apt: libssl-dev}
     - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
-    - {name: pkgconf, kind: system, brew: pkgconf, apt: pkgconf, bin: pkgconf}
+    - {name: pkgconf, kind: system, brew: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
     - {name: pwgen, kind: system, brew: pwgen, apt: pwgen, bin: pwgen}
     - {name: rsync, kind: system, brew: rsync, apt: rsync, bin: rsync}
     - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
@@ -117,18 +122,18 @@ packages:
     - {name: unbound, kind: system, brew: unbound, apt: unbound}
     - {name: unzip, kind: system, apt: unzip, bin: unzip}
     # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
-    - {name: xz-utils, kind: system, apt: xz-utils}
+    # - {name: xz-utils, kind: system, apt: xz-utils}   # comes with build-essential (through dpkg-dev)
     - {name: zip, kind: system, apt: zip}
     - {name: file, kind: system, apt: file}
     - {name: wireguard-tools, kind: system, brew: wireguard-tools, apt: wireguard-tools, bin: wg}
-    - {name: zlib, kind: system, brew: zlib, apt: zlib1g-dev}
+    - {name: zlib, kind: system, brew: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
     - {name: zsh, kind: system, brew: zsh, apt: zsh, bin: zsh}
 
     # --- apple: Apple-developer tools, macOS only.
     - {name: carthage, kind: apple, brew: carthage}
-    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}
+    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}   # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
     - {name: ios-deploy, kind: apple, brew: ios-deploy}
-    - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}
+    # - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}   # comes with ideviceinstaller
     - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
     - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, bin: xcodes}
 

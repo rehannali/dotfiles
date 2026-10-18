@@ -152,6 +152,16 @@ isn't available from that manager.
 Casks, App Store apps and gems are under `darwin:`. To stop installing something, comment it out rather than
 delete it, that way it's easy to bring back.
 
+List what you want, not what it needs. When another listed package already installs a package as a runtime
+dependency with the same manager on the same machine (Homebrew installs `libyaml` with `ansible`, apt installs
+`git` with `git-flow`), the entry is left out or loses that manager's key, with a comment saying where it comes
+from. Only runtime dependencies count: a bottle or a prebuilt binary never installs build-only ones, so a tool
+that merely needs `go` or `cmake` to be compiled does not bring them. Check a formula with
+`brew deps --formula <name>` (runtime) and `brew deps --formula --include-build <name>`, and an apt package with
+`apt-cache depends <name>`. Keep an entry when the dependent is not installed on some machine: Intel Macs
+have no Homebrew bottle for most formulae, so something that comes with another package on Apple Silicon may be
+the only copy there.
+
 Before trusting a new `cli` tool on every platform, check what mise has:
 
 ```sh
