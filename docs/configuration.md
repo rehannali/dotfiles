@@ -44,10 +44,16 @@ Not stored anywhere, they only affect the run they are set for.
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
+| `DOTFILES_DEFAULTS=skip` | `--no-defaults` | leave the Dock, Finder and trackpad preferences alone (`settings.macos.defaults = false` does it for good) |
+| `DOTFILES_CHSH=skip` | `--no-chsh` | don't make zsh the login shell (that step runs `sudo chsh`) |
+| `DOTFILES_CHEZMOI_VERSION` | | chezmoi release tag to download, for example `v2.73.2`; default is the latest |
+| `DOTFILES_BW_METHOD`, `DOTFILES_BW_EMAIL`, `DOTFILES_BW_SERVER` | `--bw-method`, `--bw-email`, `--bw-server` | how `bootstrap.sh` logs in to Bitwarden, and a self-hosted or EU server, see [bitwarden.md](bitwarden.md) |
 | `DOTFILES_REPO` | | `owner/name` of the repo to apply, default `rehannali/dotfiles` |
 | `DOTFILES_SOURCE` | `--source PATH` | use a local checkout instead of GitHub |
 | `DOTFILES_CHEZMOI_ARGS` | | extra flags passed to `chezmoi init`, for example `--verbose` |
 | | `--branch NAME` | use a branch instead of the default one |
+
+All of them, grouped by what you want to do: [environment.md](environment.md).
 
 ## Settings
 
@@ -76,6 +82,11 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.git.commit_template` | `~/.stCommitMsg` | `commit.template`, a file path; empty for none |
 | `settings.apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
+| `settings.macos.defaults` | `true` | `false` leaves the Dock, Finder and trackpad preferences alone |
+| `settings.macos.dock.orientation`, `.tile_size`, `.autohide`, `.show_recents` | `left`, `42`, `true`, `false` | the Dock preferences |
+| `settings.shell.env` | the two Python variables | extra environment variables for every zsh (`~/.zshenv`), a map `NAME: value`; values may use `$HOME` |
+| `settings.shell.path` | empty | extra directories in front of `PATH`, first entry wins, for example `["$HOME/go/bin"]` |
+| `settings.wsl.distribution`, `.username` | `Ubuntu`, empty | the WSL domain wezterm offers on Windows; without a username wezterm uses the distribution's default user |
 | `settings.flutter.version` | `stable` | Flutter SDK that fvm installs and makes global (`stable`, `beta`, `3.35.0`...); empty to skip. Not installed in the `cli` profile |
 | `settings.terminal.font` | `Hack Nerd Font Mono` | alacritty and wezterm |
 | `settings.terminal.font_size` | `14` | alacritty, and wezterm on macOS |
@@ -86,8 +97,11 @@ Flutter lands in `~/fvm/default` (a link to `~/fvm/versions/<version>`), and `~/
 `flutter` and `dart` work in every shell and in IDEs. To use another version in one project: `fvm use 3.32.0`.
 Android Studio and the Android SDK are not installed by the dotfiles; Flutter needs them for Android builds.
 
-Not parameterised: the hyper config (hardly used), the Sourcetree diff/merge tool entries in the gitconfig,
-tmux and neovim settings. Those are plain files you edit in `home/`.
+Not parameterised: the hyper config (hardly used), the Sourcetree diff/merge tool entries in the gitconfig, the
+tmux, neovim, atuin, btop and karabiner settings, the Spaceship prompt (`home/dot_config/spaceship`) and the trackpad
+and Finder preferences in the macOS defaults script. Those are plain files you edit in `home/`. (The neovim Lua
+modules are called `totu`, the author's handle; renaming the folder `lua/totu` and the five `require` / `import` lines in
+`init.lua`, `lua/totu/lazy.lua` and `lua/totu/core/init.lua` is all it takes.)
 
 Other data files you can edit: `packages.yml` (what gets installed), `toolchain.yml` (Xcode and simulator
 version), `secrets.yml` (Bitwarden, see [bitwarden.md](bitwarden.md)).
@@ -191,3 +205,56 @@ mise lock --platform macos-x64,macos-arm64,linux-x64 <tool>    # run in an empty
 
 A download URL for each platform is a good sign, not proof: one tool had a URL but the program ended up
 nowhere on PATH. The CI check is what actually tells.
+
+### The other lists in packages.yml
+
+| Key | What it is |
+|---|---|
+| `taps` | Homebrew taps, each with the exact formulae and casks that are trusted, see "Taps and trust" above |
+| `runtimes` | languages mise installs on every machine: `node`, `python`, `ruby`, `java` (a list; the first is the default), `go`, `rust`, `uv`. A version, `lts` or `latest` |
+| `npm` | global npm packages (with mise's node), installed once on a machine's first run |
+| `darwin.gems` | Ruby gems installed into mise's Ruby on macOS (fastlane, cocoapods) |
+| `darwin.casks` | Homebrew casks. `args_str` is pasted into the Brewfile line, for example `args: { appdir: "~/Applications" }` to install the app in your home folder instead of `/Applications` |
+| `darwin.mas` | Mac App Store apps, `id` and `name` (needs an App Store that is signed in) |
+| `darwin_arm.casks` | casks only for Apple Silicon (empty at the moment) |
+| `windows.winget` | winget package ids for Windows; nothing else is done for Windows |
+
+Comment an entry out instead of deleting it, the casks and App Store apps in the file are kept that way.
+
+### Zsh plugins, the prompt and the alacritty themes
+
+These are not in `packages.yml`:
+
+- oh-my-zsh and its extra plugins (`zsh-autosuggestions`, `fast-syntax-highlighting`, `zsh-autocomplete`,
+  `zsh-lsd`, `zsh-bat`, `you-should-use`, the Spaceship prompt, tmux's `tpm`, ...) are git clones listed in
+  `home/.chezmoiexternals/omz.toml`. The plugin names that zsh loads are in `home/dot_zsh/omz.zsh`; plugins that wrap
+  a command (`poetry`, `lsd`, `bat`, `thefuck`) are only loaded when that command exists. To add a plugin, add the
+  clone to `omz.toml` and its name to `omz.zsh`.
+- The Spaceship prompt is configured in `home/dot_config/spaceship/spaceship.zsh`.
+- The alacritty themes are one archive pinned to a commit in `home/.chezmoiexternals/alacritty-themes.toml.tmpl`;
+  change the SHA to update. They are not extracted on the `cli` profile.
+
+### What runs, and when
+
+`chezmoi apply` runs these scripts from `home/.chezmoiscripts` in this order. "Once" means chezmoi remembers it ran on
+this machine and skips it next time; "on change" means it runs again when the script's rendered text changes (for
+example because `packages.yml` changed).
+
+| Script | When | What it does |
+|---|---|---|
+| `run_once_before_00-utils` | once | writes `~/.local/lib/chezmoi-utils.sh`, the helper functions the other scripts share |
+| `run_once_before_01-pre-setup` | once | macOS: Rosetta (Apple Silicon), Homebrew, `mas`, `aria2` and `xcodes` (from Homebrew on Apple Silicon, from mise on Intel), then Xcode; not in the `cli` profile for the GUI parts |
+| `run_onchange_before_05-install-apt-packages` | on change | Linux: `apt-get install` of the `apt` list |
+| `run_once_before_10-install-omz` | once | oh-my-zsh |
+| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only |
+| `run_onchange_after_10-configure-defaults` | on change | macOS: Dock, Finder, trackpad preferences |
+| `run_onchange_after_12-install-mise-tools` | on change | installs mise if needed, then the runtimes and CLI tools |
+| `run_onchange_after_13-install-ruby-gems` | on change | macOS, `full` profile: fastlane and cocoapods into mise's Ruby |
+| `run_onchange_after_14-install-flutter` | on change | macOS and Linux, `full` profile: Flutter with fvm (skipped when `settings.flutter.version` is empty) |
+| `run_once_after_00-setup-zsh-theme` | once | links the Spaceship theme into oh-my-zsh |
+| `run_once_after_30-setup-additional` | once | global npm packages, iTerm2 shell integration (only if iTerm2 is installed), `mas upgrade` |
+| `run_once_after_31-install-xcode-runtime` | once | macOS, `full` profile: the iOS simulator runtime |
+| `run_once_after_90-change-shell` | once | makes zsh the login shell (`sudo chsh`) |
+| `run_onchange_install-winget` | on change | Windows: `winget install` of the list |
+
+To run the once-only ones again: `chezmoi state delete-bucket --bucket=scriptState`, then `chezmoi apply`.

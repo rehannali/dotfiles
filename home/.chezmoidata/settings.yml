@@ -29,6 +29,26 @@ settings:
   flutter:
     version: stable            # installed with fvm and made the global one; empty to skip. Anything fvm accepts: stable, beta, 3.35.0
 
+  wsl:
+    distribution: Ubuntu       # the WSL distribution wezterm opens as a domain (Windows only)
+    username: ""               # your user inside it; empty = the distribution's default user
+
+  macos:
+    defaults: true             # false: don't touch the Dock, Finder and trackpad settings (same as DOTFILES_DEFAULTS=skip)
+    dock:
+      orientation: left        # left | bottom | right
+      tile_size: 42
+      autohide: true
+      show_recents: false
+
+  shell:
+    # Extra environment variables for every zsh (written to ~/.zshenv). Values may use $HOME.
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    # Extra directories put in front of PATH, first entry first. Example: ["$HOME/go/bin"]
+    path: []
+
   apple:
     # Bitwarden item with your Apple ID (username and password), used by xcodes when Bitwarden is on. An optional
     # custom field FASTLANE_SESSION lets it skip the two-factor code, see docs/bitwarden.md.

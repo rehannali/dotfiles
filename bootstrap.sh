@@ -19,6 +19,10 @@
 #   --cli | --full      profile: command-line tools and terminal setup only (servers), or everything (default)
 #                                                                                 (DOTFILES_PROFILE)
 #   --bitwarden         fetch secrets from Bitwarden, see "Bitwarden" in the README   (DOTFILES_BITWARDEN=true)
+#   --bw-method M       how to log in to Bitwarden: apikey, sso or password; implies --bitwarden
+#                                                                                 (DOTFILES_BW_METHOD)
+#   --bw-email ADDRESS  Bitwarden login email, default is --email; implies --bitwarden (DOTFILES_BW_EMAIL)
+#   --bw-server URL     self-hosted or EU Bitwarden server; implies --bitwarden   (DOTFILES_BW_SERVER)
 #   --no-xcode          do not install Xcode / the simulator runtime (they need your Apple ID)
 #                                                                                 (DOTFILES_XCODE=skip)
 #   --xcode VERSION     install this Xcode instead of the newest one this Mac can run (DOTFILES_XCODE_VERSION)
@@ -27,13 +31,16 @@
 #   --no-flutter        do not install the Flutter SDK with fvm                  (DOTFILES_FLUTTER=skip)
 #   --no-casks          macOS: only check the cask list, install none            (DOTFILES_CASKS=check)
 #   --no-appstore       macOS: skip Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
+#   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone    (DOTFILES_DEFAULTS=skip)
+#   --no-chsh           do not make zsh the login shell (that step needs sudo)        (DOTFILES_CHSH=skip)
 #   --branch NAME       use this branch of the repo instead of the default one
 #   --source PATH       use a local checkout instead of GitHub                    (DOTFILES_SOURCE)
 #   -h, --help          this text
 #
 # Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_CHEZMOI_ARGS (extra
-# flags for chezmoi, e.g. --verbose), and for Bitwarden BW_CLIENTID, BW_CLIENTSECRET, BW_PASSWORD,
-# DOTFILES_BW_METHOD (apikey | sso | password), DOTFILES_BW_EMAIL and DOTFILES_BW_SERVER (self-hosted URL).
+# flags for chezmoi, e.g. --verbose), DOTFILES_CHEZMOI_VERSION (a chezmoi release tag such as v2.73.2 instead of the
+# latest), and for Bitwarden BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is
+# not asked) and BW_SESSION (an already unlocked vault). Every variable, by scenario: docs/environment.md
 set -euo pipefail
 
 REPO="${DOTFILES_REPO:-rehannali/dotfiles}"
@@ -47,6 +54,9 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --name)        [ $# -ge 2 ] || die "--name needs a value"; export DOTFILES_NAME="$2"; shift ;;
     --bitwarden)   export DOTFILES_BITWARDEN=true ;;
+    --bw-method)   [ $# -ge 2 ] || die "--bw-method needs apikey, sso or password"; export DOTFILES_BW_METHOD="$2" DOTFILES_BITWARDEN=true; shift ;;
+    --bw-email)    [ $# -ge 2 ] || die "--bw-email needs an address"; export DOTFILES_BW_EMAIL="$2" DOTFILES_BITWARDEN=true; shift ;;
+    --bw-server)   [ $# -ge 2 ] || die "--bw-server needs a URL"; export DOTFILES_BW_SERVER="$2" DOTFILES_BITWARDEN=true; shift ;;
     --cli)         export DOTFILES_PROFILE=cli ;;
     --full)        export DOTFILES_PROFILE=full ;;
     --email)       [ $# -ge 2 ] || die "--email needs a value"; export DOTFILES_EMAIL="$2"; shift ;;
@@ -56,6 +66,8 @@ while [ $# -gt 0 ]; do
     --no-flutter)  export DOTFILES_FLUTTER=skip ;;
     --no-casks)    export DOTFILES_CASKS=check ;;
     --no-appstore) export DOTFILES_MAS=skip ;;
+    --no-defaults) export DOTFILES_DEFAULTS=skip ;;
+    --no-chsh)     export DOTFILES_CHSH=skip ;;
     --branch)      [ $# -ge 2 ] || die "--branch needs a value"; BRANCH="$2"; shift ;;
     --source)      [ $# -ge 2 ] || die "--source needs a value"; SOURCE="$2"; shift ;;
     -h | --help)   sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
@@ -123,7 +135,8 @@ fi
 
 # 3. chezmoi
 say "Downloading chezmoi"
-sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$CHEZMOI_TMP"
+# DOTFILES_CHEZMOI_VERSION=v2.73.2 pins the release; the installer takes the tag with -t
+sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$CHEZMOI_TMP" ${DOTFILES_CHEZMOI_VERSION:+-t "$DOTFILES_CHEZMOI_VERSION"}
 export PATH="$CHEZMOI_TMP:$PATH"
 
 # Bitwarden, only with --bitwarden
@@ -152,11 +165,15 @@ bw_state() { bw status 2> /dev/null | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p';
 
 bw_open_vault() {
   bw_install
-  local state method email
+  local state method email cur
   state="$(bw_state)"
   # self-hosted or EU server: the CLI has to know before anything else (it refuses while logged in)
   if [ -n "${DOTFILES_BW_SERVER:-}" ] && [ "$state" = unauthenticated ]; then
     bw config server "$DOTFILES_BW_SERVER" > /dev/null
+  elif [ -n "${DOTFILES_BW_SERVER:-}" ]; then
+    # the CLI refuses to change the server while logged in; say so instead of quietly using the old one
+    cur="$(bw config server 2> /dev/null || true)"
+    say "DOTFILES_BW_SERVER is set, but the Bitwarden CLI is already logged in (to ${cur:-its current server}). Run 'bw logout' first to switch servers."
   fi
   if [ "$state" = unauthenticated ]; then
     method="${DOTFILES_BW_METHOD:-}"
