@@ -89,9 +89,14 @@ jobs:
           set -euo pipefail
           state="$HOME/.apple-session"
           out="$state/spaceauth.txt"
-          fastlane spaceauth -u "$(cat "$state/apple-id")" | tee "$out"
-          # fastlane prints the value after this line; it starts with --- and ends at the next blank line
-          session="$(awk '/FASTLANE_SESSION environment variable/ {on = 1; next} on && /^---/ {grab = 1} grab && /^$/ {exit} grab {print}' "$out")"
+          # fastlane only asks for the password and the code when its output is a terminal, so it must not be piped.
+          # `script` keeps the terminal and writes a copy of everything printed to a file. CI variables are cleared
+          # because fastlane treats a CI as "can't ask", and the keychain is skipped (it would only prompt).
+          env -u CI -u GITHUB_ACTIONS -u GITHUB_ACTION FASTLANE_DONT_STORE_PASSWORD=1 \
+            script -q "$out" fastlane spaceauth -u "$(cat "$state/apple-id")" --copy_to_clipboard false || true
+          # The session is the line after "Pass the following ...". It is one line (newlines written as \n) and
+          # wrapped in colour codes; the terminal capture also has carriage returns.
+          session="$(tr -d '\r' < "$out" | perl -pe 's/\e\[[0-9;]*m//g' | awk '/Pass the following via the FASTLANE_SESSION/ {on = 1; next} on && NF {print; exit}')"
           rm -f "$out"
           if [ -z "$session" ]; then
             echo "Could not find the session in the output above." >&2
