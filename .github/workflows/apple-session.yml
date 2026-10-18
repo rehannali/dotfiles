@@ -1,0 +1,41 @@
+name: apple-session
+
+# Creates the FASTLANE_SESSION secret that lets dotfiles.yml install Xcode on a runner without anyone typing
+# Apple's two-factor code. Manual only, and only needed now and then (the session runs out after about a month).
+#
+# A runner can't answer the code prompt, so this opens a terminal on the runner for you (tmate, limited to the
+# GitHub user who started the run): you run one command there, type the code, copy the output into the secret.
+#
+# Read docs/ci.md first. The terminal goes through the public tmate.io relay, so the code and the session string
+# pass through a server you don't run. Use a dedicated Apple ID for this, or make the session on your own
+# machine instead (`fastlane spaceauth -u you@example.com`) and skip this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apple_id:
+        description: Apple ID to sign in with (a dedicated one is best)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  session:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install fastlane
+        run: brew install fastlane
+
+      - name: Open a terminal for you
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+        env:
+          APPLE_ID: ${{ inputs.apple_id }}
+      # In the terminal:
+      #   fastlane spaceauth -u "$APPLE_ID"
+      # enter the password and the code Apple sends to your device, copy the whole value it prints, and save it as
+      # the repository secret FASTLANE_SESSION. Then `exit` the terminal (or close it) to end this run.
