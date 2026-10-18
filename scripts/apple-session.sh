@@ -5,8 +5,9 @@
 #   scripts/apple-session.sh you@example.com           sign in, print the session
 #   scripts/apple-session.sh you@example.com --save    also run `gh secret set FASTLANE_SESSION`
 #
-# Needs ruby and gem on PATH (mise's Ruby is fine). fastlane is installed into a temporary folder and removed
-# again; nothing is left on the machine. You type your Apple ID password and the two-factor code; the session
+# Needs Ruby 3.3 or newer. If the Ruby on PATH is missing or older, mise's Ruby 3.3 is used when mise is
+# installed (it is fetched on demand, nothing global changes). fastlane is installed into a temporary folder
+# and removed again; nothing is left on the machine. You type your Apple ID password and the two-factor code; the session
 # is valid for about a month.
 set -euo pipefail
 
@@ -19,14 +20,24 @@ if [ -z "$APPLE_ID" ] || [ "${APPLE_ID#-}" != "$APPLE_ID" ]; then
   sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'
   exit 1
 fi
-command -v gem > /dev/null 2>&1 || { echo "ruby/gem not found. With mise: mise use -g ruby" >&2; exit 1; }
+# fastlane wants Ruby 3.3+
+ruby_cmd=()
+if ! command -v ruby > /dev/null 2>&1 \
+    || ! ruby -e 'exit(Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("3.3") ? 0 : 1)' 2> /dev/null; then
+  if command -v mise > /dev/null 2>&1; then
+    ruby_cmd=(mise exec ruby@3.3 --)
+  else
+    echo "Needs Ruby 3.3 or newer, and found none. Install mise (https://mise.run) or Ruby and try again." >&2
+    exit 1
+  fi
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 chmod 700 "$work"
 
 echo "Installing fastlane into a temporary folder..."
-GEM_HOME="$work/gems" GEM_PATH="$work/gems" gem install fastlane --no-document --silent
+GEM_HOME="$work/gems" GEM_PATH="$work/gems" ${ruby_cmd[@]+"${ruby_cmd[@]}"} gem install fastlane --no-document --silent
 out="$work/spaceauth.txt"
 
 # fastlane's launcher script in gems/bin looks for a ruby next to itself, which a temporary GEM_HOME doesn't have,
@@ -36,7 +47,7 @@ for entry in "$work"/gems/gems/fastlane-*/bin/fastlane; do :; done
 [ -f "$entry" ] || { echo "fastlane did not install" >&2; exit 1; }
 
 # The prompts (password, code) have to reach you, so the output is shown as it goes and kept in a private file
-GEM_HOME="$work/gems" GEM_PATH="$work/gems" ruby "$entry" spaceauth -u "$APPLE_ID" | tee "$out"
+GEM_HOME="$work/gems" GEM_PATH="$work/gems" ${ruby_cmd[@]+"${ruby_cmd[@]}"} ruby "$entry" spaceauth -u "$APPLE_ID" | tee "$out"
 
 # fastlane prints: "Pass the following via the FASTLANE_SESSION environment variable:" then the value, which
 # starts with --- and runs to the next blank line
