@@ -26,15 +26,20 @@ that, but you do need to pick how.
 
 **1. Make the session.**
 
-- On any machine that has fastlane (`brew install fastlane`):
+- On your own machine, no CI and no relay (macOS, Linux and WSL all work, it only needs Ruby, mise's is fine):
   ```sh
-  fastlane spaceauth -u you@example.com
+  scripts/apple-session.sh you@example.com --save
   ```
-  Enter the password and the code Apple sends, copy the long value it prints.
-- Or on a runner, with the `apple-session` workflow (Run workflow, give the Apple ID). It installs fastlane and opens
-  an SSH terminal for you through tmate, limited to the GitHub user who started it. Run the same command there.
+  It installs fastlane into a temporary folder, asks for your password and the code, and saves the session as the
+  repository secret (without `--save` it just prints it). Nothing stays on the machine. This is the safest way.
+- Or on a runner, with the `apple-session` workflow (Run workflow, give the Apple ID). It installs fastlane on an
+  Ubuntu runner (fastlane only talks to Apple's web service, it doesn't need a Mac) and opens an SSH terminal for
+  you through tmate, limited to the GitHub user who started it. Run `fastlane spaceauth -u "$APPLE_ID"` there.
   The terminal goes over the public tmate.io relay, so the code and the session string pass through a server you
   don't run. Use a dedicated Apple ID for this, not your main one.
+
+  Homebrew marked its `tmate` formula as unmaintained and disables it on 2026-12-11. The workflow runs on Ubuntu,
+  where the action brings its own tmate binary, so it doesn't depend on that formula.
 
 **2. Save it as a secret** in the repository:
 
