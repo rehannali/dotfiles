@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       xcode_version:
-        description: Xcode to start downloading, empty = the newest this runner can run
+        description: Xcode to start downloading, empty = the newest release xcodes lists for this runner
         type: string
         default: ""
 
@@ -23,8 +23,6 @@ jobs:
     env:
       FASTLANE_SESSION: ${{ secrets.FASTLANE_SESSION }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Is the secret there?
         run: |
           if [ -z "$FASTLANE_SESSION" ]; then
@@ -45,9 +43,13 @@ jobs:
           VERSION: ${{ inputs.xcode_version }}
         run: |
           if [ -z "$VERSION" ]; then
-            xcodes list --architecture appleSilicon --architecture universal > "$RUNNER_TEMP/listed.txt"
-            VERSION="$(python3 home/.chezmoitemplates/xcode-pick.py xcode --listed "$RUNNER_TEMP/listed.txt")"
+            # newest released (not beta, RC or GM) row of the list this machine is offered
+            xcodes list --architecture appleSilicon --architecture universal \
+              | sed 's/\x1b\[[0-9;]*m//g' \
+              | awk '/^[0-9]/ { rest = $0; sub(/^[0-9.]+/, "", rest); sub(/\(.*/, "", rest); if (rest ~ /^ *$/) last = $1 } END { print last }' > "$RUNNER_TEMP/version.txt"
+            VERSION="$(cat "$RUNNER_TEMP/version.txt")"
           fi
+          [ -n "$VERSION" ] || { echo "::error::could not find an Xcode version in the xcodes list"; exit 1; }
           echo "Trying Xcode $VERSION"
           mkdir -p "$RUNNER_TEMP/download"
           # xcodes only prints a "Downloading" line once Apple has accepted the login; stop it right after that
