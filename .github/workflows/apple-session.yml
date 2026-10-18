@@ -4,15 +4,18 @@ name: apple-session
 # Apple's two-factor code. Manual only, and only needed now and then (the session runs out after about a month).
 #
 # A runner can't answer the code prompt, so this opens an SSH terminal on the runner for you (upterm). In it you
-# log in to GitHub once (a device code you approve in your browser), run `get-session`, type the Apple password
-# and the code, and the session goes straight into the repository secret. It is never put in a variable (variables
-# are plain text) and never in a workflow log.
+# run `get-session`, type the Apple password and the code, and the session goes straight into the repository
+# secret. It is never put in a variable (variables are plain text) and never in a workflow log.
+#
+# Writing a secret needs more than the job's own token can do. Either save a fine-grained token once as the
+# environment secret SECRETS_WRITE_TOKEN (docs/ci.md), and nothing has to be typed, or log in to GitHub in the
+# terminal with `gh auth login -w` each time.
 #
 # This is a public repository, so who may run this is locked down in four places:
 #   1. the Actions variable APPLE_SESSION_USER holds the only GitHub user allowed to start it (guard job)
 #   2. only that user's SSH keys are accepted in the terminal (limit-access-to-users)
 #   3. the job uses the "apple-session" environment, where you can require your own approval (docs/ci.md)
-#   4. the third-party actions are pinned to an exact commit
+#   4. the one third-party action (upterm) is pinned to an exact commit
 #
 # Read docs/ci.md first: it explains the relay (default server or your own) and the settings to switch on.
 
@@ -55,16 +58,17 @@ jobs:
       FASTLANE_OPT_OUT_USAGE: "YES"      # no usage analytics from fastlane
       FASTLANE_SKIP_UPDATE_CHECK: "1"
     steps:
-      # fastlane wants Ruby 3.3 or newer (v1.329.0)
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a
-        with:
-          ruby-version: "3.3"
-
+      # Homebrew is on the runner already. The fastlane formula brings its own Ruby, so no Ruby setup is needed.
       - name: Install fastlane and the get-session / save-session commands
         env:
           APPLE_ID: ${{ inputs.apple_id }}
+          # only this step gets the token; the third-party upterm action below never sees it
+          SECRETS_WRITE_TOKEN: ${{ secrets.SECRETS_WRITE_TOKEN }}
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_ANALYTICS: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          gem install fastlane --no-document
+          brew install fastlane
 
           # values go in files, never into the scripts' text, so nothing in them needs quoting
           state="$HOME/.apple-session"
@@ -72,9 +76,12 @@ jobs:
           chmod 700 "$state"
           printf '%s' "$APPLE_ID" > "$state/apple-id"
           printf '%s' "$GITHUB_REPOSITORY" > "$state/repo"
-          printf '%s' "$(command -v ruby)" > "$state/ruby"
-          # gem's own launcher looks for a ruby beside itself, so start fastlane's real entry point with ruby
-          gem contents fastlane | grep '/bin/fastlane$' | head -1 > "$state/fastlane"
+          if [ -n "$SECRETS_WRITE_TOKEN" ]; then
+            (umask 077; printf '%s' "$SECRETS_WRITE_TOKEN" > "$state/token")
+            echo "SECRETS_WRITE_TOKEN found, the session will be saved without a GitHub login."
+          else
+            echo "No SECRETS_WRITE_TOKEN: you will log in with gh auth login -w in the terminal."
+          fi
 
           cat > "$HOME/.local/bin/get-session" << 'SCRIPT'
           #!/bin/bash
@@ -82,7 +89,7 @@ jobs:
           set -euo pipefail
           state="$HOME/.apple-session"
           out="$state/spaceauth.txt"
-          "$(cat "$state/ruby")" "$(cat "$state/fastlane")" spaceauth -u "$(cat "$state/apple-id")" | tee "$out"
+          fastlane spaceauth -u "$(cat "$state/apple-id")" | tee "$out"
           # fastlane prints the value after this line; it starts with --- and ends at the next blank line
           session="$(awk '/FASTLANE_SESSION environment variable/ {on = 1; next} on && /^---/ {grab = 1} grab && /^$/ {exit} grab {print}' "$out")"
           rm -f "$out"
@@ -92,7 +99,7 @@ jobs:
           fi
           printf '%s\n' "$session" > "$state/session"
           chmod 600 "$state/session"
-          if gh auth status > /dev/null 2>&1; then
+          if [ -s "$state/token" ] || gh auth status > /dev/null 2>&1; then
             save-session
           else
             echo
@@ -107,14 +114,23 @@ jobs:
           set -euo pipefail
           state="$HOME/.apple-session"
           [ -s "$state/session" ] || { echo "No session yet, run get-session first." >&2; exit 1; }
-          gh secret set FASTLANE_SESSION --repo "$(cat "$state/repo")" < "$state/session"
+          if [ -s "$state/token" ]; then
+            GH_TOKEN="$(cat "$state/token")"
+            export GH_TOKEN
+          fi
+          if ! gh secret set FASTLANE_SESSION --repo "$(cat "$state/repo")" < "$state/session"; then
+            if [ -s "$state/token" ]; then
+              echo "The saved SECRETS_WRITE_TOKEN was refused (expired?). Run: rm $state/token; gh auth login -w; save-session" >&2
+            fi
+            exit 1
+          fi
           rm -f "$state/session"
           echo "Saved as the secret FASTLANE_SESSION. Type exit to end this run."
           SCRIPT
 
           chmod +x "$HOME/.local/bin/get-session" "$HOME/.local/bin/save-session"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$(cat "$state/ruby")" "$(cat "$state/fastlane")" --version
+          fastlane --version
 
       # Prints the "ssh ..." line to run, in the log of this step. Ends by itself if nobody connects within 15 minutes.
       # The server is upterm's public one unless the variables UPTERM_SERVER and UPTERM_KNOWN_HOSTS point at your own.
@@ -126,6 +142,6 @@ jobs:
           known-hosts: ${{ vars.UPTERM_KNOWN_HOSTS }}
           wait-timeout-minutes: 15
       # In the terminal:
-      #   gh auth login -w      (once; approve the code on github.com/login/device in your browser)
+      #   gh auth login -w      (only without SECRETS_WRITE_TOKEN; approve the code on github.com/login/device)
       #   get-session           (Apple password and the code Apple sends to your device)
       #   exit

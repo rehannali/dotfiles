@@ -39,6 +39,20 @@ JSON
 gh api -X POST repos/{owner}/{repo}/environments/apple-session/deployment-branch-policies -f name=main -f type=branch
 ```
 
+Optional, but it saves the GitHub login in the terminal on every run. The runner's own token cannot write secrets,
+so it needs a token of yours. Make a **fine-grained personal access token** at
+github.com/settings/personal-access-tokens/new: only this repository, repository permission **Secrets: Read and
+write** (nothing else; "Metadata: read" is added by itself), and a short expiry. Store it as a secret of the
+`apple-session` environment, so only this job can read it, and only after you approved the run:
+
+```sh
+gh secret set SECRETS_WRITE_TOKEN --env apple-session      # run inside the clone, paste the token when asked
+```
+
+That token can create and delete this repository's secrets but not read them or touch the code. It is narrower
+than the login `gh auth login -w` hands out (repo, read:org, gist), which is why it is the better way. If you
+skip it, the workflow still works, you just log in to GitHub in the terminal each time.
+
 Then in the repository settings:
 
 - Settings, Actions, General: set "Fork pull request workflows from outside collaborators" to **Require approval for
@@ -54,7 +68,7 @@ What stops anyone else from using the session workflow:
 2. The terminal only accepts the SSH keys on that GitHub user's profile (`limit-access-to-users`).
 3. The `apple-session` environment makes the job wait for your approval before it starts.
 4. Fork pull requests never receive secrets, and the Apple workflows can't be started from a pull request at all.
-5. The two third-party actions are pinned to an exact commit, not a movable tag.
+5. The one third-party action (upterm) is pinned to an exact commit, not a movable tag.
 
 ### Make the session and save it
 
@@ -66,16 +80,19 @@ Run the `apple-session` workflow from `main` (Actions, apple-session, Run workfl
    goes with an SSH public key on your GitHub profile.
 2. In the terminal on the runner:
    ```sh
-   gh auth login -w      # shows a code; approve it at github.com/login/device in your browser
    get-session           # Apple password, then the code Apple sends to your device
    ```
    `get-session` stores the value straight into the secret `FASTLANE_SESSION` and deletes it from the runner.
-   (If you run it before logging in to GitHub it tells you to log in and run `save-session`.)
+   Without `SECRETS_WRITE_TOKEN` it first says so, and you log in once with `gh auth login -w` (a code you
+   approve at github.com/login/device) and run `save-session`.
+   If the token was refused (expired), `save-session` says so; `rm ~/.apple-session/token`, log in with
+   `gh auth login -w` and run `save-session` again. The session is kept until it has been saved.
 3. `exit`. If nobody connects within 15 minutes the run ends on its own.
-4. Revoke the temporary GitHub login: github.com/settings/applications, "GitHub CLI" (or just delete the
-   authorization). The runner is thrown away, but the token should not outlive the session.
+4. If you logged in with `gh auth login -w`, revoke that login: github.com/settings/applications, "GitHub CLI".
+   The runner is thrown away, but the token should not outlive the session. A `SECRETS_WRITE_TOKEN` just expires.
 
-Or make it on your own machine with `scripts/apple-session.sh you@example.com --save`, no relay involved.
+fastlane comes from Homebrew (`brew install fastlane`, which brings its own Ruby), so there is no Ruby to set up and
+no third-party Ruby action in the job.
 
 ### Which relay: the default server or your own
 
@@ -90,19 +107,54 @@ By default the terminal goes through upterm's public relay, `uptermd.upterm.dev`
 - **Fine for:** a one-off with a dedicated Apple ID. **Not fine for:** anything you would not give to a stranger
   running the server.
 
-With your own relay, only your server carries the traffic. Deploy `uptermd` (Fly.io, Kubernetes with helm, or Docker;
-see upterm's "Deployment" section), then set two Actions variables and the workflow uses it automatically:
+### Using your own relay
 
-```sh
-gh variable set UPTERM_SERVER --body "wss://your-app.fly.dev"
-gh variable set UPTERM_KNOWN_HOSTS --body '@cert-authority [your-app.fly.dev]:443 ssh-ed25519 AAAA...'
-```
+Then only a machine of yours carries the traffic. You need three things: a server running `uptermd` with a host key
+that does not change, the address of that server, and that host key written down for the runner to check.
 
-`UPTERM_KNOWN_HOSTS` is the public host key of your server. The action refuses to connect to any non-default server
-without it, so it can't be tricked into talking to something else. A `wss://` address means port 443 and needs the
-`[host]:443` form shown above; `ssh://host:22` needs the plain host. Unset both variables to go back to the default.
-The tradeoff: you now run and patch a server. For a handful of sessions a year, the default relay with a dedicated
-Apple ID is usually the more sensible risk.
+1. **Make the host key.** `uptermd` makes a new random key every time it starts unless you give it one, and a
+   key that changes can't be pinned. So make one and keep the private half on the server only, never in the repo:
+   ```sh
+   ssh-keygen -t ed25519 -N '' -C uptermd -f uptermd_host_key
+   ```
+2. **Run the server**, one of:
+   - Any VPS with Docker. Port 2222 here so it does not fight the machine's own sshd:
+     ```sh
+     docker run -d --name uptermd --restart unless-stopped -p 2222:2222 \
+       -e PRIVATE_KEY="$(cat uptermd_host_key)" \
+       ghcr.io/owenthereal/upterm/uptermd:latest --ssh-addr 0.0.0.0:2222
+     ```
+     Open TCP 2222 in the firewall.
+   - Fly.io: copy `fly.example.toml` from the upterm repository to `fly.toml`, change `app`, then
+     `fly secrets set PRIVATE_KEY="$(cat uptermd_host_key)"` and `fly deploy`. It listens on port 22 (ssh) and 443
+     (websocket) at `your-app.fly.dev`.
+   - Kubernetes: the helm chart (`helm repo add upterm https://upterm.dev`, `helm install uptermd upterm/uptermd`).
+   `uptermd` reads the key from the environment variable `PRIVATE_KEY` (the key text) or from files named with
+   `--private-key`.
+3. **Write the host key down.** It is one line, the server name followed by the public key, in the format of an
+   OpenSSH `known_hosts` file. The name is `host` for port 22 and `[host]:port` for any other port (and `[host]:443`
+   for a `wss://` address):
+   ```sh
+   echo "[your.host.name]:2222 $(cut -d' ' -f1,2 uptermd_host_key.pub)"
+   ```
+4. **Tell the workflow**, with two Actions variables (a public key is not a secret, a variable is fine):
+   ```sh
+   gh variable set UPTERM_SERVER      --body "ssh://your.host.name:2222"
+   gh variable set UPTERM_KNOWN_HOSTS --body "[your.host.name]:2222 ssh-ed25519 AAAA..."
+   ```
+   Use `ssh://` where you can. With `wss://your-app.fly.dev` your own machine needs the `upterm` program to join
+   (the log prints the command); with `ssh://` plain `ssh` is enough.
+5. **The first time you connect** from your own machine, `ssh` asks whether to trust the server's key. Compare what it
+   shows with `ssh-keygen -lf uptermd_host_key.pub`, and only then say yes.
+
+The action refuses to connect to any other server than the default without `UPTERM_KNOWN_HOSTS`, and it aborts if the
+server presents a different key, so it can't be sent somewhere else. The plain-key line needs upterm 0.38.0 or newer
+on the runner, which is what the action installs unless told otherwise. To go back to the default relay:
+`gh variable delete UPTERM_SERVER; gh variable delete UPTERM_KNOWN_HOSTS`.
+
+The cost is that you now run and patch a server. For a handful of sessions a year, the default relay with a
+dedicated Apple ID is often the more sensible risk. I wrote the steps above from upterm's code and documentation and
+have not deployed a relay myself.
 
 ### Check it, then use it
 
