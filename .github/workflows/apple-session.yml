@@ -5,10 +5,12 @@ name: apple-session
 #
 # A runner can't answer the code prompt, so this opens a terminal on the runner for you (tmate, limited to the
 # GitHub user who started the run): you run one command there, type the code, copy the output into the secret.
+# It runs on Ubuntu: fastlane only talks to Apple's web service, it doesn't need a Mac, and on Linux the action
+# fetches its own tmate binary (the Homebrew formula is deprecated and gets disabled on 2026-12-11).
 #
 # Read docs/ci.md first. The terminal goes through the public tmate.io relay, so the code and the session string
 # pass through a server you don't run. Use a dedicated Apple ID for this, or make the session on your own
-# machine instead (`fastlane spaceauth -u you@example.com`) and skip this workflow.
+# machine instead (scripts/apple-session.sh) and skip this workflow.
 
 on:
   workflow_dispatch:
@@ -23,11 +25,22 @@ permissions:
 
 jobs:
   session:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FASTLANE_OPT_OUT_USAGE: "YES"      # no usage analytics from fastlane
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
     steps:
       - name: Install fastlane
-        run: brew install fastlane
+        run: |
+          gem install fastlane --no-document --user-install
+          # gem's own launcher looks for a ruby beside itself, so give the terminal a plain command that works
+          entry="$(gem contents fastlane | grep '/bin/fastlane$' | head -1)"
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexec ruby "%s" "$@"\n' "$entry" > "$HOME/.local/bin/fastlane"
+          chmod +x "$HOME/.local/bin/fastlane"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fastlane --version
 
       - name: Open a terminal for you
         uses: mxschmitt/action-tmate@v3
