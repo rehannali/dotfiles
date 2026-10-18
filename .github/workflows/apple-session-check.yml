@@ -71,14 +71,22 @@ jobs:
           [ -n "$VERSION" ] || { echo "::error::could not find an Xcode version in the xcodes list"; exit 1; }
           echo "Trying Xcode $VERSION"
           mkdir -p "$RUNNER_TEMP/download"
-          # xcodes only prints a "Downloading" line once Apple has accepted the login; stop it right after that
-          set +e
-          timeout 150 xcodes download "$VERSION" --use-fastlane-auth --directory "$RUNNER_TEMP/download" > "$RUNNER_TEMP/out.txt" 2>&1
-          set -e
+          # xcodes only prints a "Downloading" line once Apple has accepted the login; stop it right after that.
+          # macOS has no `timeout` command, so the wait is a loop (up to 150 seconds).
+          xcodes download "$VERSION" --use-fastlane-auth --directory "$RUNNER_TEMP/download" > "$RUNNER_TEMP/out.txt" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 75); do
+            sleep 2
+            grep -aq "Downloading" "$RUNNER_TEMP/out.txt" && break
+            kill -0 "$pid" 2> /dev/null || break
+          done
+          pkill -P "$pid" 2> /dev/null || true
+          kill "$pid" 2> /dev/null || true
+          wait "$pid" 2> /dev/null || true
           sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/out.txt" | tr '\r' '\n' | grep -v '^\s*$' | tail -15
           if grep -aq "Downloading" "$RUNNER_TEMP/out.txt"; then
             echo "::notice::The session works: Apple accepted the login and the download started."
           else
-            echo "::error::No download started. The session has probably expired or is wrong; make a new one (docs/ci.md)."
+            echo "::error::No download started. If the output above is about a login or a session, it has expired or is wrong: make a new one (docs/ci.md)."
             exit 1
           fi
