@@ -45,8 +45,12 @@ jobs:
             exit 1
           fi
 
+      # The runner image already has xcodes from homebrew/core (2.1.0, the same release as upstream's latest), and
+      # that cannot be installed next to the xcodesorg/made tap's build, so only install it when it is missing.
       - name: Install xcodes
-        run: brew install xcodesorg/made/xcodes
+        run: |
+          command -v xcodes > /dev/null || brew install xcodesorg/made/xcodes
+          xcodes version
 
       - name: What xcodes offers on this machine
         run: |
