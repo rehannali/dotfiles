@@ -24,6 +24,20 @@ on:
         type: choice
         default: install
         options: [install, check, skip]
+      xcode:
+        description: "macOS: really install Xcode with xcodes. Needs the FASTLANE_SESSION secret, see docs/ci.md"
+        type: choice
+        default: skip
+        options: [skip, install]
+      xcode_version:
+        description: "Xcode to install, empty = newest this Mac can run. Pick one the runner image doesn't already have, or nothing gets downloaded"
+        type: string
+        default: ""
+      runtime:
+        description: "macOS: also install the iOS simulator runtime (a multi-GB download)"
+        type: choice
+        default: skip
+        options: [skip, install]
 
 concurrency:
   group: dotfiles-${{ github.ref }}
@@ -93,10 +107,17 @@ jobs:
     env:
       # Unattended first run: nothing is asked, no App Store, no Apple ID. Pull requests and pushes only verify
       # the casks (about 70 GUI apps); a manual run installs them unless you choose otherwise.
+      DOTFILES_NAME: CI
       DOTFILES_EMAIL: ci@dotfiles.invalid
       DOTFILES_PROFILE: ${{ matrix.profile }}
+      DOTFILES_BITWARDEN: "false"
       DOTFILES_MAS: skip
-      DOTFILES_XCODE: skip   # xcode_version / ios_runtime are pinned in toolchain.yml; installing needs an Apple ID
+      # Xcode needs an Apple ID, so it is only installed when a manual run asks for it. The Apple secrets are
+      # only put in the environment then, never for pull requests or pushes.
+      DOTFILES_XCODE: ${{ inputs.xcode == 'install' && 'install' || 'skip' }}
+      DOTFILES_XCODE_VERSION: ${{ inputs.xcode_version }}
+      DOTFILES_RUNTIME: ${{ inputs.runtime == 'install' && 'install' || 'skip' }}
+      FASTLANE_SESSION: ${{ inputs.xcode == 'install' && secrets.FASTLANE_SESSION || '' }}
       DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
       DOTFILES_SOURCE: ${{ github.workspace }}
       DOTFILES_CHEZMOI_ARGS: --verbose
@@ -115,6 +136,14 @@ jobs:
           uname -a
           if [ "$(uname -s)" = Darwin ]; then sw_vers; sysctl -n machdep.cpu.brand_string; fi
           echo "profile=$DOTFILES_PROFILE casks=$DOTFILES_CASKS"
+
+      - name: Apple session present?
+        if: ${{ inputs.xcode == 'install' && runner.os == 'macOS' }}
+        run: |
+          if [ -z "${FASTLANE_SESSION:-}" ]; then
+            echo "::error::xcode=install needs the FASTLANE_SESSION secret (a runner can't type the two-factor code). See docs/ci.md"
+            exit 1
+          fi
 
       # The entry point you run on a real machine, against this checkout instead of GitHub.
       - name: bootstrap.sh

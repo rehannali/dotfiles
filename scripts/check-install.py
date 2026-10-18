@@ -391,6 +391,33 @@ def check_mise():
 NOISE = re.compile(r"command not found|not found|No such file|error|cannot|failed", re.I)
 
 
+def check_xcode():
+    """Only when this run asked for an Xcode install (DOTFILES_XCODE=install, set by the CI for manual runs)."""
+    if SYSTEM != "Darwin" or os.environ.get("DOTFILES_XCODE") != "install":
+        return
+    wanted = os.environ.get("DOTFILES_XCODE_VERSION", "")
+    rc, out = run(["xcodes", "installed"], timeout=60)
+    if rc != 0:
+        add(FAIL, "xcode", "xcodes installed", out.strip()[:200])
+        return
+    lines = [l for l in out.splitlines() if l.strip()]
+    selected = next((l for l in lines if "Selected" in l), "")
+    if not selected:
+        add(FAIL, "xcode", "selected Xcode", "none is selected; installed: " + "; ".join(l.strip() for l in lines)[:300])
+        return
+    if wanted and not selected.split()[0].startswith(wanted):
+        add(FAIL, "xcode", "selected Xcode", "asked for %s but the selected one is %s" % (wanted, selected.strip()))
+        return
+    app = next((w for w in selected.split() if w.endswith(".app")), "")
+    binary = os.path.join(app, "Contents", "MacOS", "Xcode") if app else ""
+    if binary and os.path.exists(binary):
+        rc, archs = run(["lipo", "-archs", binary], timeout=30)
+        if ARCH not in archs.split():
+            add(FAIL, "xcode", app, "built for %s, this Mac is %s" % (archs.strip(), ARCH))
+            return
+    add(OK, "xcode", "Xcode", selected.strip()[:120])
+
+
 def configured_profile():
     """full | cli, from the environment or the chezmoi config `chezmoi init` wrote."""
     if os.environ.get("DOTFILES_PROFILE"):
@@ -460,6 +487,7 @@ def main():
     arch_rows, native_total, apps = check_architecture()
     check_mise()
     check_profile()
+    check_xcode()
     if not args.no_shell:
         check_shell()
 

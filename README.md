@@ -120,6 +120,9 @@ runner and a macOS Apple Silicon runner, then `scripts/check-install.py` looks a
 machine: every expected command is there, comes from the right package manager, starts, and every binary is
 built for that OS and CPU. It runs for pull requests to `main`, pushes to `main` and when started by hand.
 
+Manual runs can also install Xcode for real on a runner, using a saved Apple session instead of the two-factor
+code: see [docs/ci.md](docs/ci.md).
+
 To check a change without installing anything:
 
 ```sh

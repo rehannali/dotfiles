@@ -36,6 +36,7 @@ Not stored anywhere, they only affect the run they are set for.
 | `DOTFILES_XCODE=skip` | `--no-xcode` | don't install Xcode or the simulator runtime (they need your Apple ID) |
 | `DOTFILES_XCODE_VERSION` | `--xcode 26.6` | install this Xcode (see "Xcode" below) |
 | `DOTFILES_IOS_RUNTIME` | `--ios-runtime 26.5` | install this iOS simulator runtime |
+| `DOTFILES_RUNTIME=skip` | | install Xcode but not the iOS simulator runtime |
 | `DOTFILES_XCODE_XIP` | | path of an Xcode `.xip` you downloaded yourself, installed without any Apple ID login |
 | `XCODES_USERNAME`, `XCODES_PASSWORD`, `FASTLANE_SESSION` | | Apple ID for `xcodes`; see [bitwarden.md](bitwarden.md) for keeping them in Bitwarden |
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |

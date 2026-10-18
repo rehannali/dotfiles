@@ -19,6 +19,11 @@ if [ "${DOTFILES_XCODE:-install}" = skip ]; then
   exit 0
 fi
 
+if [ "${DOTFILES_RUNTIME:-install}" = skip ]; then
+  info "DOTFILES_RUNTIME=skip: not installing the simulator runtime."
+  exit 0
+fi
+
 command -v xcodes > /dev/null 2>&1 || skip "xcodes is not available, no simulator runtime."
 
 # the runtime has to go with the Xcode that is selected
