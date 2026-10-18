@@ -92,7 +92,7 @@ A tool is never installed twice by two managers. The rule lives in one place,
 manager knows it by. Adding a tool is one line there, see [docs/configuration.md](docs/configuration.md).
 
 Languages (node, python, ruby, java, go, rust, uv) always come from mise. fastlane and CocoaPods are gems
-installed into mise's Ruby.
+installed into mise's Ruby, and the Flutter SDK is installed with fvm (`settings.flutter.version`, `stable` by default).
 
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its
 Rust (a few minutes), btop comes from Homebrew. Some Homebrew formulae (ffmpeg, nmap, ansible and others)

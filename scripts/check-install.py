@@ -251,18 +251,32 @@ if SYSTEM == "Darwin":  # gems installed into mise's Ruby by run_onchange_after_
     RUNTIME_BINS += ["pod", "fastlane"]
 
 
-def check_runtimes():
+def flutter_expected(source):
+    """Is a Flutter SDK part of this machine's setup (settings.flutter.version, full profile, not skipped)?"""
+    if os.environ.get("DOTFILES_FLUTTER") == "skip" or configured_profile() == "cli" or not shutil.which("chezmoi"):
+        return False
+    cmd = ["chezmoi"] + (["-S", source] if source else []) + ["execute-template", "{{ .settings.flutter.version }}"]
+    rc, out = run(cmd, timeout=60)
+    return rc == 0 and bool(out.strip())
+
+
+def check_runtimes(source=None):
     rows = []
+    runtime_bins = RUNTIME_BINS + (["flutter", "dart"] if flutter_expected(source) else [])
     script = 'for b in "$@"; do printf "%s\\t%s\\n" "$b" "$(command -v "$b" 2>/dev/null)"; done'
     shell = shutil.which("zsh") or shutil.which("bash")
-    rc, out = run([shell, "-l", "-c", script, "_"] + RUNTIME_BINS, timeout=120)
+    rc, out = run([shell, "-l", "-c", script, "_"] + runtime_bins, timeout=120)
     for line in out.splitlines():
         name, _, path = line.partition("\t")
         if not path:
             add(FAIL, "runtimes", name, "not found on PATH")
             rows.append((FAIL, name, "-", "not found"))
             continue
-        rc, text = run([path, VERSION_FLAG.get(name, "--version")], timeout=30)
+        if name in ("flutter", "dart") and "/fvm/" not in path:
+            add(FAIL, "runtimes", name, "resolves to %s, not the fvm global SDK (~/fvm/default)" % path)
+            rows.append((FAIL, name, path.replace(HOME, "~"), "not from fvm"))
+            continue
+        rc, text = run([path, VERSION_FLAG.get(name, "--version")], timeout=120 if name == "flutter" else 30)
         first = (text.strip().splitlines() or [""])[0][:60]
         if rc in (126, 127) or BAD_RUN.search(text):
             add(FAIL, "runtimes", name, "does not start: %s" % first)
@@ -442,7 +456,7 @@ def main():
 
     plan = load_plan(args.source)
     tool_rows = check_expected(plan) if plan else []
-    runtime_rows = check_runtimes()
+    runtime_rows = check_runtimes(args.source)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
     check_profile()

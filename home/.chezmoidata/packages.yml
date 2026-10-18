@@ -116,6 +116,10 @@ packages:
     - {name: thefuck, kind: system, brew: thefuck, bin: thefuck}
     - {name: unbound, kind: system, brew: unbound, apt: unbound}
     - {name: unzip, kind: system, apt: unzip, bin: unzip}
+    # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
+    - {name: xz-utils, kind: system, apt: xz-utils}
+    - {name: zip, kind: system, apt: zip}
+    - {name: file, kind: system, apt: file}
     - {name: wireguard-tools, kind: system, brew: wireguard-tools, apt: wireguard-tools, bin: wg}
     - {name: zlib, kind: system, brew: zlib, apt: zlib1g-dev}
     - {name: zsh, kind: system, brew: zsh, apt: zsh, bin: zsh}

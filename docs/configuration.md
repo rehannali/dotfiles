@@ -34,6 +34,7 @@ Not stored anywhere, they only affect the run they are set for.
 | Variable | `bootstrap.sh` | Effect |
 |---|---|---|
 | `DOTFILES_XCODE=skip` | `--no-xcode` | don't install Xcode or the simulator runtime (they need your Apple ID) |
+| `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
 | `DOTFILES_REPO` | | `owner/name` of the repo to apply, default `rehannali/dotfiles` |
@@ -67,10 +68,15 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.git.gpg_program` | `gpg` | `gpg.program` |
 | `settings.git.commit_template` | `~/.stCommitMsg` | `commit.template`, a file path; empty for none |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
+| `settings.flutter.version` | `stable` | Flutter SDK that fvm installs and makes global (`stable`, `beta`, `3.35.0`...); empty to skip. Not installed in the `cli` profile |
 | `settings.terminal.font` | `Hack Nerd Font Mono` | alacritty and wezterm |
 | `settings.terminal.font_size` | `14` | alacritty, and wezterm on macOS |
 | `settings.terminal.font_size_other` | `11` | wezterm on Linux and Windows |
 | `settings.terminal.alacritty_theme` | `blood_moon` | file name from [alacritty-theme](https://github.com/alacritty/alacritty-theme) |
+
+Flutter lands in `~/fvm/default` (a link to `~/fvm/versions/<version>`), and `~/fvm/default/bin` is on PATH, so
+`flutter` and `dart` work in every shell and in IDEs. To use another version in one project: `fvm use 3.32.0`.
+Android Studio and the Android SDK are not installed by the dotfiles; Flutter needs them for Android builds.
 
 Not parameterised: the hyper config (hardly used), the Sourcetree diff/merge tool entries in the gitconfig,
 tmux and neovim settings. Those are plain files you edit in `home/`.

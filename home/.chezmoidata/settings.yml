@@ -25,3 +25,6 @@ settings:
     font_size: 14              # alacritty, and wezterm on macOS
     font_size_other: 11        # wezterm on Linux and Windows
     alacritty_theme: blood_moon  # file name (without .toml) from https://github.com/alacritty/alacritty-theme
+
+  flutter:
+    version: stable            # installed with fvm and made the global one; empty to skip. Anything fvm accepts: stable, beta, 3.35.0

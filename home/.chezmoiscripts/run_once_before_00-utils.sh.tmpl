@@ -13,6 +13,11 @@ cat > "$HELP_FILE" << 'BASH'
 # mise (official installer) lives in ~/.local/bin; its shims expose every installed runtime/tool
 export PATH="{{ .chezmoi.destDir }}/.local/bin:{{ .chezmoi.destDir }}/.local/share/mise/shims:$PATH"
 {{ if eq .chezmoi.os "darwin" -}}
+# Homebrew is installed by run_once_before_01 in its own process, so later scripts don't have it on PATH
+for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+  if [ -x "$brew_bin" ]; then eval "$("$brew_bin" shellenv)"; break; fi
+done
+unset brew_bin
 export HOMEBREW_NO_ANALYTICS=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 {{ if ne .chezmoi.arch "arm64" -}}

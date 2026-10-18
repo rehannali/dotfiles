@@ -18,7 +18,7 @@ TARGETS=("darwin/arm64" "darwin/amd64" "linux/amd64" "windows/amd64" "darwin/arm
 if [ -n "${VERIFY_TARGETS:-}" ]; then read -r -a TARGETS <<< "$VERIFY_TARGETS"; fi
 
 # Scripts that must render empty in the cli (server) profile even though the OS would run them.
-CLI_EMPTY=" run_onchange_after_10-configure-defaults.sh.tmpl run_onchange_after_13-install-ruby-gems.sh.tmpl run_once_after_31-install-xcode-runtime.sh.tmpl "
+CLI_EMPTY=" run_onchange_after_10-configure-defaults.sh.tmpl run_onchange_after_13-install-ruby-gems.sh.tmpl run_onchange_after_14-install-flutter.sh.tmpl run_once_after_31-install-xcode-runtime.sh.tmpl "
 
 
 # Which targets a script must render NON-empty for. Anything not listed must be empty.
@@ -32,6 +32,7 @@ declare -A RUNS_ON=(
   [run_onchange_after_10-configure-defaults.sh.tmpl]="darwin"
   [run_onchange_after_12-install-mise-tools.sh.tmpl]="darwin linux"
   [run_onchange_after_13-install-ruby-gems.sh.tmpl]="darwin"
+  [run_onchange_after_14-install-flutter.sh.tmpl]="darwin linux"
   [run_once_after_30-setup-additional.sh.tmpl]="darwin linux"
   [run_once_after_31-install-xcode-runtime.sh.tmpl]="darwin"
   [run_once_after_90-change-shell.sh.tmpl]="darwin linux"
