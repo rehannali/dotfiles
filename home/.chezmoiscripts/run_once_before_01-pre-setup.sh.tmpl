@@ -26,7 +26,7 @@ install_clt_headless() {
   local trigger=/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress-file label
   touch "$trigger"
   label="$(softwareupdate -l 2>/dev/null | grep -B 1 -E 'Command Line Tools' | awk -F'*' '/^ *\*/ {print $2}' \
-    | sed -e 's/^ *Label: //' -e 's/^ *//' | sort -V | tail -n1)"
+    | sed -e 's/^ *Label: //' -e 's/^ *//' | sort -V | tail -n1)" || label=""   # no match must not end the script
   if [ -n "$label" ]; then
     info "Installing $label"
     run sudo softwareupdate -i "$label" --verbose || true
@@ -53,14 +53,20 @@ if xcode-select -p >/dev/null 2>&1; then info "Xcode Command Line Tools are inst
 if [ "$CHEZ_ARCH" = "arm64" ]; then BREW_BIN="/opt/homebrew/bin/brew"; else BREW_BIN="/usr/local/bin/brew"; fi
 
 if [ ! -x "$BREW_BIN" ]; then
+  # bootstrap.sh installs Homebrew before chezmoi starts; this is for `chezmoi apply` run by hand.
   info "Installing Homebrew"
   # Homebrew's installer waits for RETURN and asks for the sudo password. With sudo already unlocked
   # (bootstrap.sh does `sudo -v`) it can run without asking anything.
   if sudo -n true >/dev/null 2>&1; then export NONINTERACTIVE=1; fi
-  run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || \
-    error "Homebrew installer returned non-zero."
+  use_terminal_stdin
+  brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+    || bail "Could not download the Homebrew installer (no network?)."
+  run /bin/bash -c "$brew_installer" || bail "The Homebrew installer failed (its output is above)."
 fi
+# Everything below needs brew. Stop here with the reason instead of failing later with "brew: command not found".
+[ -x "$BREW_BIN" ] || bail "Homebrew is not at $BREW_BIN. Install it from https://brew.sh and run chezmoi apply again."
 eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile / ~/.zshenv
+command -v brew >/dev/null 2>&1 || bail "brew is still not on PATH after $BREW_BIN shellenv."
 
 {{ if ne $profile "cli" -}}
 {{ if eq .chezmoi.arch "arm64" -}}
@@ -151,6 +157,7 @@ else
     # DOTFILES_XCODE_XIP=/path/Xcode_26.6.xip installs a download you made yourself: no Apple ID, no code
     xip_args=()
     if [ -n "${DOTFILES_XCODE_XIP:-}" ]; then xip_args=(--path "$DOTFILES_XCODE_XIP"); fi
+    use_terminal_stdin   # xcodes asks for the two-factor code on stdin
     info "Installing Xcode $XCODE_VERSION"
     # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
     if run xcodes_run install "$XCODE_VERSION" --experimental-unxip --select --empty-trash ${aria2_args[@]+"${aria2_args[@]}"} ${auth_args[@]+"${auth_args[@]}"} ${xip_args[@]+"${xip_args[@]}"}; then

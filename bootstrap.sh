@@ -6,12 +6,15 @@
 #
 # What it does, in order:
 #   1. unlocks sudo once and keeps it unlocked, so nothing later asks for the password again
-#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog.
+#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew.
 #      Linux:  makes sure git and curl exist (apt).
 #      This has to happen first: on a bare Mac the first `git` call, which `chezmoi init <repo>` makes, is
-#      what opens the "install developer tools" dialog and aborts.
+#      what opens the "install developer tools" dialog and aborts. Homebrew is installed here, with the real
+#      terminal and visible output, so a failure stops the run with its reason instead of showing up later as
+#      "brew: command not found".
 #   3. downloads chezmoi into a temp dir (nothing is left in $HOME)
-#   4. runs `chezmoi init --apply`, which does everything else
+#   4. runs `chezmoi init --apply`, which does everything else. It gets your terminal as its input even when
+#      this script came through a pipe (curl ... | bash), so xcodes can ask for the Apple two-factor code.
 #
 # Options (all optional; anything you leave out is asked once by chezmoi on your terminal):
 #   --name "Full Name"  name for git commits                                      (DOTFILES_NAME)
@@ -97,6 +100,13 @@ trap cleanup EXIT
 
 as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
+# `curl ... | bash` makes stdin the pipe the script itself arrives on: a program that asks something (the Bitwarden
+# CLI, chezmoi's prompts, xcodes asking for the two-factor code) would read the end of the pipe instead of
+# your keyboard. Give those the terminal. Without a terminal (CI) they keep stdin as it is.
+with_tty() {
+  if [ ! -t 0 ] && ( : < /dev/tty ) 2> /dev/null; then "$@" < /dev/tty; else "$@"; fi
+}
+
 # 2. what chezmoi needs before it can start
 if [ "$OS" = Darwin ]; then
   if ! xcode-select -p > /dev/null 2>&1; then
@@ -124,6 +134,22 @@ if [ "$OS" = Darwin ]; then
     done
   fi
   say "Command Line Tools: $(xcode-select -p)"
+
+  # Homebrew. Apple Silicon: /opt/homebrew, Intel: /usr/local.
+  if [ "$(uname -m)" = arm64 ]; then brew_bin=/opt/homebrew/bin/brew; else brew_bin=/usr/local/bin/brew; fi
+  if [ ! -x "$brew_bin" ]; then
+    [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
+    say "Installing Homebrew"
+    brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+      || die "Could not download the Homebrew installer (no network?)"
+    # NONINTERACTIVE: the installer would wait for RETURN. sudo is already unlocked above, so it asks nothing.
+    NONINTERACTIVE=1 /bin/bash -c "$brew_installer" \
+      || die "The Homebrew installer failed (its output is above). Fix that, then run this again."
+  fi
+  [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
+  # PATH for everything started from here on: chezmoi and every script it runs
+  eval "$("$brew_bin" shellenv)"
+  say "Homebrew: $(brew --version | sed -n 1p) ($brew_bin)"
 else
   if ! command -v git > /dev/null 2>&1 || ! command -v curl > /dev/null 2>&1; then
     command -v apt-get > /dev/null 2>&1 || die "git and curl are missing and this is not a Debian-based system"
@@ -182,16 +208,16 @@ bw_open_vault() {
     fi
     say "Logging in to Bitwarden ($method)"
     case "$method" in
-      apikey) bw login --apikey > /dev/null ;;   # reads BW_CLIENTID and BW_CLIENTSECRET
-      sso)    bw login --sso > /dev/null ;;
+      apikey) with_tty bw login --apikey > /dev/null ;;   # reads BW_CLIENTID and BW_CLIENTSECRET
+      sso)    with_tty bw login --sso > /dev/null ;;
       password)
         email="${DOTFILES_BW_EMAIL:-${DOTFILES_EMAIL:-}}"
         if [ -z "$email" ]; then read -r -p "Bitwarden email: " email < /dev/tty; fi
         # a login with email and password also unlocks the vault and prints the session key
         if [ -n "${BW_PASSWORD:-}" ]; then
-          BW_SESSION="$(bw login "$email" --passwordenv BW_PASSWORD --raw)"
+          BW_SESSION="$(with_tty bw login "$email" --passwordenv BW_PASSWORD --raw)"
         else
-          BW_SESSION="$(bw login "$email" --raw)"
+          BW_SESSION="$(with_tty bw login "$email" --raw)"
         fi
         export BW_SESSION
         ;;
@@ -201,9 +227,9 @@ bw_open_vault() {
   if [ -z "${BW_SESSION:-}" ]; then
     say "Unlocking the vault"
     if [ -n "${BW_PASSWORD:-}" ]; then
-      BW_SESSION="$(bw unlock --passwordenv BW_PASSWORD --raw)"
+      BW_SESSION="$(with_tty bw unlock --passwordenv BW_PASSWORD --raw)"
     else
-      BW_SESSION="$(bw unlock --raw)"
+      BW_SESSION="$(with_tty bw unlock --raw)"
     fi
     export BW_SESSION
   fi
@@ -220,13 +246,13 @@ if [ -n "${DOTFILES_CHEZMOI_ARGS:-}" ]; then read -r -a extra <<< "$DOTFILES_CHE
 # ${extra[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
 if [ -n "$SOURCE" ]; then
   say "chezmoi init --apply (from $SOURCE)"
-  chezmoi init --source "$SOURCE" --apply ${extra[@]+"${extra[@]}"}
+  with_tty chezmoi init --source "$SOURCE" --apply ${extra[@]+"${extra[@]}"}
 elif [ -n "$BRANCH" ]; then
   say "chezmoi init --apply $REPO (branch $BRANCH)"
-  chezmoi init --apply --branch "$BRANCH" ${extra[@]+"${extra[@]}"} "$REPO"
+  with_tty chezmoi init --apply --branch "$BRANCH" ${extra[@]+"${extra[@]}"} "$REPO"
 else
   say "chezmoi init --apply $REPO"
-  chezmoi init --apply ${extra[@]+"${extra[@]}"} "$REPO"
+  with_tty chezmoi init --apply ${extra[@]+"${extra[@]}"} "$REPO"
 fi
 
 say "Done. Open a new terminal."
