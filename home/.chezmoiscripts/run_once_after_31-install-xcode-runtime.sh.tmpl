@@ -42,6 +42,7 @@ load_apple_credentials "{{ .settings.apple.bitwarden_item }}"
 aria2_args=()
 if command -v aria2c > /dev/null 2>&1; then aria2_args=(--aria2 "$(command -v aria2c)"); fi
 
+use_terminal_stdin   # xcodes asks for the Apple ID / two-factor code on stdin
 info "Installing the iOS $IOS_RUNTIME simulator runtime"
 # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
 run xcodes runtimes install "iOS $IOS_RUNTIME" ${aria2_args[@]+"${aria2_args[@]}"} \

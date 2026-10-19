@@ -64,6 +64,13 @@ export HOMEBREW_MAKE_JOBS=2
 {{ end -}}
 {{ end -}}
 
+# Programs that ask a question (xcodes: Apple ID, two-factor code) read stdin. Under `curl ... | bash` or a pipe,
+# stdin is not the keyboard and they would get end-of-file instead of waiting for you. Switch the calling script's
+# stdin to the terminal. Without a terminal (CI) nothing changes.
+function use_terminal_stdin {
+	if [ ! -t 0 ] && ( : < /dev/tty ) 2> /dev/null; then exec < /dev/tty; fi
+}
+
 function bail {
 	error "$*"
 	exit 99

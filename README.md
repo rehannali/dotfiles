@@ -51,13 +51,16 @@ Four questions, once, on the first run. The answers go to `~/.config/chezmoi/che
 Set them and nothing is asked. Apart from these, a run can also stop and wait for you at:
 
 - the sudo password, once, at the start
-- your Apple ID (and two-factor code) when it installs Xcode. `--no-xcode` leaves Xcode out
+- your Apple ID (and two-factor code) when it installs Xcode. `--no-xcode` leaves Xcode out. The run waits for
+  the code on your terminal, also when you started it with `curl ... | bash`
 - the Mac App Store, which has to be signed in already for the App Store apps. `--no-appstore` leaves them out
 - Bitwarden, if you turned it on (see below)
 - a few casks that install system extensions (macfuse, Little Snitch) want a click in System Settings
 
 I have not run `bootstrap.sh` on a factory-fresh Mac. The Command Line Tools step uses the same
 `softwareupdate` route Homebrew's own installer uses, and falls back to the normal dialog if it doesn't work.
+Homebrew is installed right after it, by `bootstrap.sh` itself, and the run stops there with the installer's output
+if that fails, instead of going on without `brew`.
 
 More switches (all in `bootstrap.sh --help`): `--no-xcode`, `--no-appstore`, `--no-casks`, `--no-flutter`,
 `--no-defaults` (keep your Dock and Finder settings), `--no-chsh` (keep your login shell), `--xcode VERSION`,
