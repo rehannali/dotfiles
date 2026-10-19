@@ -34,6 +34,8 @@
 #                                                                                 (DOTFILES_IOS_RUNTIME)
 #   --no-flutter        do not install the Flutter SDK with fvm                  (DOTFILES_FLUTTER=skip)
 #   --no-casks          macOS: only check the cask list, install none            (DOTFILES_CASKS=check)
+#   --no-macports       Intel Mac: do not fall back to MacPorts for tools Homebrew has no bottle for
+#                                                                                 (DOTFILES_MACPORTS=skip)
 #   --no-appstore       macOS: skip Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
 #   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone    (DOTFILES_DEFAULTS=skip)
 #   --no-chsh           do not make zsh the login shell (that step needs sudo)        (DOTFILES_CHSH=skip)
@@ -69,6 +71,7 @@ while [ $# -gt 0 ]; do
     --ios-runtime) [ $# -ge 2 ] || die "--ios-runtime needs a version"; export DOTFILES_IOS_RUNTIME="$2"; shift ;;
     --no-flutter)  export DOTFILES_FLUTTER=skip ;;
     --no-casks)    export DOTFILES_CASKS=check ;;
+    --no-macports) export DOTFILES_MACPORTS=skip ;;
     --no-appstore) export DOTFILES_MAS=skip ;;
     --no-defaults) export DOTFILES_DEFAULTS=skip ;;
     --no-chsh)     export DOTFILES_CHSH=skip ;;
@@ -88,16 +91,33 @@ case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the R
 # installer did: a checkout of Homebrew/brew in /usr/local/Homebrew, linked as /usr/local/bin/brew, then
 # `brew update` fetches the formula index (it comes from the API, nothing else is cloned).
 # BREW_PREFIX (default /usr/local) and BREW_GROUP (default admin) are only changed by a test.
-brew_install_intel() {
+
+# /usr/local usually exists already, and some of what brew writes into is owned by root (lib/pkgconfig, share/man/man8,
+# ...): brew then fails with "directories not writable by your user". This is brew's own list
+# (Keg.must_be_writable_directories and must_exist_subdirectories); it makes each one exist and belong to you.
+# Runs every time, also when brew is already installed.
+brew_fix_intel_dirs() {
   local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir
   me="$(id -un)"
-  command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
-  for dir in bin etc include lib sbin share share/zsh share/zsh/site-functions var var/homebrew var/homebrew/linked \
-      opt Cellar Caskroom Frameworks Homebrew; do
+  for dir in bin etc etc/bash_completion.d include lib lib/cps lib/pkgconfig sbin opt Cellar Caskroom Frameworks Homebrew \
+      share share/aclocal share/doc share/info share/locale share/man share/man/man1 share/man/man2 share/man/man3 \
+      share/man/man4 share/man/man5 share/man/man6 share/man/man7 share/man/man8 share/cps share/zsh \
+      share/zsh/site-functions share/fish share/fish/vendor_completions.d share/fish/vendor_functions.d share/pwsh \
+      share/pwsh/completions var var/log var/homebrew var/homebrew/linked var/homebrew/locks; do
     [ -d "$prefix/$dir" ] || as_root mkdir -p "$prefix/$dir"
     [ -w "$prefix/$dir" ] || as_root chown "$me:$group" "$prefix/$dir"
     as_root chmod g+rwx "$prefix/$dir"
   done
+  # Python packages brew installs go into lib/pythonX.Y/site-packages
+  for dir in "$prefix"/lib/python*/site-packages; do
+    [ ! -d "$dir" ] || [ -w "$dir" ] || as_root chown "$me:$group" "$dir"
+  done
+}
+
+brew_install_intel() {
+  local prefix="${BREW_PREFIX:-/usr/local}"
+  command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
+  brew_fix_intel_dirs
   if [ ! -d "$prefix/Homebrew/.git" ]; then
     git clone --quiet https://github.com/Homebrew/brew "$prefix/Homebrew" \
       || die "Could not download Homebrew from github.com/Homebrew/brew"
@@ -175,6 +195,8 @@ if [ "$OS" = Darwin ]; then
       brew_install_intel
     fi
   fi
+  # a Homebrew from an earlier run may sit in directories that root owns
+  [ "$(uname -m)" = arm64 ] || brew_fix_intel_dirs
   [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
   # PATH for everything started from here on: chezmoi and every script it runs
   eval "$("$brew_bin" shellenv)"

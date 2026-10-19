@@ -44,6 +44,7 @@ Not stored anywhere, they only affect the run they are set for.
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
+| `DOTFILES_MACPORTS=skip` | `--no-macports` | Intel Mac: a tool Homebrew has no bottle for is skipped instead of coming from MacPorts |
 | `DOTFILES_DEFAULTS=skip` | `--no-defaults` | leave the Dock, Finder and trackpad preferences alone (`settings.macos.defaults = false` does it for good) |
 | `DOTFILES_CHSH=skip` | `--no-chsh` | don't make zsh the login shell (that step runs `sudo chsh`) |
 | `DOTFILES_CHEZMOI_VERSION` | | chezmoi release tag to download, for example `v2.73.2`; default is the latest |
@@ -83,6 +84,7 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
 | `settings.macos.defaults` | `true` | `false` leaves the Dock, Finder and trackpad preferences alone |
+| `settings.macos.cask_appdir` | `~/Applications` | where casks with an `appdir` in `packages.yml` install their app. `/Applications` puts every app in one place. Only applies to casks installed from now on: move or reinstall the ones already there |
 | `settings.macos.dock.orientation`, `.tile_size`, `.autohide`, `.show_recents` | `left`, `42`, `true`, `false` | the Dock preferences |
 | `settings.shell.env` | the two Python variables | extra environment variables for every zsh (`~/.zshenv`), a map `NAME: value`; values may use `$HOME` |
 | `settings.shell.path` | empty | extra directories in front of `PATH`, first entry wins, for example `["$HOME/go/bin"]` |
@@ -161,6 +163,7 @@ isn't available from that manager.
 | `kind` | `cli`: a single-binary tool mise can install; `system`: libraries, daemons, big apps (Homebrew or apt); `apple`: Apple developer tools, macOS only and not in the `cli` profile |
 | `mise`, `brew`, `apt` | the package name for that manager |
 | `bin` | the command the tool provides, when it differs from `name` (the CI check looks for it) |
+| `port` | MacPorts port, used on Intel Macs only, when Homebrew has no bottle for the tool (also instead of compiling a `mise_intel: false` tool). Set it only if `packages.macports.org/<port>/` has a `darwin_25.x86_64` archive |
 | `brew_args` | options for the Brewfile line, for example `restart_service: :changed` |
 | `mise_intel` | tool has no Intel Mac build in mise. A mise id (`"cargo:atuin"`) means Intel installs that instead, `false` means Intel uses Homebrew |
 | `prebuilt` | a tap formula that downloads a ready-made binary (so there is no bottle to look for) |
@@ -187,12 +190,13 @@ used from it:
 ```yaml
 taps:
   - {name: xcodesorg/made, formulae: [xcodes]}
-  - {name: netbirdio/tap, casks: [netbird-ui]}
+  - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}   # the cask is listed as netbirdio/tap/netbird-ui under darwin.casks
 ```
 
 The install script clones the tap, runs `brew trust --formula xcodesorg/made/xcodes` (or `--cask`) for exactly
 those items, and writes the same list into the Brewfile as `tap "xcodesorg/made", trusted: { formulae: ["xcodes"] }`.
-The whole tap is never trusted. If trusting an item fails, the tap and its items are left out and reported instead
+`needs` lists formulae of the same tap that a cask depends on (a cask can pull in a formula from its own tap, and
+that one has to be trusted as well). The whole tap is never trusted. If trusting an item fails, the tap and its items are left out and reported instead
 of failing the whole run; on a Homebrew without `brew trust` nothing is done. A formula or cask from a tap that is
 missing here makes `scripts/verify-render.sh` fail. `brew trust` lists what is trusted on a machine.
 
@@ -246,7 +250,7 @@ example because `packages.yml` changed).
 | `run_once_before_01-pre-setup` | once | macOS: Rosetta (Apple Silicon), Homebrew, `mas`, `aria2` and `xcodes` (from Homebrew on Apple Silicon, from mise on Intel), then Xcode; not in the `cli` profile for the GUI parts |
 | `run_onchange_before_05-install-apt-packages` | on change | Linux: `apt-get install` of the `apt` list |
 | `run_once_before_10-install-omz` | once | oh-my-zsh |
-| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only |
+| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only, and MacPorts binaries (`port install -b`, installed on demand) for those without a bottle |
 | `run_onchange_after_10-configure-defaults` | on change | macOS: Dock, Finder, trackpad preferences |
 | `run_onchange_after_12-install-mise-tools` | on change | installs mise if needed, then the runtimes and CLI tools |
 | `run_onchange_after_13-install-ruby-gems` | on change | macOS, `full` profile: fastlane and cocoapods into mise's Ruby |

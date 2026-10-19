@@ -138,6 +138,7 @@ for target in "${TARGETS[@]}"; do
 import json, sys
 target, plan, tools = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
 for t in tools:
+    assert not t.get("port") or t.get("brew"), f"{t['name']}: port is only a fallback for a brew formula"
     names = {"mise": [t.get("mise"), t.get("mise_intel") if isinstance(t.get("mise_intel"), str) else None],
              "brew": [t.get("brew")], "apt": [t.get("apt")]}
     hits = []
@@ -153,6 +154,7 @@ for t in tools:
         raise SystemExit(f"cli tool {t['name']} is not installed by anything on {target}")
 for e in plan["expect"]:
     assert e["via"] in ("mise", "brew", "apt"), e
+    assert not e["port"] or target.startswith("darwin/amd64"), f"port set outside an Intel Mac: {e}"
 print(f"  {target}: " + ", ".join(f"{k}={len(v)}" for k, v in sorted(plan.items())))
 PY
 done
@@ -166,7 +168,8 @@ pk = json.loads(sys.argv[1])
 trusted = {"formula": set(), "cask": set()}
 taps = {}
 for t in pk["taps"]:
-    assert set(t) <= {"name", "formulae", "casks"}, f"tap entry {t}: only name, formulae and casks are known"
+    assert set(t) <= {"name", "formulae", "casks", "needs"}, f"tap entry {t}: only name, formulae, casks and needs are known"
+    assert not t.get("needs") or t.get("casks"), f"tap entry {t['name']}: needs are the dependencies of its casks, it has none"
     taps[t["name"]] = t
     trusted["formula"] |= {t["name"] + "/" + f for f in t.get("formulae", [])}
 used_formulae = {x["brew"] for x in pk["tools"] if x.get("brew") and x["brew"].count("/") == 2}
@@ -209,6 +212,10 @@ settings_check "shell env default" linux "{$LINUX}" home/dot_zshenv.tmpl 'export
 settings_check "shell env and path custom" linux "{$LINUX,\"settings\":{\"shell\":{\"env\":{\"EDITOR\":\"nvim\"},\"path\":[\"\$HOME/a\",\"\$HOME/b\"]}}}" home/dot_zshenv.tmpl 'export EDITOR="nvim"'
 settings_check "npm globals from packages.yml" linux "{$LINUX}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g "firebase-tools"'
 settings_check "npm globals empty" linux "{$LINUX,\"packages\":{\"npm\":[]}}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g' absent
+PKGS=home/.chezmoiscripts/run_onchange_11-install-packages.sh.tmpl
+settings_check "cask appdir default" darwin "{$DARWIN}" $PKGS 'cask "alfred", args: { appdir: "~/Applications" }'
+settings_check "cask appdir custom" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'cask "alfred", args: { appdir: "/Applications" }'
+settings_check "cask appdir custom leaves no ~/Applications" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'appdir: "~/Applications"' absent
 echo "  settings are honoured (wezterm domain, dock, shell env/path, npm globals)"
 
 # Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.

@@ -2,6 +2,8 @@
 {{- $plan := includeTemplate "tool-plan" . | fromJson -}}
 {{- $appleSilicon := eq .chezmoi.arch "arm64" -}}
 {{- $profile := (index . "profile") | default "full" -}}
+{{- /* where casks with an appdir go (settings.macos.cask_appdir, "~/Applications" unless set) */ -}}
+{{- $appdir := dig "settings" "macos" "cask_appdir" "~/Applications" . -}}
 #!/usr/bin/env bash
 # Homebrew packages for macOS/{{ .chezmoi.arch }}. What brew installs here is decided by home/.chezmoitemplates/tool-plan.
 # Written for macOS's stock bash 3.2: no empty-array expansion under `set -u`, no heredocs inside $(...).
@@ -29,14 +31,14 @@ brew {{ .name | quote }}{{ if .args }}, {{ .args }}{{ end }}
 {{ end -}}
 {{- if ne $profile "cli" -}}
 {{- range .packages.darwin.casks }}
-cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str | replace "~/Applications" $appdir }}{{ end }}
 {{- end }}
 {{ range .packages.darwin.mas -}}
 mas {{ .name | quote }}, id: {{ .id }}
 {{ end -}}
 {{- if $appleSilicon -}}
 {{- range .packages.darwin_arm.casks }}
-cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str | replace "~/Applications" $appdir }}{{ end }}
 {{- end }}
 {{ end -}}
 {{- end -}}
@@ -90,7 +92,7 @@ report=""
 # `brew bundle` trusts them again by itself. Entry format: tap|formulae|casks (space separated lists).
 ruby_list() { local out="" x; for x in "$@"; do out="$out${out:+, }\"$x\""; done; printf '[%s]' "$out"; }
 taplines=""
-for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (get . "formulae" | default (list))) (join " " (get . "casks" | default (list))) | quote }} {{ end }}; do
+for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (concat (get . "formulae" | default (list)) (get . "needs" | default (list)))) (join " " (get . "casks" | default (list))) | quote }} {{ end }}; do
   tap="${entry%%|*}"
   rest="${entry#*|}"
   formulae="${rest%%|*}"
@@ -105,7 +107,7 @@ for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (get
   # shellcheck disable=SC2086  # the lists are space separated words
   for item in $formulae; do brew_trust --formula "$tap/$item" || trust_failed="$trust_failed $tap/$item"; done
   # shellcheck disable=SC2086
-  for item in $casks; do brew_trust --cask "$tap/$item" || trust_failed="$trust_failed $item"; done
+  for item in $casks; do brew_trust --cask "$tap/$item" || trust_failed="$trust_failed $tap/$item"; done
   if [ -n "$trust_failed" ]; then
     unsupported="$unsupported$tap$trust_failed "
     report="$report
@@ -124,6 +126,23 @@ tap \"$tap\", trusted: { $hash }"; else taplines="$taplines
 tap \"$tap\""; fi
 done
 { printf '%s\n' "${taplines#?}"; cat "$BREWFILE"; } > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+if brew_has_trust; then
+  # tap-qualified entries also trust themselves (docs.brew.sh/Brew-Bundle-and-Brewfile, "trusted")
+  sed -E 's#^((brew|cask) "[^"/]+/[^"/]+/[^"/]+")#\1, trusted: true#' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+  info "Trusted taps, formulae and casks:"
+  brew trust < /dev/null 2>&1 || true
+fi
+
+# A cask from a tap that is still not installed after the bundle: `brew install --cask tap/repo/name` trusts exactly that
+# cask by itself (docs.brew.sh/Tap-Trust), so try that once more.
+retry_tap_casks() {
+  local full
+  while read -r full; do
+    brew list --cask "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
+    info "$full is not installed after the bundle, installing it by its full name"
+    run brew install --cask "$full" || error "$full could not be installed."
+  done < <(awk '$1=="cask" && $2 ~ /^"[^\/"]+\/[^\/"]+\/[^\/"]+"/ { gsub(/[",]/,"",$2); print $2 }' "$BREWFILE")
+}
 
 if command -v python3 > /dev/null 2>&1; then
   major="$(sw_vers -productVersion | cut -d. -f1)"
@@ -166,17 +185,33 @@ if [ "$cask_mode" != install ]; then
   info "DOTFILES_CASKS=$cask_mode: no casks are installed in this run."
   awk '$1!="cask"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
 fi
+# DOTFILES_SKIP_CASKS="netbird-ui other-cask": leave single casks out of this run (space separated, short names). For one
+# that does not suit this machine, or one whose installer needs something a CI runner cannot give (netbird-ui starts a
+# system service with sudo and stalls there).
+for skip_cask in ${DOTFILES_SKIP_CASKS:-}; do
+  info "DOTFILES_SKIP_CASKS: not installing the cask $skip_cask in this run."
+  awk -v c="$skip_cask" '{ t=$2; gsub(/[",]/,"",t); if ($1=="cask" && (t==c || t ~ ("/" c "$"))) next; print }' \
+    "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+done
 if [ "$mas_mode" = skip ]; then
   info "DOTFILES_MAS=skip: no App Store apps are installed in this run."
   awk '$1!="mas"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
 fi
 
 {{ if $appleSilicon -}}
-run brew bundle -v --no-upgrade --file="$BREWFILE"
+bundle_status=0
+run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
+retry_tap_casks
+if [ "$bundle_status" -ne 0 ]; then
+  # not fatal: one cask that fails must not stop chezmoi from running the scripts after this one (mise tools, gems,
+  # Flutter, shell). Run `brew bundle` again, or install the cask by hand, once the cause is fixed.
+  error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+fi
 {{- else -}}
 # Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
+retry_tap_casks
 
 # Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
@@ -211,16 +246,28 @@ installed=""
 built=""
 skipped=""
 failed=""
-for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t" .name .prebuilt .source | quote }} {{ end }}; do
-  formula="${entry%%|*}"
-  flags="${entry#*|}"
-  prebuilt="${flags%|*}"
-  source_ok="${flags#*|}"
+# MacPorts is the fallback for a formula Homebrew has no bottle for (a `port` in packages.yml), so nothing is compiled.
+#   DOTFILES_MACPORTS=install (default) | skip
+macports_mode="${DOTFILES_MACPORTS:-install}"
+ported=""
+port_wanted=""
+for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s" .name .prebuilt .source .port | quote }} {{ end }}; do
+  IFS='|' read -r formula prebuilt source_ok port <<< "$entry"   # herestring, not a pipe: the loop's variables must survive
   if brew list --formula "$formula" > /dev/null 2>&1; then continue; fi   # installed: leave it alone
+  if [ -n "$port" ] && [ -x /opt/local/bin/port ]; then
+    port_state="$(/opt/local/bin/port installed "$port" 2> /dev/null || true)"
+    if [[ "$port_state" == *"(active)"* ]]; then continue; fi   # installed from MacPorts on an earlier run
+  fi
 
   # source_ok: mise has no Intel build of this tool (mise_intel: false), so Homebrew is the only way to get
   # it and it is installed even when that means compiling (slow, 2 jobs); everything else is bottle-only.
   missing="$(unbottled "$formula" "$prebuilt")"
+  if [ -n "${missing# }" ] && [ -n "$port" ] && [ "$macports_mode" = install ]; then
+    # no usable Homebrew bottle (also for tools that would otherwise compile from source): a MacPorts binary instead
+    info "$formula has no Intel bottle (missing:$missing): using MacPorts port $port"
+    port_wanted="$port_wanted $port"
+    continue
+  fi
   if [ "$source_ok" = true ]; then
     if [ -n "${missing# }" ]; then
       info "$formula has no Intel bottle (missing:$missing): building from source, this takes a while"
@@ -242,6 +289,19 @@ for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t" .name .prebuilt .source 
   fi
 done
 
+# MacPorts: binary archives only (-b), one port at a time so one that has none does not stop the others
+if [ -n "${port_wanted# }" ]; then
+  if ensure_macports; then
+    for port in $port_wanted; do
+      if run sudo /opt/local/bin/port -N -b install "$port"; then ported="$ported $port"; else failed="$failed port:$port"; fi
+    done
+  else
+    skipped="$skipped
+  - $port_wanted  (MacPorts could not be installed, see above)"
+  fi
+fi
+
+[ -z "$ported" ] || info "Installed from MacPorts:$ported"
 [ -z "$installed" ] || info "Installed:$installed"
 [ -z "$built" ] || info "Built from source (no Intel bottle):$built"
 if [ -n "$skipped" ]; then
@@ -252,8 +312,7 @@ fi
 [ -z "$failed" ] || error "brew install failed for:$failed"
 
 if [ "$bundle_status" -ne 0 ]; then
-  error "brew bundle (casks / App Store) exited with status $bundle_status"
-  exit "$bundle_status"
+  error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
 fi
 {{- end }}
 

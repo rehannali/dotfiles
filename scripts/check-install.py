@@ -8,7 +8,7 @@ Nothing here trusts the package lists. It asks the machine:
   1. expected tools  What does the dotfiles tool plan say should exist HERE (home/.chezmoitemplates/tool-plan,
                      rendered by chezmoi for this OS/arch)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
-                     manager that is supposed to provide it (mise / brew / apt) and not from a shadowing copy,
+                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel) and not from a shadowing copy,
                      and does it actually start?
   2. architecture    Every executable and native library under mise, Homebrew, ~/.local/bin, installed Mac
                      apps and gem extensions is classified with `file`: an ELF on macOS, a Mach-O on Linux, or
@@ -157,6 +157,8 @@ def manager_of(path):
         return "mise"
     if BREW and path.startswith(BREW + os.sep):
         return "brew"
+    if path.startswith("/opt/local" + os.sep):
+        return "macports"
     if path.startswith(("/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/", "/usr/local/bin/", "/usr/games/")):
         return "system"
     return "other"
@@ -224,7 +226,7 @@ def check_expected(plan):
         path = resolved.get(e["bin"], "")
         strict = e["kind"] in ("cli", "apple")
         if not path or not os.path.exists(path):
-            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source")
+            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source") and not e.get("port")
             level = WARN if (known_gap or not strict and INTEL_MAC) else FAIL
             why = "no bottle expected on Intel (Homebrew Tier 3)" if known_gap else "not found on PATH"
             add(level, "tools", e["name"], "%s via %s: %s" % (e["bin"], e["via"], why))
@@ -233,6 +235,8 @@ def check_expected(plan):
         real = os.path.realpath(path)
         mgr = manager_of(path) if manager_of(path) != "other" else manager_of(real)
         want = {"mise": "mise", "brew": "brew", "apt": "system"}[e["via"]]
+        if e["via"] == "brew" and e.get("port") and mgr == "macports":
+            want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))
@@ -345,6 +349,67 @@ def check_apps():
         else:
             add(FAIL, "apps", name, "%s only, this Mac is %s" % ("/".join(sorted(c[1])), ARCH))
     return len(execs)
+
+
+def check_casks(source):
+    """Casks from packages.yml: installed, and the .app really sits where the cask was told to put it."""
+    if SYSTEM != "Darwin" or os.environ.get("DOTFILES_CASKS", "install") != "install" \
+            or os.environ.get("DOTFILES_PROFILE", "full") == "cli":
+        return []
+    brew = os.path.join(BREW, "bin", "brew") if BREW else shutil.which("brew")
+    if not brew or not shutil.which("chezmoi"):
+        add(WARN, "casks", "check", "needs brew and chezmoi: skipped")
+        return []
+    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
+        "execute-template", "{{ concat .packages.darwin.casks %s | toJson }}" % (
+            ".packages.darwin_arm.casks" if ARCH == "arm64" else "(list)")], timeout=120)
+    if rc != 0:
+        add(FAIL, "casks", "list", out.strip()[:300])
+        return []
+    wanted = json.loads(out)
+    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
+        "execute-template", '{{ dig "settings" "macos" "cask_appdir" "~/Applications" . }}'], timeout=60)
+    cask_appdir = out.strip() if rc == 0 and out.strip() else "~/Applications"
+    cask_appdir = os.path.expanduser(cask_appdir)
+    rc, out = run([brew, "list", "--cask"], timeout=120)
+    installed = set(out.split()) if rc == 0 else set()
+    rows = []
+    for c in wanted:
+        name = c["name"]
+        token = name.rsplit("/", 1)[-1]
+        appdir = cask_appdir if "appdir" in c.get("args_str", "") else "/Applications"
+        if token not in installed:
+            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
+            rows.append((WARN, name, "-", "not installed"))
+            continue
+        rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
+        apps = []
+        try:
+            for art in json.loads(info)["casks"][0].get("artifacts", []):
+                if isinstance(art, dict) and art.get("app"):
+                    # ["Source.app", {"target": "Name.app"}]: the app is installed under its target name
+                    names = [a for a in art["app"] if isinstance(a, str)]
+                    targets = [a["target"] for a in art["app"] if isinstance(a, dict) and a.get("target")]
+                    apps += targets or names
+        except (ValueError, KeyError, IndexError):
+            pass
+        if not apps:
+            rows.append((OK, name, "-", "installed (no .app: font, pkg or binary)"))
+            continue
+        for app in apps:
+            app = os.path.basename(app)
+            where = [d for d in dict.fromkeys(("/Applications", os.path.join(HOME, "Applications"), cask_appdir))
+                     if os.path.exists(os.path.join(d, app))]
+            if not where:
+                add(FAIL, "casks", name, "installed but %s is neither in /Applications nor in ~/Applications" % app)
+                rows.append((FAIL, name, "-", "%s missing" % app))
+            elif os.path.realpath(appdir) not in [os.path.realpath(d) for d in where]:
+                add(WARN, "casks", name, "%s is in %s, not in %s" % (app, where[0], appdir))
+                rows.append((WARN, name, where[0], "%s not in the appdir" % app))
+            else:
+                rows.append((OK, name, appdir.replace(HOME, "~"), app))
+    add(OK, "casks", "summary", "%d of %d casks installed" % (len([c for c in wanted if c["name"].rsplit("/", 1)[-1] in installed]), len(wanted)))
+    return rows
 
 
 def check_architecture():
@@ -484,6 +549,7 @@ def main():
     plan = load_plan(args.source)
     tool_rows = check_expected(plan) if plan else []
     runtime_rows = check_runtimes(args.source)
+    cask_rows = check_casks(args.source)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
     check_profile()
@@ -502,6 +568,8 @@ def main():
     if tool_rows:
         md += ["", "## Expected tools (%d)" % len(tool_rows),
                table(["", "tool", "via", "resolved", "version / note"], tool_rows)]
+    if cask_rows:
+        md += ["", "## Casks (%d)" % len(cask_rows), table(["", "cask", "where", "note"], cask_rows)]
     md += ["", "## Runtimes", table(["", "command", "resolved", "version"], runtime_rows)]
     md += ["", "## Architecture", table(["", "origin", "native files", "wrong"], arch_rows)]
 

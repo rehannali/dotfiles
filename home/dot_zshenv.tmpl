@@ -19,6 +19,8 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_INSTALL_UPGRADE=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 export HOMEBREW_MAKE_JOBS=2
+# MacPorts, the fallback for what Homebrew has no Intel bottle for: last, so Homebrew and mise win
+export PATH="$PATH:/opt/local/bin:/opt/local/sbin"
 {{ end -}}
 
 if chrome_path=$(locate_chrome); then
