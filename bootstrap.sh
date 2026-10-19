@@ -6,7 +6,8 @@
 #
 # What it does, in order:
 #   1. unlocks sudo once and keeps it unlocked, so nothing later asks for the password again
-#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew.
+#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew (on Intel by hand: the
+#      official installer refuses Intel Macs).
 #      Linux:  makes sure git and curl exist (apt).
 #      This has to happen first: on a bare Mac the first `git` call, which `chezmoi init <repo>` makes, is
 #      what opens the "install developer tools" dialog and aborts. Homebrew is installed here, with the real
@@ -82,6 +83,29 @@ done
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
 
+# Homebrew's installer (install.sh) and its .pkg refuse every Intel Mac now ("only supported on Apple Silicon
+# processors"), but brew itself still runs there (Tier 3, supported until September 2027). Intel gets what the old
+# installer did: a checkout of Homebrew/brew in /usr/local/Homebrew, linked as /usr/local/bin/brew, then
+# `brew update` fetches the formula index (it comes from the API, nothing else is cloned).
+# BREW_PREFIX (default /usr/local) and BREW_GROUP (default admin) are only changed by a test.
+brew_install_intel() {
+  local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir
+  me="$(id -un)"
+  command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
+  for dir in bin etc include lib sbin share share/zsh share/zsh/site-functions var var/homebrew var/homebrew/linked \
+      opt Cellar Caskroom Frameworks Homebrew; do
+    [ -d "$prefix/$dir" ] || as_root mkdir -p "$prefix/$dir"
+    [ -w "$prefix/$dir" ] || as_root chown "$me:$group" "$prefix/$dir"
+    as_root chmod g+rwx "$prefix/$dir"
+  done
+  if [ ! -d "$prefix/Homebrew/.git" ]; then
+    git clone --quiet https://github.com/Homebrew/brew "$prefix/Homebrew" \
+      || die "Could not download Homebrew from github.com/Homebrew/brew"
+  fi
+  ln -sf "$prefix/Homebrew/bin/brew" "$prefix/bin/brew"
+  "$prefix/bin/brew" update --force --quiet || die "brew update failed (its output is above)"
+}
+
 # 1. sudo, once
 SUDO_KEEPALIVE_PID=""
 if [ "$(id -u)" -ne 0 ]; then
@@ -139,12 +163,17 @@ if [ "$OS" = Darwin ]; then
   if [ "$(uname -m)" = arm64 ]; then brew_bin=/opt/homebrew/bin/brew; else brew_bin=/usr/local/bin/brew; fi
   if [ ! -x "$brew_bin" ]; then
     [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
-    say "Installing Homebrew"
-    brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-      || die "Could not download the Homebrew installer (no network?)"
-    # NONINTERACTIVE: the installer would wait for RETURN. sudo is already unlocked above, so it asks nothing.
-    NONINTERACTIVE=1 /bin/bash -c "$brew_installer" \
-      || die "The Homebrew installer failed (its output is above). Fix that, then run this again."
+    if [ "$(uname -m)" = arm64 ]; then
+      say "Installing Homebrew"
+      brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+        || die "Could not download the Homebrew installer (no network?)"
+      # NONINTERACTIVE: the installer would wait for RETURN. sudo is already unlocked above, so it asks nothing.
+      NONINTERACTIVE=1 /bin/bash -c "$brew_installer" \
+        || die "The Homebrew installer failed (its output is above). Fix that, then run this again."
+    else
+      say "Installing Homebrew for an Intel Mac (its own installer no longer supports Intel, so: git checkout)"
+      brew_install_intel
+    fi
   fi
   [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
   # PATH for everything started from here on: chezmoi and every script it runs

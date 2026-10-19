@@ -60,7 +60,10 @@ Set them and nothing is asked. Apart from these, a run can also stop and wait fo
 I have not run `bootstrap.sh` on a factory-fresh Mac. The Command Line Tools step uses the same
 `softwareupdate` route Homebrew's own installer uses, and falls back to the normal dialog if it doesn't work.
 Homebrew is installed right after it, by `bootstrap.sh` itself, and the run stops there with the installer's output
-if that fails, instead of going on without `brew`.
+if that fails, instead of going on without `brew`. Homebrew's own installer refuses every Intel Mac ("only supported on
+Apple Silicon processors"), although `brew` still works there (Tier 3, until September 2027). So on Intel
+`bootstrap.sh` does what the old installer did: it clones Homebrew/brew into `/usr/local/Homebrew` and links
+`/usr/local/bin/brew`.
 
 More switches (all in `bootstrap.sh --help`): `--no-xcode`, `--no-appstore`, `--no-casks`, `--no-flutter`,
 `--no-defaults` (keep your Dock and Finder settings), `--no-chsh` (keep your login shell), `--xcode VERSION`,
