@@ -184,6 +184,33 @@ for tap, t in taps.items():
 print(f"  taps: {len(taps)}, trusted items: {sum(len(t.get('formulae', [])) + len(t.get('casks', [])) for t in taps.values())}, all used")
 PY
 
+# Settings must really change the output (and the defaults must stay what they were), for the templates that read them.
+settings_check() { # settings_check <description> <target os> <override-data JSON> <template> <expected substring> [absent]
+  local out
+  out="$(chezmoi -S "$SRC" execute-template --override-data "$3" < "$SRC/$4" 2>&1)" || { bad "$1: template failed: $out"; return; }
+  if [ "${6:-}" = absent ]; then
+    if grep -qF -- "$5" <<< "$out"; then bad "$1: found '$5'"; fi
+  elif ! grep -qF -- "$5" <<< "$out"; then
+    bad "$1: '$5' is missing"
+  fi
+}
+DARWIN='"chezmoi":{"os":"darwin","arch":"arm64","destDir":"/tmp/x","homeDir":"/tmp/x"},"profile":"full"'
+WIN='"chezmoi":{"os":"windows","arch":"amd64","destDir":"/tmp/x","homeDir":"/tmp/x"}'
+LINUX='"chezmoi":{"os":"linux","arch":"amd64","destDir":"/tmp/x","homeDir":"/tmp/x"}'
+DOMAINS=home/dot_config/wezterm/config/domains.lua.tmpl
+DEFAULTS=home/.chezmoiscripts/run_onchange_after_10-configure-defaults.sh.tmpl
+settings_check "wezterm WSL domain default" windows "{$WIN}" $DOMAINS 'distribution = "Ubuntu"'
+settings_check "wezterm WSL domain default has no user" windows "{$WIN}" $DOMAINS 'username' absent
+settings_check "wezterm WSL domain user" windows "{$WIN,\"settings\":{\"wsl\":{\"distribution\":\"Debian\",\"username\":\"ada\"}}}" $DOMAINS 'default_cwd = "/home/ada"'
+settings_check "macOS dock default" darwin "{$DARWIN}" $DEFAULTS 'orientation" -string "left"'
+settings_check "macOS dock custom" darwin "{$DARWIN,\"settings\":{\"macos\":{\"defaults\":true,\"dock\":{\"orientation\":\"bottom\",\"tile_size\":30,\"autohide\":false,\"show_recents\":true}}}}" $DEFAULTS 'tilesize" -int "30"'
+settings_check "macOS defaults off renders nothing" darwin "{$DARWIN,\"settings\":{\"macos\":{\"defaults\":false}}}" $DEFAULTS 'defaults write' absent
+settings_check "shell env default" linux "{$LINUX}" home/dot_zshenv.tmpl 'export PYTHONUNBUFFERED="1"'
+settings_check "shell env and path custom" linux "{$LINUX,\"settings\":{\"shell\":{\"env\":{\"EDITOR\":\"nvim\"},\"path\":[\"\$HOME/a\",\"\$HOME/b\"]}}}" home/dot_zshenv.tmpl 'export EDITOR="nvim"'
+settings_check "npm globals from packages.yml" linux "{$LINUX}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g "firebase-tools"'
+settings_check "npm globals empty" linux "{$LINUX,\"packages\":{\"npm\":[]}}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g' absent
+echo "  settings are honoured (wezterm domain, dock, shell env/path, npm globals)"
+
 # Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.
 stub="$(mktemp -d)"
 cat > "$stub/bw" << 'BW'

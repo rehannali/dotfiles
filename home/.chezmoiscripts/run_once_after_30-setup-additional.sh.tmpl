@@ -5,13 +5,21 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
-info "Installing NPM modules (node comes from mise)"
-run mise exec -- npm i -g localtunnel
-run mise exec -- npm i -g firebase-tools
-
+{{ if .packages.npm -}}
+info "Installing NPM modules (node comes from mise): {{ join " " .packages.npm }}"
+{{ range .packages.npm -}}
+run mise exec -- npm i -g {{ . | quote }}
+{{ end -}}
+{{ else -}}
+info "packages.npm is empty: no global NPM modules."
+{{ end }}
 {{ if and (eq .chezmoi.os "darwin") (ne ((index . "profile") | default "full") "cli") -}}
-info "Configuring iterm2 aliases and shell integration"
-run curl -L https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash
+if [ -d /Applications/iTerm.app ] || [ -d "$DEST_DIR/Applications/iTerm.app" ]; then
+  info "Configuring iterm2 aliases and shell integration"
+  run curl -L https://iterm2.com/shell_integration/install_shell_integration_and_utilities.sh | bash
+else
+  info "iTerm2 is not installed: skipping its shell integration."
+fi
 
 if [ "${DOTFILES_MAS:-install}" = skip ]; then
   info "DOTFILES_MAS=skip: not upgrading Mac App Store apps."

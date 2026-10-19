@@ -62,6 +62,12 @@ packages:
     go: latest
     rust: latest
 
+  # Global npm packages, installed with mise's node. The script that does it runs once per machine, so a package
+  # added later is installed with `mise exec -- npm i -g <name>`.
+  npm:
+    - localtunnel
+    - firebase-tools
+
   tools:
     # --- cli: prebuilt single-binary tools. brew on Apple Silicon, mise on Intel and Linux.
     - {name: act, kind: cli, mise: act, brew: act}

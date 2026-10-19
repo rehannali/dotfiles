@@ -1,10 +1,17 @@
-{{- if and (eq .chezmoi.os "darwin") (ne ((index . "profile") | default "full") "cli") -}}
+{{- if and (eq .chezmoi.os "darwin") (ne ((index . "profile") | default "full") "cli") .settings.macos.defaults -}}
 #!/usr/bin/env bash
+# macOS preferences. Off with settings.macos.defaults = false, or for one run with DOTFILES_DEFAULTS=skip.
+# The Dock values come from settings.macos.dock, the rest is fixed below.
+if [ "${DOTFILES_DEFAULTS:-apply}" = skip ]; then
+  echo "DOTFILES_DEFAULTS=skip: leaving the Dock, Finder and trackpad settings alone."
+  exit 0
+fi
 
-defaults write com.apple.dock "orientation" -string "left"
-defaults write com.apple.dock "tilesize" -int "42"
-defaults write com.apple.dock "autohide" -bool "true"
-defaults write com.apple.dock "show-recents" -bool "false"
+{{ $dock := .settings.macos.dock -}}
+defaults write com.apple.dock "orientation" -string {{ $dock.orientation | quote }}
+defaults write com.apple.dock "tilesize" -int {{ $dock.tile_size | toString | quote }}
+defaults write com.apple.dock "autohide" -bool {{ $dock.autohide | toString | quote }}
+defaults write com.apple.dock "show-recents" -bool {{ $dock.show_recents | toString | quote }}
 killall Dock
 
 defaults write NSGlobalDomain "AppleShowAllExtensions" -bool "true"

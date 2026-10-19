@@ -54,6 +54,7 @@ logs in, unlocks, and passes `BW_SESSION` on to chezmoi. How it logs in depends 
 | Work machine, normal login | nothing, or `DOTFILES_BW_EMAIL` | asks for your email, master password and two-step code |
 | SSO | `DOTFILES_BW_METHOD=sso` | `bw login --sso`, then `bw unlock` |
 | Already logged in | | `bw unlock` only |
+| Self-hosted or EU server (any of the above) | `DOTFILES_BW_SERVER=https://vault.example.com` | `bw config server` first, then the login of your choice, see "Self-hosted or EU server" below |
 
 The method is picked automatically: API key if both `BW_CLIENTID` and `BW_CLIENTSECRET` are set, otherwise email and
 password. Force one with `DOTFILES_BW_METHOD=apikey|sso|password`. An API key login still needs the master
@@ -103,8 +104,33 @@ added, nothing shows up in an argument or in the output). I have not signed in t
 
 ## Self-hosted or EU server
 
-Set `DOTFILES_BW_SERVER=https://vault.example.com` (for the EU cloud, `https://vault.bitwarden.eu`) and
-`bootstrap.sh` tells the CLI before it logs in. Doing it by hand: `bw config server <url>`.
+The Bitwarden CLI talks to `vault.bitwarden.com` unless it is told otherwise. For your own server, or the EU cloud
+(`https://vault.bitwarden.eu`), set the URL and `bootstrap.sh` tells the CLI before it logs in. It works with every
+login method, so it is the same variable whether you use an API key, SSO or a password:
+
+```sh
+# API key against your own server (work machine, own machine, anything)
+DOTFILES_BW_SERVER=https://vault.example.com BW_CLIENTID='user.xxxx' BW_CLIENTSECRET='...' \
+  bash bootstrap.sh --bitwarden
+
+# the same with flags for the non-secret parts; the API key still comes from the environment
+BW_CLIENTID='user.xxxx' BW_CLIENTSECRET='...' bash bootstrap.sh --bw-server https://vault.example.com --bw-method apikey
+
+# SSO against the EU cloud
+bash bootstrap.sh --bw-server https://vault.bitwarden.eu --bw-method sso
+```
+
+`--bw-server`, `--bw-method` and `--bw-email` are the flags for `DOTFILES_BW_SERVER`, `DOTFILES_BW_METHOD` and
+`DOTFILES_BW_EMAIL`; each of them also turns Bitwarden on. The API key and master password
+(`BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD`) have no flag on purpose: a flag would end up in your shell history
+and in the process list.
+
+The server is only set while the CLI is logged out (it refuses to change it otherwise). If this machine's `bw` is
+already logged in to another server, run `bw logout` first, or log in by hand and let `bootstrap.sh` just unlock.
+Doing it by hand: `bw config server <url>`; `bw config server` shows the current one.
+
+chezmoi itself runs `bw` for every lookup, so after `bootstrap.sh` the CLI keeps pointing at that server. If you use
+chezmoi without `bootstrap.sh`, set the server once with `bw config server <url>` before `bw login`.
 
 ## Not covered
 

@@ -59,6 +59,14 @@ Set them and nothing is asked. Apart from these, a run can also stop and wait fo
 I have not run `bootstrap.sh` on a factory-fresh Mac. The Command Line Tools step uses the same
 `softwareupdate` route Homebrew's own installer uses, and falls back to the normal dialog if it doesn't work.
 
+More switches (all in `bootstrap.sh --help`): `--no-xcode`, `--no-appstore`, `--no-casks`, `--no-flutter`,
+`--no-defaults` (keep your Dock and Finder settings), `--no-chsh` (keep your login shell), `--xcode VERSION`,
+`--branch NAME`, and for Bitwarden `--bw-method`, `--bw-email` and `--bw-server` (a self-hosted or EU server).
+
+Every variable, grouped by what you want to do: [docs/environment.md](docs/environment.md). Everything that is a
+matter of taste (fonts, theme, git, Dock, extra variables and PATH entries) is a setting:
+[docs/configuration.md](docs/configuration.md).
+
 ### Fully unattended
 
 ```sh

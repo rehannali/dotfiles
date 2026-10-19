@@ -31,6 +31,10 @@ export PATH="$HOME/fvm/default/bin:$PATH"
 # cron) never run `mise activate`, but they do read this file, so they still find every runtime.
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
 
-# Custom ENV Variable
-export PYTHONDONTWRITEBYTECODE=1
-export PYTHONUNBUFFERED=1
+# settings.shell.env and settings.shell.path (docs/configuration.md)
+{{ range $name, $value := .settings.shell.env -}}
+export {{ $name }}={{ $value | toString | quote }}
+{{ end -}}
+{{ range $dir := (reverse .settings.shell.path) -}}
+export PATH={{ $dir | quote }}:"$PATH"
+{{ end -}}

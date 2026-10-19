@@ -5,6 +5,11 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+if [ "${DOTFILES_CHSH:-install}" = skip ]; then
+    info "DOTFILES_CHSH=skip: leaving the login shell alone."
+    exit 0
+fi
+
 zsh_bin="$(command -v zsh)"
 if [ -z "$zsh_bin" ]; then
     error "zsh is not installed; leaving the login shell alone."
