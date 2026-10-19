@@ -51,7 +51,9 @@ packages:
     # - {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
     # - {name: ferdium/ferdium, casks: [ferdium]}   # only for the ferdium cask, which is commented out
     - {name: leoafarias/fvm, formulae: [fvm]}
-    - {name: netbirdio/tap, casks: [netbird-ui]}
+    # needs: formulae from the same tap that the cask pulls in as dependencies (netbird-ui depends on the netbird
+    # formula); they are trusted too, without them the cask fails with "Refusing to load formula ... from untrusted tap"
+    - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}
     - {name: teamookla/speedtest, formulae: [speedtest]}
     - {name: xcodesorg/made, formulae: [xcodes]}
 
@@ -237,7 +239,7 @@ packages:
       - name: microsoft-teams
       - name: nordvpn
       - name: notion
-      - name: netbird-ui   # GUI client from the netbirdio/tap tap
+      - name: netbirdio/tap/netbird-ui   # GUI client from the netbirdio/tap tap (full name: installing it trusts it)
       - name: openvpn-connect
       - name: orbstack
       # - name: postman   # not used

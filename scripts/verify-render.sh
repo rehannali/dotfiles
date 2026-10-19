@@ -168,7 +168,8 @@ pk = json.loads(sys.argv[1])
 trusted = {"formula": set(), "cask": set()}
 taps = {}
 for t in pk["taps"]:
-    assert set(t) <= {"name", "formulae", "casks"}, f"tap entry {t}: only name, formulae and casks are known"
+    assert set(t) <= {"name", "formulae", "casks", "needs"}, f"tap entry {t}: only name, formulae, casks and needs are known"
+    assert not t.get("needs") or t.get("casks"), f"tap entry {t['name']}: needs are the dependencies of its casks, it has none"
     taps[t["name"]] = t
     trusted["formula"] |= {t["name"] + "/" + f for f in t.get("formulae", [])}
 used_formulae = {x["brew"] for x in pk["tools"] if x.get("brew") and x["brew"].count("/") == 2}

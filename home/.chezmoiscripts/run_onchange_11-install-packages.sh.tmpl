@@ -90,7 +90,7 @@ report=""
 # `brew bundle` trusts them again by itself. Entry format: tap|formulae|casks (space separated lists).
 ruby_list() { local out="" x; for x in "$@"; do out="$out${out:+, }\"$x\""; done; printf '[%s]' "$out"; }
 taplines=""
-for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (get . "formulae" | default (list))) (join " " (get . "casks" | default (list))) | quote }} {{ end }}; do
+for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (concat (get . "formulae" | default (list)) (get . "needs" | default (list)))) (join " " (get . "casks" | default (list))) | quote }} {{ end }}; do
   tap="${entry%%|*}"
   rest="${entry#*|}"
   formulae="${rest%%|*}"
@@ -105,7 +105,7 @@ for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (get
   # shellcheck disable=SC2086  # the lists are space separated words
   for item in $formulae; do brew_trust --formula "$tap/$item" || trust_failed="$trust_failed $tap/$item"; done
   # shellcheck disable=SC2086
-  for item in $casks; do brew_trust --cask "$tap/$item" || trust_failed="$trust_failed $item"; done
+  for item in $casks; do brew_trust --cask "$tap/$item" || trust_failed="$trust_failed $tap/$item"; done
   if [ -n "$trust_failed" ]; then
     unsupported="$unsupported$tap$trust_failed "
     report="$report
@@ -124,6 +124,23 @@ tap \"$tap\", trusted: { $hash }"; else taplines="$taplines
 tap \"$tap\""; fi
 done
 { printf '%s\n' "${taplines#?}"; cat "$BREWFILE"; } > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+if brew_has_trust; then
+  # tap-qualified entries also trust themselves (docs.brew.sh/Brew-Bundle-and-Brewfile, "trusted")
+  sed -E 's#^((brew|cask) "[^"/]+/[^"/]+/[^"/]+")#\1, trusted: true#' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+  info "Trusted taps, formulae and casks:"
+  brew trust < /dev/null 2>&1 || true
+fi
+
+# A cask from a tap that is still not installed after the bundle: `brew install --cask tap/repo/name` trusts exactly that
+# cask by itself (docs.brew.sh/Tap-Trust), so try that once more.
+retry_tap_casks() {
+  local full
+  while read -r full; do
+    brew list --cask "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
+    info "$full is not installed after the bundle, installing it by its full name"
+    run brew install --cask "$full" || error "$full could not be installed."
+  done < <(awk '$1=="cask" && $2 ~ /^"[^\/"]+\/[^\/"]+\/[^\/"]+"/ { gsub(/[",]/,"",$2); print $2 }' "$BREWFILE")
+}
 
 if command -v python3 > /dev/null 2>&1; then
   major="$(sw_vers -productVersion | cut -d. -f1)"
@@ -172,11 +189,19 @@ if [ "$mas_mode" = skip ]; then
 fi
 
 {{ if $appleSilicon -}}
-run brew bundle -v --no-upgrade --file="$BREWFILE"
+bundle_status=0
+run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
+retry_tap_casks
+if [ "$bundle_status" -ne 0 ]; then
+  # not fatal: one cask that fails must not stop chezmoi from running the scripts after this one (mise tools, gems,
+  # Flutter, shell). Run `brew bundle` again, or install the cask by hand, once the cause is fixed.
+  error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+fi
 {{- else -}}
 # Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
+retry_tap_casks
 
 # Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
@@ -277,8 +302,7 @@ fi
 [ -z "$failed" ] || error "brew install failed for:$failed"
 
 if [ "$bundle_status" -ne 0 ]; then
-  error "brew bundle (casks / App Store) exited with status $bundle_status"
-  exit "$bundle_status"
+  error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
 fi
 {{- end }}
 

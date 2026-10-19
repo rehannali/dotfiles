@@ -351,6 +351,59 @@ def check_apps():
     return len(execs)
 
 
+def check_casks(source):
+    """Casks from packages.yml: installed, and the .app really sits where the cask was told to put it."""
+    if SYSTEM != "Darwin" or os.environ.get("DOTFILES_CASKS", "install") != "install" \
+            or os.environ.get("DOTFILES_PROFILE", "full") == "cli":
+        return []
+    brew = os.path.join(BREW, "bin", "brew") if BREW else shutil.which("brew")
+    if not brew or not shutil.which("chezmoi"):
+        add(WARN, "casks", "check", "needs brew and chezmoi: skipped")
+        return []
+    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
+        "execute-template", "{{ concat .packages.darwin.casks %s | toJson }}" % (
+            ".packages.darwin_arm.casks" if ARCH == "arm64" else "(list)")], timeout=120)
+    if rc != 0:
+        add(FAIL, "casks", "list", out.strip()[:300])
+        return []
+    wanted = json.loads(out)
+    rc, out = run([brew, "list", "--cask"], timeout=120)
+    installed = set(out.split()) if rc == 0 else set()
+    rows = []
+    for c in wanted:
+        name = c["name"]
+        token = name.rsplit("/", 1)[-1]
+        appdir = os.path.join(HOME, "Applications") if "appdir" in c.get("args_str", "") else "/Applications"
+        if token not in installed:
+            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
+            rows.append((WARN, name, "-", "not installed"))
+            continue
+        rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
+        apps = []
+        try:
+            for art in json.loads(info)["casks"][0].get("artifacts", []):
+                if isinstance(art, dict) and art.get("app"):
+                    apps += [a for a in art["app"] if isinstance(a, str)]
+        except (ValueError, KeyError, IndexError):
+            pass
+        if not apps:
+            rows.append((OK, name, "-", "installed (no .app: font, pkg or binary)"))
+            continue
+        for app in apps:
+            app = os.path.basename(app)
+            where = [d for d in ("/Applications", os.path.join(HOME, "Applications")) if os.path.exists(os.path.join(d, app))]
+            if not where:
+                add(FAIL, "casks", name, "installed but %s is neither in /Applications nor in ~/Applications" % app)
+                rows.append((FAIL, name, "-", "%s missing" % app))
+            elif appdir not in where:
+                add(WARN, "casks", name, "%s is in %s, not in %s" % (app, where[0], appdir))
+                rows.append((WARN, name, where[0], "%s not in the appdir" % app))
+            else:
+                rows.append((OK, name, appdir.replace(HOME, "~"), app))
+    add(OK, "casks", "summary", "%d of %d casks installed" % (len([c for c in wanted if c["name"].rsplit("/", 1)[-1] in installed]), len(wanted)))
+    return rows
+
+
 def check_architecture():
     installs = mise_installs()
     summary = []
@@ -488,6 +541,7 @@ def main():
     plan = load_plan(args.source)
     tool_rows = check_expected(plan) if plan else []
     runtime_rows = check_runtimes(args.source)
+    cask_rows = check_casks(args.source)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
     check_profile()
@@ -506,6 +560,8 @@ def main():
     if tool_rows:
         md += ["", "## Expected tools (%d)" % len(tool_rows),
                table(["", "tool", "via", "resolved", "version / note"], tool_rows)]
+    if cask_rows:
+        md += ["", "## Casks (%d)" % len(cask_rows), table(["", "cask", "where", "note"], cask_rows)]
     md += ["", "## Runtimes", table(["", "command", "resolved", "version"], runtime_rows)]
     md += ["", "## Architecture", table(["", "origin", "native files", "wrong"], arch_rows)]
 

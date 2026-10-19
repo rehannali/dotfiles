@@ -189,12 +189,13 @@ used from it:
 ```yaml
 taps:
   - {name: xcodesorg/made, formulae: [xcodes]}
-  - {name: netbirdio/tap, casks: [netbird-ui]}
+  - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}   # the cask is listed as netbirdio/tap/netbird-ui under darwin.casks
 ```
 
 The install script clones the tap, runs `brew trust --formula xcodesorg/made/xcodes` (or `--cask`) for exactly
 those items, and writes the same list into the Brewfile as `tap "xcodesorg/made", trusted: { formulae: ["xcodes"] }`.
-The whole tap is never trusted. If trusting an item fails, the tap and its items are left out and reported instead
+`needs` lists formulae of the same tap that a cask depends on (a cask can pull in a formula from its own tap, and
+that one has to be trusted as well). The whole tap is never trusted. If trusting an item fails, the tap and its items are left out and reported instead
 of failing the whole run; on a Homebrew without `brew trust` nothing is done. A formula or cask from a tap that is
 missing here makes `scripts/verify-render.sh` fail. `brew trust` lists what is trusted on a machine.
 
