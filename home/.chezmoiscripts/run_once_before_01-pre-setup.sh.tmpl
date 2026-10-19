@@ -52,19 +52,8 @@ if xcode-select -p >/dev/null 2>&1; then info "Xcode Command Line Tools are inst
 # --- Homebrew (casks + a few CLI tools only; runtimes come from mise) ---
 if [ "$CHEZ_ARCH" = "arm64" ]; then BREW_BIN="/opt/homebrew/bin/brew"; else BREW_BIN="/usr/local/bin/brew"; fi
 
-if [ ! -x "$BREW_BIN" ]; then
-  # bootstrap.sh installs Homebrew before chezmoi starts; this is for `chezmoi apply` run by hand.
-  info "Installing Homebrew"
-  # Homebrew's installer waits for RETURN and asks for the sudo password. With sudo already unlocked
-  # (bootstrap.sh does `sudo -v`) it can run without asking anything.
-  if sudo -n true >/dev/null 2>&1; then export NONINTERACTIVE=1; fi
-  use_terminal_stdin
-  brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-    || bail "Could not download the Homebrew installer (no network?)."
-  run /bin/bash -c "$brew_installer" || bail "The Homebrew installer failed (its output is above)."
-fi
 # Everything below needs brew. Stop here with the reason instead of failing later with "brew: command not found".
-[ -x "$BREW_BIN" ] || bail "Homebrew is not at $BREW_BIN. Install it from https://brew.sh and run chezmoi apply again."
+[ -x "$BREW_BIN" ] || bail "Homebrew is not at $BREW_BIN. bootstrap.sh installs it (Homebrew's own installer refuses Intel Macs, so it does that part by hand): run bootstrap.sh."
 eval "$("$BREW_BIN" shellenv)"   # PATH for later shells is set in ~/.zprofile / ~/.zshenv
 command -v brew >/dev/null 2>&1 || bail "brew is still not on PATH after $BREW_BIN shellenv."
 
