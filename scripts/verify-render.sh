@@ -216,6 +216,10 @@ PKGS=home/.chezmoiscripts/run_onchange_11-install-packages.sh.tmpl
 settings_check "cask appdir default" darwin "{$DARWIN}" $PKGS 'cask "alfred", args: { appdir: "~/Applications" }'
 settings_check "cask appdir custom" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'cask "alfred", args: { appdir: "/Applications" }'
 settings_check "cask appdir custom leaves no ~/Applications" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'appdir: "~/Applications"' absent
+TOUCHID=home/.chezmoiscripts/run_onchange_after_15-touch-id-sudo.sh.tmpl
+settings_check "touch id for sudo default" darwin "{$DARWIN}" $TOUCHID 'pam_tid.so'
+settings_check "touch id for sudo off renders nothing" darwin "{$DARWIN,\"settings\":{\"macos\":{\"touch_id_sudo\":false}}}" $TOUCHID 'pam_tid' absent
+settings_check "touch id for sudo is macOS only" linux "{$LINUX}" $TOUCHID 'pam_tid' absent
 echo "  settings are honoured (wezterm domain, dock, shell env/path, npm globals)"
 
 # Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.
