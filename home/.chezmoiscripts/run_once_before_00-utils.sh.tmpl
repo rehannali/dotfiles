@@ -61,6 +61,49 @@ function brew_trust { # brew_trust --formula|--cask tap/repo/name
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_INSTALL_UPGRADE=1
 export HOMEBREW_MAKE_JOBS=2
+# MacPorts (see ensure_macports) goes behind everything else, so Homebrew and mise always win
+export PATH="$PATH:/opt/local/bin:/opt/local/sbin"
+
+# MacPorts, the fallback for what Homebrew has no Intel bottle for. It publishes binary archives for Intel Macs
+# up to macOS 26, and its installer is one .pkg per macOS version. Needs sudo (/opt/local), which bootstrap.sh keeps
+# unlocked. Returns 1 (and says why) when it cannot be installed; nothing else depends on it.
+function ensure_macports {
+	local major minor suffix version pkg_dir home_file
+	[ -x /opt/local/bin/port ] && return 0
+	major="$(sw_vers -productVersion | cut -d. -f1)"
+	minor="$(sw_vers -productVersion | cut -d. -f2)"
+	case "$major" in
+		27) suffix="27-GoldenGate" ;;
+		26) suffix="26-Tahoe" ;;
+		15) suffix="15-Sequoia" ;;
+		14) suffix="14-Sonoma" ;;
+		13) suffix="13-Ventura" ;;
+		12) suffix="12-Monterey" ;;
+		11) suffix="11-BigSur" ;;
+		10) if [ "$minor" = 15 ]; then suffix="10.15-Catalina"; fi ;;
+	esac
+	[ -n "${suffix:-}" ] || { error "MacPorts has no installer for macOS $major.$minor"; return 1; }
+	# newest release, else the one this was written against (the GitHub API is rate limited without a token)
+	version="$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/macports/macports-base/releases/latest 2> /dev/null \
+		| sed -n 's/.*"tag_name": *"v\([0-9.]*\)".*/\1/p' | head -n1)" || version=""
+	version="${version:-2.12.7}"
+	pkg_dir="$(mktemp -d)"
+	info "Installing MacPorts $version ($suffix)"
+	curl -fsSL -o "$pkg_dir/MacPorts.pkg" "https://github.com/macports/macports-base/releases/download/v$version/MacPorts-$version-$suffix.pkg" \
+		|| { error "Could not download the MacPorts installer."; rm -rf "$pkg_dir"; return 1; }
+	# The installer appends a PATH line to your shell profiles. They are managed here (PATH is set in ~/.zshenv),
+	# so put them back the way they were.
+	for home_file in .zprofile .profile .bash_profile .zshrc; do
+		if [ -e "$HOME/$home_file" ]; then cp -p "$HOME/$home_file" "$pkg_dir/$home_file.orig"; else : > "$pkg_dir/$home_file.absent"; fi
+	done
+	run sudo installer -pkg "$pkg_dir/MacPorts.pkg" -target / || { error "The MacPorts installer failed."; rm -rf "$pkg_dir"; return 1; }
+	for home_file in .zprofile .profile .bash_profile .zshrc; do
+		if [ -e "$pkg_dir/$home_file.orig" ]; then cp -p "$pkg_dir/$home_file.orig" "$HOME/$home_file"; else rm -f "$HOME/$home_file"; fi
+	done
+	rm -rf "$pkg_dir"
+	[ -x /opt/local/bin/port ] || { error "MacPorts is not at /opt/local/bin/port after installing it."; return 1; }
+	run sudo /opt/local/bin/port -N selfupdate || error "port selfupdate failed; using the ports tree the installer came with."
+}
 {{ end -}}
 {{ end -}}
 

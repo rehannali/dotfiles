@@ -88,6 +88,7 @@ A variable that is set wins over the stored answer when `chezmoi init` is run ag
 | `DOTFILES_CHSH` | `skip` | change-shell script | do not make zsh the login shell |
 | `DOTFILES_CASKS` | `install` (default), `check`, `skip` | package script | `check` verifies each cask can be installed here and installs none |
 | `DOTFILES_MAS` | `install` (default), `skip` | package script | no App Store apps |
+| `DOTFILES_MACPORTS` | `install` (default), `skip` | package script, Intel Macs | `skip`: no MacPorts fallback for tools without a Homebrew bottle |
 | `DOTFILES_REPO` | `owner/name` | `bootstrap.sh` | repo to apply, default `rehannali/dotfiles` |
 | `DOTFILES_SOURCE` | path | `bootstrap.sh` | local checkout instead of GitHub |
 | `DOTFILES_CHEZMOI_ARGS` | e.g. `--verbose` | `bootstrap.sh` | extra flags for `chezmoi init` |

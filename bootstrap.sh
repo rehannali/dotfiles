@@ -34,6 +34,8 @@
 #                                                                                 (DOTFILES_IOS_RUNTIME)
 #   --no-flutter        do not install the Flutter SDK with fvm                  (DOTFILES_FLUTTER=skip)
 #   --no-casks          macOS: only check the cask list, install none            (DOTFILES_CASKS=check)
+#   --no-macports       Intel Mac: do not fall back to MacPorts for tools Homebrew has no bottle for
+#                                                                                 (DOTFILES_MACPORTS=skip)
 #   --no-appstore       macOS: skip Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
 #   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone    (DOTFILES_DEFAULTS=skip)
 #   --no-chsh           do not make zsh the login shell (that step needs sudo)        (DOTFILES_CHSH=skip)
@@ -69,6 +71,7 @@ while [ $# -gt 0 ]; do
     --ios-runtime) [ $# -ge 2 ] || die "--ios-runtime needs a version"; export DOTFILES_IOS_RUNTIME="$2"; shift ;;
     --no-flutter)  export DOTFILES_FLUTTER=skip ;;
     --no-casks)    export DOTFILES_CASKS=check ;;
+    --no-macports) export DOTFILES_MACPORTS=skip ;;
     --no-appstore) export DOTFILES_MAS=skip ;;
     --no-defaults) export DOTFILES_DEFAULTS=skip ;;
     --no-chsh)     export DOTFILES_CHSH=skip ;;

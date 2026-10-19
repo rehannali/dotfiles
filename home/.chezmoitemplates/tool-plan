@@ -1,7 +1,7 @@
 {{- /*
   Resolves packages.tools into one list per package manager for THIS machine and prints it as
-  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt", "source"}, ...], "mise": ["id", ...],
-         "expect": [{"name", "kind", "via", "bin", "source"}, ...]}
+  JSON: {"apt": ["pkg", ...], "brew": [{"name", "args", "prebuilt", "source", "port"}, ...], "mise": ["id", ...],
+         "expect": [{"name", "kind", "via", "bin", "source", "port"}, ...]}
   `expect` is what scripts/check-install.py verifies after an apply: for every selected tool, the manager
   that must provide it and the command it must put on PATH ("" = a library, nothing to run).
 
@@ -18,6 +18,10 @@
 
   profile "cli" (servers) additionally drops every kind: apple tool; casks, App Store apps and GUI configs
   are handled by the scripts and .chezmoiignore.
+
+  "port" (Intel Macs only, else ""): the MacPorts port that installs the tool when Homebrew has no bottle for it. It
+  is a fallback inside the brew list, decided at install time (run_onchange_11-install-packages), so the tool is
+  still installed by one manager only, and Homebrew wins whenever it can.
 
   Exactly one manager is chosen per tool, so nothing is ever installed twice.
 */ -}}
@@ -63,7 +67,7 @@
     {{- if and $intel (hasKey $t "mise_intel") (kindIs "string" (get $t "mise_intel")) -}}{{- $id = get $t "mise_intel" -}}{{- end -}}
     {{- $mise = append $mise $id -}}
   {{- else if eq $via "brew" -}}
-    {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true") "source" (eq (get $t "mise_intel" | toString) "false")) -}}
+    {{- $brew = append $brew (dict "name" (get $t "brew") "args" (get $t "brew_args" | toString) "prebuilt" (eq (get $t "prebuilt" | toString) "true") "source" (eq (get $t "mise_intel" | toString) "false") "port" (ternary (get $t "port" | toString) "" $intel)) -}}
   {{- else if eq $via "apt" -}}
     {{- $apt = append $apt (get $t "apt") -}}
   {{- end -}}
@@ -73,7 +77,7 @@
     {{- if hasKey $t "bin" -}}{{- $bin = get $t "bin" -}}
     {{- else if ne $t.kind "system" -}}{{- $bin = $t.name -}}
     {{- end -}}
-    {{- $expect = append $expect (dict "name" $t.name "kind" $t.kind "via" $via "bin" $bin "source" (eq (get $t "mise_intel" | toString) "false")) -}}
+    {{- $expect = append $expect (dict "name" $t.name "kind" $t.kind "via" $via "bin" $bin "source" (eq (get $t "mise_intel" | toString) "false") "port" (ternary (get $t "port" | toString) "" (and $intel (eq $via "brew")))) -}}
   {{- end -}}
 {{- end -}}
 {{- end -}}

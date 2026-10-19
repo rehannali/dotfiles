@@ -8,7 +8,7 @@ Nothing here trusts the package lists. It asks the machine:
   1. expected tools  What does the dotfiles tool plan say should exist HERE (home/.chezmoitemplates/tool-plan,
                      rendered by chezmoi for this OS/arch)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
-                     manager that is supposed to provide it (mise / brew / apt) and not from a shadowing copy,
+                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel) and not from a shadowing copy,
                      and does it actually start?
   2. architecture    Every executable and native library under mise, Homebrew, ~/.local/bin, installed Mac
                      apps and gem extensions is classified with `file`: an ELF on macOS, a Mach-O on Linux, or
@@ -157,6 +157,8 @@ def manager_of(path):
         return "mise"
     if BREW and path.startswith(BREW + os.sep):
         return "brew"
+    if path.startswith("/opt/local" + os.sep):
+        return "macports"
     if path.startswith(("/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/", "/usr/local/bin/", "/usr/games/")):
         return "system"
     return "other"
@@ -224,7 +226,7 @@ def check_expected(plan):
         path = resolved.get(e["bin"], "")
         strict = e["kind"] in ("cli", "apple")
         if not path or not os.path.exists(path):
-            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source")
+            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source") and not e.get("port")
             level = WARN if (known_gap or not strict and INTEL_MAC) else FAIL
             why = "no bottle expected on Intel (Homebrew Tier 3)" if known_gap else "not found on PATH"
             add(level, "tools", e["name"], "%s via %s: %s" % (e["bin"], e["via"], why))
@@ -233,6 +235,8 @@ def check_expected(plan):
         real = os.path.realpath(path)
         mgr = manager_of(path) if manager_of(path) != "other" else manager_of(real)
         want = {"mise": "mise", "brew": "brew", "apt": "system"}[e["via"]]
+        if e["via"] == "brew" and e.get("port") and mgr == "macports":
+            want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))

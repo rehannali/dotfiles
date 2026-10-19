@@ -65,7 +65,7 @@ Apple Silicon processors"), although `brew` still works there (Tier 3, until Sep
 `bootstrap.sh` does what the old installer did: it clones Homebrew/brew into `/usr/local/Homebrew` and links
 `/usr/local/bin/brew`.
 
-More switches (all in `bootstrap.sh --help`): `--no-xcode`, `--no-appstore`, `--no-casks`, `--no-flutter`,
+More switches (all in `bootstrap.sh --help`): `--no-xcode`, `--no-appstore`, `--no-macports`, `--no-casks`, `--no-flutter`,
 `--no-defaults` (keep your Dock and Finder settings), `--no-chsh` (keep your login shell), `--xcode VERSION`,
 `--branch NAME`, and for Bitwarden `--bw-method`, `--bw-email` and `--bw-server` (a self-hosted or EU server).
 
@@ -98,7 +98,7 @@ Homebrew stopped building bottles for Intel Macs, so on those a normal `brew ins
 | | CLI tools | System packages | Apps | Languages |
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
-| Intel Mac | mise | Homebrew, only if there is a bottle | casks | mise |
+| Intel Mac | mise | Homebrew if there is a bottle, else MacPorts | casks | mise |
 | Linux | mise | apt | | mise |
 
 A tool is never installed twice by two managers. The rule lives in one place,
@@ -110,7 +110,9 @@ installed into mise's Ruby, and the Flutter SDK is installed with fvm (`settings
 
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its
 Rust (a few minutes), btop comes from Homebrew. Some Homebrew formulae (ffmpeg, nmap, ansible and others)
-have no Intel bottle and are skipped with a message instead of being compiled. Ruby has no prebuilt Intel
+have no Intel bottle; where MacPorts has a prebuilt Intel package for them they come from there (MacPorts is
+installed on demand, only when something needs it, and its tools are last on PATH so Homebrew and mise win),
+the rest is skipped with a message instead of being compiled. `--no-macports` turns the fallback off. Ruby has no prebuilt Intel
 build either and is compiled once.
 
 ## Secrets from Bitwarden

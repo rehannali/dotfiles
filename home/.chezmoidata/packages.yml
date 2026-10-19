@@ -10,6 +10,9 @@
 #   mise        mise tool id: registry short name, or backend:owner/repo
 #   brew        Homebrew formula (tap formulae fully qualified)
 #   apt         Debian/Ubuntu package
+#   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
+#               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
+#               packages.macports.org; a tool without it is skipped on an Intel Mac as before.
 #   brew_args   Brewfile options for the formula (used by `brew bundle`, i.e. Apple Silicon)
 #   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
 #               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
@@ -25,7 +28,7 @@
 #
 #                  cli (+ apple with a mise key)   system / apple
 #   Apple Silicon  brew                            brew
-#   Intel Mac      mise                            brew, only if a bottle exists
+#   Intel Mac      mise                            brew, only if a bottle exists, else MacPorts (if `port` is set)
 #   Linux          mise                            apt
 #
 # A tool is never installed by two managers on one machine. Casks, mas apps and gems
@@ -73,7 +76,7 @@ packages:
     - {name: act, kind: cli, mise: act, brew: act}
     - {name: atuin, kind: cli, mise: atuin, mise_intel: "cargo:atuin", brew: atuin, apt: atuin}
     - {name: bat, kind: cli, mise: bat, brew: bat, apt: bat}
-    - {name: btop, kind: cli, mise: btop, mise_intel: false, brew: btop, apt: btop}
+    - {name: btop, kind: cli, mise: btop, mise_intel: false, brew: btop, port: btop, apt: btop}
     - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, bin: bw}
     - {name: chezmoi, kind: cli, mise: chezmoi, brew: chezmoi}
     - {name: cmake, kind: cli, mise: cmake, brew: cmake, apt: cmake}
@@ -100,47 +103,47 @@ packages:
 
     # --- system: libraries, daemons and big apps. brew (Apple Silicon; Intel only with a bottle) / apt.
     - {name: ansible, kind: system, brew: ansible, apt: ansible, bin: ansible}
-    - {name: aria2, kind: system, brew: aria2, apt: aria2, bin: aria2c}
+    - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}
     - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
     - {name: automake, kind: system, brew: automake, apt: automake, bin: automake}
     - {name: build-essential, kind: system, apt: build-essential}
-    - {name: coreutils, kind: system, brew: coreutils}
+    - {name: coreutils, kind: system, brew: coreutils, port: coreutils}
     - {name: curl, kind: system, apt: curl, bin: curl}
-    - {name: ffmpeg, kind: system, brew: ffmpeg, apt: ffmpeg, bin: ffmpeg}
-    - {name: gcc, kind: system, brew: gcc}   # apt: comes with build-essential
-    - {name: ghostscript, kind: system, brew: ghostscript, apt: ghostscript, bin: gs}
+    - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, apt: ffmpeg, bin: ffmpeg}
+    - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
+    - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, apt: ghostscript, bin: gs}
     - {name: git, kind: system, brew: git, bin: git}   # apt: comes with git-flow (and bootstrap.sh installs it first)
     - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
     - {name: graphicsmagick, kind: system, brew: graphicsmagick, apt: graphicsmagick, bin: gm}
     # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
     - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
-    - {name: htop, kind: system, brew: htop, apt: htop, bin: htop}
-    - {name: imagemagick, kind: system, brew: imagemagick, apt: imagemagick, bin: convert}
+    - {name: htop, kind: system, brew: htop, port: htop, apt: htop, bin: htop}
+    - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, apt: imagemagick, bin: convert}
     - {name: libheif, kind: system, apt: libheif-dev}   # brew: comes with imagemagick and graphicsmagick (their apt packages only need the runtime library)
-    - {name: libksba, kind: system, brew: libksba, apt: libksba-dev}
+    - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}
     - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
-    - {name: nginx, kind: system, brew: nginx, apt: nginx, brew_args: 'restart_service: :changed'}
-    - {name: nmap, kind: system, brew: nmap, apt: nmap, bin: nmap}
-    - {name: openconnect, kind: system, brew: openconnect, apt: openconnect, bin: openconnect}
-    - {name: openssl, kind: system, brew: openssl@3, apt: libssl-dev}
+    - {name: nginx, kind: system, brew: nginx, port: nginx, apt: nginx, brew_args: 'restart_service: :changed'}
+    - {name: nmap, kind: system, brew: nmap, port: nmap, apt: nmap, bin: nmap}
+    - {name: openconnect, kind: system, brew: openconnect, port: openconnect, apt: openconnect, bin: openconnect}
+    - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
     - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
-    - {name: pkgconf, kind: system, brew: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
-    - {name: pwgen, kind: system, brew: pwgen, apt: pwgen, bin: pwgen}
-    - {name: rsync, kind: system, brew: rsync, apt: rsync, bin: rsync}
+    - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
+    - {name: pwgen, kind: system, brew: pwgen, port: pwgen, apt: pwgen, bin: pwgen}
+    - {name: rsync, kind: system, brew: rsync, port: rsync, apt: rsync, bin: rsync}
     - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
     - {name: stow, kind: system, brew: stow, apt: stow, bin: stow}
-    - {name: subversion, kind: system, brew: subversion, apt: subversion, bin: svn}
+    - {name: subversion, kind: system, brew: subversion, port: subversion, apt: subversion, bin: svn}
     - {name: telnet, kind: system, brew: telnet, apt: telnet, bin: telnet}
     - {name: thefuck, kind: system, brew: thefuck, bin: thefuck}
-    - {name: unbound, kind: system, brew: unbound, apt: unbound}
+    - {name: unbound, kind: system, brew: unbound, port: unbound, apt: unbound}
     - {name: unzip, kind: system, apt: unzip, bin: unzip}
     # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
     # - {name: xz-utils, kind: system, apt: xz-utils}   # comes with build-essential (through dpkg-dev)
     - {name: zip, kind: system, apt: zip}
     - {name: file, kind: system, apt: file}
-    - {name: wireguard-tools, kind: system, brew: wireguard-tools, apt: wireguard-tools, bin: wg}
-    - {name: zlib, kind: system, brew: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
-    - {name: zsh, kind: system, brew: zsh, apt: zsh, bin: zsh}
+    - {name: wireguard-tools, kind: system, brew: wireguard-tools, port: wireguard-tools, apt: wireguard-tools, bin: wg}
+    - {name: zlib, kind: system, brew: zlib, port: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
+    - {name: zsh, kind: system, brew: zsh, port: zsh, apt: zsh, bin: zsh}
 
     # --- apple: Apple-developer tools, macOS only.
     - {name: carthage, kind: apple, brew: carthage}

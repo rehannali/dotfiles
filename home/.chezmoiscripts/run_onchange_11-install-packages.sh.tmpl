@@ -211,16 +211,28 @@ installed=""
 built=""
 skipped=""
 failed=""
-for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t" .name .prebuilt .source | quote }} {{ end }}; do
-  formula="${entry%%|*}"
-  flags="${entry#*|}"
-  prebuilt="${flags%|*}"
-  source_ok="${flags#*|}"
+# MacPorts is the fallback for a formula Homebrew has no bottle for (a `port` in packages.yml), so nothing is compiled.
+#   DOTFILES_MACPORTS=install (default) | skip
+macports_mode="${DOTFILES_MACPORTS:-install}"
+ported=""
+port_wanted=""
+for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s" .name .prebuilt .source .port | quote }} {{ end }}; do
+  IFS='|' read -r formula prebuilt source_ok port <<< "$entry"   # herestring, not a pipe: the loop's variables must survive
   if brew list --formula "$formula" > /dev/null 2>&1; then continue; fi   # installed: leave it alone
+  if [ -n "$port" ] && [ -x /opt/local/bin/port ]; then
+    port_state="$(/opt/local/bin/port installed "$port" 2> /dev/null || true)"
+    if [[ "$port_state" == *"(active)"* ]]; then continue; fi   # installed from MacPorts on an earlier run
+  fi
 
   # source_ok: mise has no Intel build of this tool (mise_intel: false), so Homebrew is the only way to get
   # it and it is installed even when that means compiling (slow, 2 jobs); everything else is bottle-only.
   missing="$(unbottled "$formula" "$prebuilt")"
+  if [ -n "${missing# }" ] && [ -n "$port" ] && [ "$macports_mode" = install ]; then
+    # no usable Homebrew bottle (also for tools that would otherwise compile from source): a MacPorts binary instead
+    info "$formula has no Intel bottle (missing:$missing): using MacPorts port $port"
+    port_wanted="$port_wanted $port"
+    continue
+  fi
   if [ "$source_ok" = true ]; then
     if [ -n "${missing# }" ]; then
       info "$formula has no Intel bottle (missing:$missing): building from source, this takes a while"
@@ -242,6 +254,19 @@ for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t" .name .prebuilt .source 
   fi
 done
 
+# MacPorts: binary archives only (-b), one port at a time so one that has none does not stop the others
+if [ -n "${port_wanted# }" ]; then
+  if ensure_macports; then
+    for port in $port_wanted; do
+      if run sudo /opt/local/bin/port -N -b install "$port"; then ported="$ported $port"; else failed="$failed port:$port"; fi
+    done
+  else
+    skipped="$skipped
+  - $port_wanted  (MacPorts could not be installed, see above)"
+  fi
+fi
+
+[ -z "$ported" ] || info "Installed from MacPorts:$ported"
 [ -z "$installed" ] || info "Installed:$installed"
 [ -z "$built" ] || info "Built from source (no Intel bottle):$built"
 if [ -n "$skipped" ]; then

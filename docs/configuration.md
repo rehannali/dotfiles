@@ -44,6 +44,7 @@ Not stored anywhere, they only affect the run they are set for.
 | `DOTFILES_FLUTTER=skip` | `--no-flutter` | don't install the Flutter SDK with fvm |
 | `DOTFILES_CASKS=check` or `skip` | `--no-casks` (check) | `check`: only verify that each cask can be installed on this Mac, install none. `skip`: don't look at casks. Default is `install` |
 | `DOTFILES_MAS=skip` | `--no-appstore` | no Mac App Store apps and no `mas upgrade` |
+| `DOTFILES_MACPORTS=skip` | `--no-macports` | Intel Mac: a tool Homebrew has no bottle for is skipped instead of coming from MacPorts |
 | `DOTFILES_DEFAULTS=skip` | `--no-defaults` | leave the Dock, Finder and trackpad preferences alone (`settings.macos.defaults = false` does it for good) |
 | `DOTFILES_CHSH=skip` | `--no-chsh` | don't make zsh the login shell (that step runs `sudo chsh`) |
 | `DOTFILES_CHEZMOI_VERSION` | | chezmoi release tag to download, for example `v2.73.2`; default is the latest |
@@ -161,6 +162,7 @@ isn't available from that manager.
 | `kind` | `cli`: a single-binary tool mise can install; `system`: libraries, daemons, big apps (Homebrew or apt); `apple`: Apple developer tools, macOS only and not in the `cli` profile |
 | `mise`, `brew`, `apt` | the package name for that manager |
 | `bin` | the command the tool provides, when it differs from `name` (the CI check looks for it) |
+| `port` | MacPorts port, used on Intel Macs only, when Homebrew has no bottle for the tool (also instead of compiling a `mise_intel: false` tool). Set it only if `packages.macports.org/<port>/` has a `darwin_25.x86_64` archive |
 | `brew_args` | options for the Brewfile line, for example `restart_service: :changed` |
 | `mise_intel` | tool has no Intel Mac build in mise. A mise id (`"cargo:atuin"`) means Intel installs that instead, `false` means Intel uses Homebrew |
 | `prebuilt` | a tap formula that downloads a ready-made binary (so there is no bottle to look for) |
@@ -246,7 +248,7 @@ example because `packages.yml` changed).
 | `run_once_before_01-pre-setup` | once | macOS: Rosetta (Apple Silicon), Homebrew, `mas`, `aria2` and `xcodes` (from Homebrew on Apple Silicon, from mise on Intel), then Xcode; not in the `cli` profile for the GUI parts |
 | `run_onchange_before_05-install-apt-packages` | on change | Linux: `apt-get install` of the `apt` list |
 | `run_once_before_10-install-omz` | once | oh-my-zsh |
-| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only |
+| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only, and MacPorts binaries (`port install -b`, installed on demand) for those without a bottle |
 | `run_onchange_after_10-configure-defaults` | on change | macOS: Dock, Finder, trackpad preferences |
 | `run_onchange_after_12-install-mise-tools` | on change | installs mise if needed, then the runtimes and CLI tools |
 | `run_onchange_after_13-install-ruby-gems` | on change | macOS, `full` profile: fastlane and cocoapods into mise's Ruby |
