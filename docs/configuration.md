@@ -84,6 +84,7 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
 | `settings.macos.defaults` | `true` | `false` leaves the Dock, Finder and trackpad preferences alone |
+| `settings.macos.touch_id_sudo` | `true` | macOS 14+ with a Touch ID sensor: `sudo` asks for your fingerprint. Writes `auth sufficient pam_tid.so` to `/etc/pam.d/sudo_local` (survives macOS updates), keeps whatever else is in that file, adds `pam_reattach` for tmux when `brew install pam-reattach` was done. `false` leaves sudo alone; remove it again with `sudo rm /etc/pam.d/sudo_local` |
 | `settings.macos.cask_appdir` | `~/Applications` | where casks with an `appdir` in `packages.yml` install their app. `/Applications` puts every app in one place. Only applies to casks installed from now on: move or reinstall the ones already there |
 | `settings.macos.dock.orientation`, `.tile_size`, `.autohide`, `.show_recents` | `left`, `42`, `true`, `false` | the Dock preferences |
 | `settings.shell.env` | the two Python variables | extra environment variables for every zsh (`~/.zshenv`), a map `NAME: value`; values may use `$HOME` |
@@ -250,8 +251,9 @@ example because `packages.yml` changed).
 | `run_once_before_01-pre-setup` | once | macOS: Rosetta (Apple Silicon), Homebrew, `mas`, `aria2` and `xcodes` (from Homebrew on Apple Silicon, from mise on Intel), then Xcode; not in the `cli` profile for the GUI parts |
 | `run_onchange_before_05-install-apt-packages` | on change | Linux: `apt-get install` of the `apt` list |
 | `run_once_before_10-install-omz` | once | oh-my-zsh |
-| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only, and MacPorts binaries (`port install -b`, installed on demand) for those without a bottle |
+| `run_onchange_11-install-packages` | on change | macOS: taps and trust, then the Brewfile (formulae on Apple Silicon, casks, App Store apps); on Intel formulae one by one, bottle only, and MacPorts binaries (`port install -b`, installed on demand) for those without a bottle (a port without a binary archive for this macOS is reported and left out, never compiled). On Intel it also takes over `/usr/local` directories brew finds not writable, and every cask the bundle left out is installed once more on its own, with its `appdir` |
 | `run_onchange_after_10-configure-defaults` | on change | macOS: Dock, Finder, trackpad preferences |
+| `run_onchange_after_15-touch-id-sudo` | on change | macOS 14+ with Touch ID: fingerprint for `sudo` (`/etc/pam.d/sudo_local`) |
 | `run_onchange_after_12-install-mise-tools` | on change | installs mise if needed, then the runtimes and CLI tools |
 | `run_onchange_after_13-install-ruby-gems` | on change | macOS, `full` profile: fastlane and cocoapods into mise's Ruby |
 | `run_onchange_after_14-install-flutter` | on change | macOS and Linux, `full` profile: Flutter with fvm (skipped when `settings.flutter.version` is empty) |

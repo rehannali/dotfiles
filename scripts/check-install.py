@@ -351,6 +351,13 @@ def check_apps():
     return len(execs)
 
 
+def bare_app_name(name):
+    """'simpholders_3_0_12.app' and 'SimPholders.app' both give 'simpholders'."""
+    name = re.sub(r"\.app$", "", name, flags=re.I)
+    name = re.sub(r"[ _-]?v?\d+([._-]\d+)*$", "", name)
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
 def check_casks(source):
     """Casks from packages.yml: installed, and the .app really sits where the cask was told to put it."""
     if SYSTEM != "Darwin" or os.environ.get("DOTFILES_CASKS", "install") != "install" \
@@ -378,28 +385,38 @@ def check_casks(source):
         name = c["name"]
         token = name.rsplit("/", 1)[-1]
         appdir = cask_appdir if "appdir" in c.get("args_str", "") else "/Applications"
+        rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
+        meta = {}
+        try:
+            meta = json.loads(info)["casks"][0]
+        except (ValueError, KeyError, IndexError):
+            pass
+        # a cask that was renamed (qlvideo -> quicklook-video) is installed under its new token
+        token = meta.get("token") or token
         if token not in installed:
             add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
             rows.append((WARN, name, "-", "not installed"))
             continue
-        rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
         apps = []
-        try:
-            for art in json.loads(info)["casks"][0].get("artifacts", []):
-                if isinstance(art, dict) and art.get("app"):
-                    # ["Source.app", {"target": "Name.app"}]: the app is installed under its target name
-                    names = [a for a in art["app"] if isinstance(a, str)]
-                    targets = [a["target"] for a in art["app"] if isinstance(a, dict) and a.get("target")]
-                    apps += targets or names
-        except (ValueError, KeyError, IndexError):
-            pass
+        for art in meta.get("artifacts", []):
+            if isinstance(art, dict) and art.get("app"):
+                # ["Source.app", {"target": "Name.app"}]: the app is installed under its target name
+                names = [a for a in art["app"] if isinstance(a, str)]
+                targets = [a["target"] for a in art["app"] if isinstance(a, dict) and a.get("target")]
+                apps += targets or names
         if not apps:
             rows.append((OK, name, "-", "installed (no .app: font, pkg or binary)"))
             continue
         for app in apps:
             app = os.path.basename(app)
-            where = [d for d in dict.fromkeys(("/Applications", os.path.join(HOME, "Applications"), cask_appdir))
-                     if os.path.exists(os.path.join(d, app))]
+            dirs = list(dict.fromkeys(("/Applications", os.path.join(HOME, "Applications"), cask_appdir)))
+            where = [d for d in dirs if os.path.exists(os.path.join(d, app))]
+            if not where:
+                # the file name may carry a version (simpholders_3_0_12.app) that the installed app does not: compare
+                # the names without version numbers, case and separators
+                want = bare_app_name(app)
+                where = [d for d in dirs if os.path.isdir(d)
+                         and any(bare_app_name(f) == want for f in os.listdir(d))]
             if not where:
                 add(FAIL, "casks", name, "installed but %s is neither in /Applications nor in ~/Applications" % app)
                 rows.append((FAIL, name, "-", "%s missing" % app))

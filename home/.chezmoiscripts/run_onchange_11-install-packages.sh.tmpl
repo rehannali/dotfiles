@@ -18,6 +18,29 @@ info "chezmoi: Apple Silicon - CLI tools, system packages{{ if ne $profile "cli"
 info "chezmoi: Intel Mac - casks and App Store apps via Homebrew; formulae only when a bottle exists (CLI tools come from mise)"
 {{- end }}
 
+{{ if not $appleSilicon -}}
+# Intel: brew needs some directories of /usr/local (lib/pkgconfig, share/man/man8, ...) to belong to you, and on a Mac that
+# had /usr/local before Homebrew they belong to root. bootstrap.sh fixes that; this asks Homebrew itself which ones
+# are still wrong, so it also holds when only `chezmoi apply` runs.
+unwritable="$(brew ruby -e 'puts Keg.must_be_writable_directories.select { |d| d.exist? && !d.writable? }' 2> /dev/null < /dev/null || true)"
+if [ -n "$unwritable" ]; then
+  info "Homebrew directories that are not writable by $(id -un), taking them over:"
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    info "  $dir"
+    if sudo chown "$(id -un):admin" "$dir"; then
+      sudo chmod u+rwx,g+rwx "$dir" || true
+    else
+      error "Could not take over $dir: run  sudo chown $(id -un):admin $dir  (brew warns about it otherwise)."
+    fi
+  done <<< "$unwritable"
+fi
+{{ end -}}
+{{ if ne $profile "cli" -}}
+# casks with an appdir put their app there; make sure the directory exists
+mkdir -p "{{ $appdir | replace "~" "$HOME" }}"
+
+{{ end -}}
 # Refresh the formula index on purpose. Never `brew upgrade`: on Intel (Tier 3) it can compile from source.
 run brew update || error "brew update failed; continuing with the cached formula index."
 
@@ -133,15 +156,25 @@ if brew_has_trust; then
   brew trust < /dev/null 2>&1 || true
 fi
 
-# A cask from a tap that is still not installed after the bundle: `brew install --cask tap/repo/name` trusts exactly that
-# cask by itself (docs.brew.sh/Tap-Trust), so try that once more.
-retry_tap_casks() {
-  local full
-  while read -r full; do
+# A cask that is in the Brewfile but still not installed after the bundle: one failing cask (a tap that was not trusted, an
+# installer that stopped) must not take the others with it, and `brew bundle` can skip the rest of a batch. So every cask
+# that is missing is installed once more on its own, with its appdir. (`brew install --cask tap/repo/name` also trusts
+# exactly that cask by itself, docs.brew.sh/Tap-Trust.)
+retry_missing_casks() {
+  local full dir
+  while IFS='|' read -r full dir; do
+    [ -n "$full" ] || continue
     brew list --cask "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
-    info "$full is not installed after the bundle, installing it by its full name"
-    run brew install --cask "$full" || error "$full could not be installed."
-  done < <(awk '$1=="cask" && $2 ~ /^"[^\/"]+\/[^\/"]+\/[^\/"]+"/ { gsub(/[",]/,"",$2); print $2 }' "$BREWFILE")
+    dir="${dir/#\~/$HOME}"
+    info "$full is not installed after the bundle, installing it on its own${dir:+ (appdir $dir)}"
+    if [ -n "$dir" ]; then
+      run brew install --cask "--appdir=$dir" "$full" || error "$full could not be installed."
+    else
+      run brew install --cask "$full" || error "$full could not be installed."
+    fi
+  done < <(awk '$1=="cask" { name=$2; gsub(/[",]/,"",name); dir=""
+                 if (match($0, /appdir: *"[^"]*"/)) { dir=substr($0, RSTART, RLENGTH); sub(/^appdir: *"/,"",dir); sub(/"$/,"",dir) }
+                 print name "|" dir }' "$BREWFILE")
 }
 
 if command -v python3 > /dev/null 2>&1; then
@@ -201,7 +234,7 @@ fi
 {{ if $appleSilicon -}}
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_tap_casks
+retry_missing_casks
 if [ "$bundle_status" -ne 0 ]; then
   # not fatal: one cask that fails must not stop chezmoi from running the scripts after this one (mise tools, gems,
   # Flutter, shell). Run `brew bundle` again, or install the cask by hand, once the cause is fixed.
@@ -211,7 +244,7 @@ fi
 # Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_tap_casks
+retry_missing_casks
 
 # Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
@@ -250,6 +283,7 @@ failed=""
 #   DOTFILES_MACPORTS=install (default) | skip
 macports_mode="${DOTFILES_MACPORTS:-install}"
 ported=""
+port_failed=""
 port_wanted=""
 for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s" .name .prebuilt .source .port | quote }} {{ end }}; do
   IFS='|' read -r formula prebuilt source_ok port <<< "$entry"   # herestring, not a pipe: the loop's variables must survive
@@ -293,7 +327,7 @@ done
 if [ -n "${port_wanted# }" ]; then
   if ensure_macports; then
     for port in $port_wanted; do
-      if run sudo /opt/local/bin/port -N -b install "$port"; then ported="$ported $port"; else failed="$failed port:$port"; fi
+      if run sudo /opt/local/bin/port -N -b install "$port"; then ported="$ported $port"; else port_failed="$port_failed $port"; fi
     done
   else
     skipped="$skipped
@@ -302,6 +336,11 @@ if [ -n "${port_wanted# }" ]; then
 fi
 
 [ -z "$ported" ] || info "Installed from MacPorts:$ported"
+if [ -n "$port_failed" ]; then
+  # most often "Failed to archivefetch ...: 404": MacPorts has not built a binary of that port for this macOS yet
+  error "Not installed from MacPorts (no binary archive for this macOS, or the install failed, see above):$port_failed"
+  info "Nothing was compiled. Try again later, use what macOS ships, or build on purpose:  sudo port install <port>"
+fi
 [ -z "$installed" ] || info "Installed:$installed"
 [ -z "$built" ] || info "Built from source (no Intel bottle):$built"
 if [ -n "$skipped" ]; then

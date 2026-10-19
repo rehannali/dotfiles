@@ -38,6 +38,9 @@ settings:
     # Where the casks that ask for an appdir in packages.yml (most apps) install their .app. "~/Applications" keeps them
     # out of /Applications; "/Applications" puts every app in one place. Casks without an appdir always use /Applications.
     cask_appdir: ~/Applications
+    # Touch ID for sudo, on a Mac that has a sensor and macOS 14 or newer: /etc/pam.d/sudo_local gets `auth sufficient
+    # pam_tid.so` (it survives macOS updates, unlike /etc/pam.d/sudo). false leaves sudo alone.
+    touch_id_sudo: true
     dock:
       orientation: left        # left | bottom | right
       tile_size: 42

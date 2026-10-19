@@ -92,25 +92,35 @@ case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the R
 # `brew update` fetches the formula index (it comes from the API, nothing else is cloned).
 # BREW_PREFIX (default /usr/local) and BREW_GROUP (default admin) are only changed by a test.
 
-# /usr/local usually exists already, and some of what brew writes into is owned by root (lib/pkgconfig, share/man/man8,
-# ...): brew then fails with "directories not writable by your user". This is brew's own list
-# (Keg.must_be_writable_directories and must_exist_subdirectories); it makes each one exist and belong to you.
-# Runs every time, also when brew is already installed.
+# Homebrew's own installer prepares /usr/local like this, and the manual install has to end up the same: every
+# directory brew writes into exists, belongs to you and the admin group, and is group-writable (the directories zsh
+# reads completions from stay 755: group-writable ones make compinit complain about insecure directories). On a Mac
+# that had /usr/local before Homebrew, some of these (lib/pkgconfig, share/man/man8, ...) belong to root and brew then
+# warns "directories not writable by your user". The list is install.sh's plus brew's own
+# (Keg.must_be_writable_directories and must_exist_subdirectories). Runs every time, also when brew is already installed.
+dir_group() { stat -f %Sg "$1" 2> /dev/null || stat -c %G "$1"; }   # macOS, then GNU stat
+
 brew_fix_intel_dirs() {
-  local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir
+  local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir target
   me="$(id -un)"
-  for dir in bin etc etc/bash_completion.d include lib lib/cps lib/pkgconfig sbin opt Cellar Caskroom Frameworks Homebrew \
+  for dir in bin etc etc/bash_completion.d include lib lib/cps lib/pkgconfig sbin opt Cellar Caskroom Frameworks \
       share share/aclocal share/doc share/info share/locale share/man share/man/man1 share/man/man2 share/man/man3 \
       share/man/man4 share/man/man5 share/man/man6 share/man/man7 share/man/man8 share/cps share/zsh \
       share/zsh/site-functions share/fish share/fish/vendor_completions.d share/fish/vendor_functions.d share/pwsh \
       share/pwsh/completions var var/log var/homebrew var/homebrew/linked var/homebrew/locks; do
-    [ -d "$prefix/$dir" ] || as_root mkdir -p "$prefix/$dir"
-    [ -w "$prefix/$dir" ] || as_root chown "$me:$group" "$prefix/$dir"
-    as_root chmod g+rwx "$prefix/$dir"
+    target="$prefix/$dir"
+    [ -d "$target" ] || as_root mkdir -p "$target"
+    [ -O "$target" ] || as_root chown "$me" "$target"
+    [ "$(dir_group "$target")" = "$group" ] || as_root chgrp "$group" "$target"
+    case "$dir" in
+      share/zsh | share/zsh/site-functions) as_root chmod 755 "$target" ;;
+      *) as_root chmod u+rwx,g+rwx "$target" ;;
+    esac
   done
-  # Python packages brew installs go into lib/pythonX.Y/site-packages
-  for dir in "$prefix"/lib/python*/site-packages; do
-    [ ! -d "$dir" ] || [ -w "$dir" ] || as_root chown "$me:$group" "$dir"
+  # the checkout of Homebrew/brew itself, and the Python packages brew installs (lib/pythonX.Y/site-packages)
+  for target in "$prefix/Homebrew" "$prefix"/lib/python*/site-packages; do
+    [ -d "$target" ] || continue
+    { [ -O "$target" ] && [ "$(dir_group "$target")" = "$group" ]; } || as_root chown -R "$me:$group" "$target"
   done
 }
 
@@ -119,6 +129,9 @@ brew_install_intel() {
   command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
   brew_fix_intel_dirs
   if [ ! -d "$prefix/Homebrew/.git" ]; then
+    # /usr/local belongs to root: the checkout's directory is made (and handed over) with sudo, like the installer does
+    as_root mkdir -p "$prefix/Homebrew"
+    as_root chown -R "$(id -un):${BREW_GROUP:-admin}" "$prefix/Homebrew"
     git clone --quiet https://github.com/Homebrew/brew "$prefix/Homebrew" \
       || die "Could not download Homebrew from github.com/Homebrew/brew"
   fi
