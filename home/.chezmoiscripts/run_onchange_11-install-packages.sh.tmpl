@@ -183,6 +183,14 @@ if [ "$cask_mode" != install ]; then
   info "DOTFILES_CASKS=$cask_mode: no casks are installed in this run."
   awk '$1!="cask"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
 fi
+# DOTFILES_SKIP_CASKS="netbird-ui other-cask": leave single casks out of this run (space separated, short names). For one
+# that does not suit this machine, or one whose installer needs something a CI runner cannot give (netbird-ui starts a
+# system service with sudo and stalls there).
+for skip_cask in ${DOTFILES_SKIP_CASKS:-}; do
+  info "DOTFILES_SKIP_CASKS: not installing the cask $skip_cask in this run."
+  awk -v c="$skip_cask" '{ t=$2; gsub(/[",]/,"",t); if ($1=="cask" && (t==c || t ~ ("/" c "$"))) next; print }' \
+    "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"
+done
 if [ "$mas_mode" = skip ]; then
   info "DOTFILES_MAS=skip: no App Store apps are installed in this run."
   awk '$1!="mas"' "$BREWFILE" > "$BREWFILE.new" && mv "$BREWFILE.new" "$BREWFILE"

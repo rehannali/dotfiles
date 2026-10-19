@@ -14,6 +14,7 @@ Actions, dotfiles, Run workflow (or `gh workflow run dotfiles.yml -f key=value`)
 | `casks` | `install` | `install` really installs them, `check` only verifies they can be installed, `skip` |
 | `xcode` | `skip` | `install` really installs Xcode with xcodes, see below |
 | `xcode_version` | empty | which Xcode; empty means the newest the runner can run |
+| `skip_casks` | `netbird-ui` | casks to leave out, space separated (netbird-ui starts a system service with sudo and stalls on a runner) |
 | `runtime` | `skip` | `install` also downloads the iOS simulator runtime (several GB) |
 
 Pull requests and pushes never install Xcode and never see the Apple secrets.

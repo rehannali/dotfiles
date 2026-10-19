@@ -33,6 +33,10 @@ on:
         description: "Xcode to install, empty = newest this Mac can run. Pick one the runner image doesn't already have, or nothing gets downloaded"
         type: string
         default: ""
+      skip_casks:
+        description: "macOS: casks to leave out, space separated. netbird-ui starts a system service with sudo and stalls on a runner"
+        type: string
+        default: netbird-ui
       runtime:
         description: "macOS: also install the iOS simulator runtime (a multi-GB download)"
         type: choice
@@ -119,6 +123,7 @@ jobs:
       DOTFILES_RUNTIME: ${{ inputs.runtime == 'install' && 'install' || 'skip' }}
       FASTLANE_SESSION: ${{ inputs.xcode == 'install' && secrets.FASTLANE_SESSION || '' }}
       DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
+      DOTFILES_SKIP_CASKS: ${{ inputs.skip_casks }}
       DOTFILES_SOURCE: ${{ github.workspace }}
       DOTFILES_CHEZMOI_ARGS: --verbose
       # mise resolves GitHub releases through the API; an authenticated token avoids anonymous rate limits.
