@@ -84,6 +84,7 @@ Defaults are in `home/.chezmoidata/settings.yml`. To change one on one machine, 
 | `settings.apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `settings.locale` | `en_US.UTF-8` | `LANG` |
 | `settings.macos.defaults` | `true` | `false` leaves the Dock, Finder and trackpad preferences alone |
+| `settings.macos.cask_appdir` | `~/Applications` | where casks with an `appdir` in `packages.yml` install their app. `/Applications` puts every app in one place. Only applies to casks installed from now on: move or reinstall the ones already there |
 | `settings.macos.dock.orientation`, `.tile_size`, `.autohide`, `.show_recents` | `left`, `42`, `true`, `false` | the Dock preferences |
 | `settings.shell.env` | the two Python variables | extra environment variables for every zsh (`~/.zshenv`), a map `NAME: value`; values may use `$HOME` |
 | `settings.shell.path` | empty | extra directories in front of `PATH`, first entry wins, for example `["$HOME/go/bin"]` |

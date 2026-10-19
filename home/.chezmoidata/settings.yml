@@ -35,6 +35,9 @@ settings:
 
   macos:
     defaults: true             # false: don't touch the Dock, Finder and trackpad settings (same as DOTFILES_DEFAULTS=skip)
+    # Where the casks that ask for an appdir in packages.yml (most apps) install their .app. "~/Applications" keeps them
+    # out of /Applications; "/Applications" puts every app in one place. Casks without an appdir always use /Applications.
+    cask_appdir: ~/Applications
     dock:
       orientation: left        # left | bottom | right
       tile_size: 42

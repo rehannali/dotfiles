@@ -367,13 +367,17 @@ def check_casks(source):
         add(FAIL, "casks", "list", out.strip()[:300])
         return []
     wanted = json.loads(out)
+    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
+        "execute-template", '{{ dig "settings" "macos" "cask_appdir" "~/Applications" . }}'], timeout=60)
+    cask_appdir = out.strip() if rc == 0 and out.strip() else "~/Applications"
+    cask_appdir = os.path.expanduser(cask_appdir)
     rc, out = run([brew, "list", "--cask"], timeout=120)
     installed = set(out.split()) if rc == 0 else set()
     rows = []
     for c in wanted:
         name = c["name"]
         token = name.rsplit("/", 1)[-1]
-        appdir = os.path.join(HOME, "Applications") if "appdir" in c.get("args_str", "") else "/Applications"
+        appdir = cask_appdir if "appdir" in c.get("args_str", "") else "/Applications"
         if token not in installed:
             add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
             rows.append((WARN, name, "-", "not installed"))
@@ -383,7 +387,10 @@ def check_casks(source):
         try:
             for art in json.loads(info)["casks"][0].get("artifacts", []):
                 if isinstance(art, dict) and art.get("app"):
-                    apps += [a for a in art["app"] if isinstance(a, str)]
+                    # ["Source.app", {"target": "Name.app"}]: the app is installed under its target name
+                    names = [a for a in art["app"] if isinstance(a, str)]
+                    targets = [a["target"] for a in art["app"] if isinstance(a, dict) and a.get("target")]
+                    apps += targets or names
         except (ValueError, KeyError, IndexError):
             pass
         if not apps:
@@ -391,11 +398,12 @@ def check_casks(source):
             continue
         for app in apps:
             app = os.path.basename(app)
-            where = [d for d in ("/Applications", os.path.join(HOME, "Applications")) if os.path.exists(os.path.join(d, app))]
+            where = [d for d in dict.fromkeys(("/Applications", os.path.join(HOME, "Applications"), cask_appdir))
+                     if os.path.exists(os.path.join(d, app))]
             if not where:
                 add(FAIL, "casks", name, "installed but %s is neither in /Applications nor in ~/Applications" % app)
                 rows.append((FAIL, name, "-", "%s missing" % app))
-            elif appdir not in where:
+            elif os.path.realpath(appdir) not in [os.path.realpath(d) for d in where]:
                 add(WARN, "casks", name, "%s is in %s, not in %s" % (app, where[0], appdir))
                 rows.append((WARN, name, where[0], "%s not in the appdir" % app))
             else:

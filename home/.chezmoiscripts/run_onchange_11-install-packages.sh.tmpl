@@ -2,6 +2,8 @@
 {{- $plan := includeTemplate "tool-plan" . | fromJson -}}
 {{- $appleSilicon := eq .chezmoi.arch "arm64" -}}
 {{- $profile := (index . "profile") | default "full" -}}
+{{- /* where casks with an appdir go (settings.macos.cask_appdir, "~/Applications" unless set) */ -}}
+{{- $appdir := dig "settings" "macos" "cask_appdir" "~/Applications" . -}}
 #!/usr/bin/env bash
 # Homebrew packages for macOS/{{ .chezmoi.arch }}. What brew installs here is decided by home/.chezmoitemplates/tool-plan.
 # Written for macOS's stock bash 3.2: no empty-array expansion under `set -u`, no heredocs inside $(...).
@@ -29,14 +31,14 @@ brew {{ .name | quote }}{{ if .args }}, {{ .args }}{{ end }}
 {{ end -}}
 {{- if ne $profile "cli" -}}
 {{- range .packages.darwin.casks }}
-cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str | replace "~/Applications" $appdir }}{{ end }}
 {{- end }}
 {{ range .packages.darwin.mas -}}
 mas {{ .name | quote }}, id: {{ .id }}
 {{ end -}}
 {{- if $appleSilicon -}}
 {{- range .packages.darwin_arm.casks }}
-cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str }}{{ end }}
+cask {{ .name | quote }}{{ if hasKey . "args_str" }}, {{ .args_str | replace "~/Applications" $appdir }}{{ end }}
 {{- end }}
 {{ end -}}
 {{- end -}}

@@ -212,6 +212,10 @@ settings_check "shell env default" linux "{$LINUX}" home/dot_zshenv.tmpl 'export
 settings_check "shell env and path custom" linux "{$LINUX,\"settings\":{\"shell\":{\"env\":{\"EDITOR\":\"nvim\"},\"path\":[\"\$HOME/a\",\"\$HOME/b\"]}}}" home/dot_zshenv.tmpl 'export EDITOR="nvim"'
 settings_check "npm globals from packages.yml" linux "{$LINUX}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g "firebase-tools"'
 settings_check "npm globals empty" linux "{$LINUX,\"packages\":{\"npm\":[]}}" home/.chezmoiscripts/run_once_after_30-setup-additional.sh.tmpl 'npm i -g' absent
+PKGS=home/.chezmoiscripts/run_onchange_11-install-packages.sh.tmpl
+settings_check "cask appdir default" darwin "{$DARWIN}" $PKGS 'cask "alfred", args: { appdir: "~/Applications" }'
+settings_check "cask appdir custom" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'cask "alfred", args: { appdir: "/Applications" }'
+settings_check "cask appdir custom leaves no ~/Applications" darwin "{$DARWIN,\"settings\":{\"macos\":{\"cask_appdir\":\"/Applications\"}}}" $PKGS 'appdir: "~/Applications"' absent
 echo "  settings are honoured (wezterm domain, dock, shell env/path, npm globals)"
 
 # Secrets from Bitwarden: render the template with a stand-in `bw`; with Bitwarden off nothing may be rendered.
