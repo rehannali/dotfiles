@@ -139,6 +139,7 @@ import json, sys
 target, plan, tools = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
 for t in tools:
     assert not t.get("port") or t.get("brew"), f"{t['name']}: port is only a fallback for a brew formula"
+    assert not t.get("mise_fallback") or t.get("brew"), f"{t['name']}: mise_fallback is only a fallback for a brew formula"
     names = {"mise": [t.get("mise"), t.get("mise_intel") if isinstance(t.get("mise_intel"), str) else None],
              "brew": [t.get("brew")], "apt": [t.get("apt")]}
     hits = []
@@ -155,6 +156,7 @@ for t in tools:
 for e in plan["expect"]:
     assert e["via"] in ("mise", "brew", "apt"), e
     assert not e["port"] or target.startswith("darwin/amd64"), f"port set outside an Intel Mac: {e}"
+    assert not e["mise_fallback"] or target.startswith("darwin/amd64"), f"mise_fallback set outside an Intel Mac: {e}"
 print(f"  {target}: " + ", ".join(f"{k}={len(v)}" for k, v in sorted(plan.items())))
 PY
 done
