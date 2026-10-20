@@ -108,12 +108,12 @@ def check_apt(name):
     return False, "not in this release's package lists"
 
 
-rows = []   # (ok, kind, entry, id, found)
+rows = []   # (ok, found, kind, entry, id); reordered below for the table
 for bundle, b in pk["bundles"].items():
     for a in b.get("apps") or []:
         if "cask" in a:
             if a["cask"].count("/") == 2:
-                rows.append((True, "cask", a["name"], a["cask"], "tap cask: checked when it is installed"))
+                rows.append((True, "tap cask: checked when it is installed", "cask", a["name"], a["cask"]))
             else:
                 rows.append((*check_cask(a["cask"]), "cask", a["name"], a["cask"]))
         if "mas" in a:
