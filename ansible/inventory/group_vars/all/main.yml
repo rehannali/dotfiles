@@ -1,11 +1,12 @@
 ---
 # What every machine gets. A kind of machine (group_vars/<group>.yml) or one machine (host_vars/<host>.yml)
 # overrides any of these. A list or dict set there replaces this one, it is not merged with it.
-# bootstrap.sh --name / --email set git_name / git_email for one run. The other files here: packages.yml (the
+# This machine's own choices (bootstrap.sh options, dot remember) live outside the repo in
+# ~/.config/dotfiles/local.yml and win over group_vars. The other files here: packages.yml (the
 # packages, in bundles), platforms.yml (which package manager installs what on each OS), settings.yml (taste: git,
 # terminal, Dock, shell), secrets.yml (Bitwarden), toolchain.yml (Xcode).
 
-git_name: ""                     # for git commits: set it here (or per group/host), or pass --name
+git_name: ""                     # for git commits: here, per group/host, or bootstrap.sh --name (else asked once)
 git_email: ""
 
 # --- Which parts a machine gets
