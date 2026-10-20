@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Audit this machine after `chezmoi apply`.
+"""Audit this machine after the Ansible run (ansible/site.yml).
 
-    scripts/check-install.py [--source REPO] [--no-shell]
+    scripts/check-install.py [--plan FILE] [--no-shell]
 
 Nothing here trusts the package lists. It asks the machine:
 
-  1. expected tools  What does the dotfiles tool plan say should exist HERE (home/.chezmoitemplates/tool-plan,
-                     rendered by chezmoi for this OS/arch)? For each one: does the command resolve in a login
+  1. expected tools  What does the plan say should exist HERE (~/.cache/dotfiles/plan.json, written by the run from
+                     the tool_plan filter for this OS/arch and machine kind)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
                      manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel) and not from a shadowing copy,
                      and does it actually start?
@@ -18,7 +18,7 @@ Nothing here trusts the package lists. It asks the machine:
 
 Exit status 1 if anything failed. Warnings (known gaps, e.g. a Homebrew formula with no Intel bottle) do not
 fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
-standard tools `file`, `zsh`; `chezmoi` for the plan.
+standard tools `file`, `zsh`.
 """
 import argparse
 import json
@@ -198,16 +198,13 @@ def smoke(path):
     return OK, first
 
 
-def load_plan(source):
-    if not shutil.which("chezmoi"):
-        add(WARN, "tools", "plan", "chezmoi not on PATH: expectations skipped")
+def load_plan(path):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as e:
+        add(FAIL, "tools", "plan", "%s: %s (run the playbook first)" % (path, e))
         return None
-    cmd = ["chezmoi"] + (["-S", source] if source else []) + ["execute-template", '{{ includeTemplate "tool-plan" . }}']
-    rc, out = run(cmd, timeout=120)
-    if rc != 0:
-        add(FAIL, "tools", "plan", out.strip()[:300])
-        return None
-    return json.loads(out)
 
 
 def check_expected(plan):
@@ -253,22 +250,13 @@ def check_expected(plan):
 
 
 RUNTIME_BINS = ["node", "npm", "python3", "pip3", "ruby", "gem", "java", "javac", "go", "rustc", "cargo", "uv", "mise"]
-if SYSTEM == "Darwin":  # gems installed into mise's Ruby by run_onchange_after_13-install-ruby-gems
+if SYSTEM == "Darwin":  # gems installed into mise's Ruby by the dev role
     RUNTIME_BINS += ["pod", "fastlane"]
 
 
-def flutter_expected(source):
-    """Is a Flutter SDK part of this machine's setup (settings.flutter.version, full profile, not skipped)?"""
-    if os.environ.get("DOTFILES_FLUTTER") == "skip" or configured_profile() == "cli" or not shutil.which("chezmoi"):
-        return False
-    cmd = ["chezmoi"] + (["-S", source] if source else []) + ["execute-template", "{{ .settings.flutter.version }}"]
-    rc, out = run(cmd, timeout=60)
-    return rc == 0 and bool(out.strip())
-
-
-def check_runtimes(source=None):
+def check_runtimes(plan):
     rows = []
-    runtime_bins = RUNTIME_BINS + (["flutter", "dart"] if flutter_expected(source) else [])
+    runtime_bins = RUNTIME_BINS + (["flutter", "dart"] if (plan or {}).get("flutter") else [])
     script = 'for b in "$@"; do printf "%s\\t%s\\n" "$b" "$(command -v "$b" 2>/dev/null)"; done'
     shell = shutil.which("zsh") or shutil.which("bash")
     rc, out = run([shell, "-l", "-c", script, "_"] + runtime_bins, timeout=120)
@@ -360,33 +348,23 @@ def bare_app_name(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-def check_casks(source):
-    """Casks from packages.yml: installed, and the .app really sits where the cask was told to put it."""
-    if SYSTEM != "Darwin" or os.environ.get("DOTFILES_CASKS", "install") != "install" \
-            or os.environ.get("DOTFILES_PROFILE", "full") == "cli":
+def check_casks(plan):
+    """Casks this machine should have: installed, and the .app really sits where the cask was told to put it."""
+    wanted = (plan or {}).get("casks") or []
+    if SYSTEM != "Darwin" or not wanted:
         return []
     brew = os.path.join(BREW, "bin", "brew") if BREW else shutil.which("brew")
-    if not brew or not shutil.which("chezmoi"):
-        add(WARN, "casks", "check", "needs brew and chezmoi: skipped")
+    if not brew:
+        add(WARN, "casks", "check", "needs brew: skipped")
         return []
-    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
-        "execute-template", "{{ concat .packages.darwin.casks %s | toJson }}" % (
-            ".packages.darwin_arm.casks" if ARCH == "arm64" else "(list)")], timeout=120)
-    if rc != 0:
-        add(FAIL, "casks", "list", out.strip()[:300])
-        return []
-    wanted = json.loads(out)
-    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
-        "execute-template", '{{ dig "settings" "macos" "cask_appdir" "~/Applications" . }}'], timeout=60)
-    cask_appdir = out.strip() if rc == 0 and out.strip() else "~/Applications"
-    cask_appdir = os.path.expanduser(cask_appdir)
+    cask_appdir = os.path.expanduser(plan.get("cask_appdir") or "~/Applications")
     rc, out = run([brew, "list", "--cask"], timeout=120)
     installed = set(out.split()) if rc == 0 else set()
     rows = []
     for c in wanted:
         name = c["name"]
         token = name.rsplit("/", 1)[-1]
-        appdir = cask_appdir if "appdir" in c.get("args_str", "") else "/Applications"
+        appdir = cask_appdir if c.get("appdir") else "/Applications"
         rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
         meta = {}
         try:
@@ -396,7 +374,7 @@ def check_casks(source):
         # a cask that was renamed (qlvideo -> quicklook-video) is installed under its new token
         token = meta.get("token") or token
         if token not in installed:
-            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
+            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see the run's report)")
             rows.append((WARN, name, "-", "not installed"))
             continue
         apps = []
@@ -502,23 +480,16 @@ def check_xcode():
     add(OK, "xcode", "Xcode", selected.strip()[:120])
 
 
-def configured_profile():
-    """full | cli, from the environment or the chezmoi config `chezmoi init` wrote."""
-    if os.environ.get("DOTFILES_PROFILE"):
-        return os.environ["DOTFILES_PROFILE"]
-    try:
-        with open(os.path.join(HOME, ".config", "chezmoi", "chezmoi.toml")) as fh:
-            m = re.search(r'^\s*profile\s*=\s*"(\w+)"', fh.read(), re.M)
-            return m.group(1) if m else "full"
-    except OSError:
-        return "full"
+def configured_profile(plan):
+    """full | cli: does this machine get GUI apps (gui_apps in the inventory, written to the plan)?"""
+    return "full" if (plan or {}).get("gui_apps", True) else "cli"
 
 
 GUI_PATHS = [".config/alacritty", ".config/wezterm", ".config/karabiner", ".hyper.js"]
 
 
-def check_profile():
-    profile = configured_profile()
+def check_profile(plan):
+    profile = configured_profile(plan)
     if profile != "cli":
         add(OK, "profile", "full", "everything is installed")
         return
@@ -558,20 +529,21 @@ def table(headers, rows):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--source", help="chezmoi source (repo) to read the tool plan from; default: chezmoi's own")
+    ap.add_argument("--plan", default=os.path.join(HOME, ".cache", "dotfiles", "plan.json"),
+                    help="the plan the Ansible run wrote (default: ~/.cache/dotfiles/plan.json)")
     ap.add_argument("--no-shell", action="store_true", help="skip the interactive zsh check")
     args = ap.parse_args()
 
     md = ["# Dotfiles install audit: %s" % TARGET, ""]
     md.append("Host: `%s` · brew prefix: `%s` · mise: `%s`" % (platform.platform(), BREW or "none", MISE))
 
-    plan = load_plan(args.source)
+    plan = load_plan(args.plan)
     tool_rows = check_expected(plan) if plan else []
-    runtime_rows = check_runtimes(args.source)
-    cask_rows = check_casks(args.source)
+    runtime_rows = check_runtimes(plan)
+    cask_rows = check_casks(plan)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
-    check_profile()
+    check_profile(plan)
     check_xcode()
     if not args.no_shell:
         check_shell()

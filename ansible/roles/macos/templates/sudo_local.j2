@@ -1,0 +1,5 @@
+# dotfiles: Touch ID for sudo (touch_id_sudo)
+{% if macos_pam_reattach %}
+auth       optional       {{ macos_pam_reattach }} ignore_ssh
+{% endif %}
+auth       sufficient     pam_tid.so

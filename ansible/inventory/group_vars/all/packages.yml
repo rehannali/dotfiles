@@ -1,0 +1,289 @@
+# Package data.
+#
+# One entry per tool under `tools`, carrying the name each package manager knows it by.
+# Leave a key out where the tool is not available from that manager.
+#
+#   name        canonical name (log messages only)
+#   kind        cli    single-binary tool that mise can install from a prebuilt release
+#               system libraries, daemons and big apps that need brew / apt
+#               apple  Apple-developer tool, macOS only
+#   mise        mise tool id: registry short name, or backend:owner/repo
+#   brew        Homebrew formula (tap formulae fully qualified)
+#   apt         Debian/Ubuntu package
+#   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
+#               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
+#               packages.macports.org. If the port cannot be installed either, mise_fallback is tried next.
+#   mise_fallback  Intel Macs only, the last resort for a brew tool: a mise tool id used when Homebrew has no bottle
+#               and MacPorts (no `port`, or its install failed) cannot provide it either. It goes into the mise
+#               config, so mise installs it like any other tool. A tool with none of the three is reported and
+#               skipped, never compiled (unless mise_intel: false).
+#   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
+#               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
+#               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,
+#               otherwise built from source. (Do not use false for Rust tools: Homebrew's rust has no Intel
+#               bottle either, so it compiles LLVM, which took >4 hours in CI.)
+#   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
+#   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
+#               system entries have none unless set). Used by scripts/check-install.py after an apply.
+#
+# Which manager installs a tool on each machine is decided in ONE place, ansible/filter_plugins/tool_plan.py
+# (see README "Package policy"):
+#
+#                  cli (+ apple with a mise key)   system / apple
+#   Apple Silicon  brew                            brew
+#   Intel Mac      mise                            brew, only if a bottle exists, else MacPorts (if `port` is set),
+#                                                  else mise (if `mise_fallback` is set), else skipped with a message
+#   Linux          mise                            apt
+#
+# A tool is never installed by two managers on one machine. Casks, mas apps and gems
+# are macOS-only and are listed in the `darwin` section.
+#
+# This is the list for every machine. A kind of machine (group_vars/<group>.yml) or one machine (host_vars/<host>.yml)
+# adds to it, leaves things out, or removes them with tools_extra / tools_skip / casks_extra / casks_skip / mas_extra /
+# mas_skip / remove, see main.yml.
+#
+# List what you want, not what it needs. A package that another listed package already installs as a runtime
+# dependency, with the same manager on the same machine, is left out (glib, libimobiledevice, ...), and the
+# entry says where it comes from when only one of brew / apt could drop it. Build-only dependencies do not
+# count: a bottle or a prebuilt binary never installs them.
+packages:
+  # Homebrew taps (macOS only). Homebrew 6 loads nothing from a tap you have not trusted (docs.brew.sh/Tap-Trust),
+  # and a tap's formulae and casks are Ruby code that runs as you. So a tap lists the exact formulae and casks that
+  # are used from it, and only those are trusted, never the whole tap: the packages role runs
+  # `brew trust --formula|--cask` for each before anything is looked up. A tool or cask that comes from a tap needs
+  # its entry here, ansible/tests/packages_check.py fails if it is missing.
+  taps:
+    # nothing from this tap is used (the font-* casks below all come from homebrew/cask); to use one of its casks,
+    # list it: {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
+    # - {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
+    # - {name: ferdium/ferdium, casks: [ferdium]}   # only for the ferdium cask, which is commented out
+    - {name: leoafarias/fvm, formulae: [fvm]}
+    # needs: formulae from the same tap that the cask pulls in as dependencies (netbird-ui depends on the netbird
+    # formula); they are trusted too, without them the cask fails with "Refusing to load formula ... from untrusted tap"
+    - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}
+    - {name: teamookla/speedtest, formulae: [speedtest]}
+    - {name: xcodesorg/made, formulae: [xcodes]}
+
+  # Always installed by mise, on every OS (rendered into ~/.config/mise/config.toml).
+  runtimes:
+    node: lts
+    python: "3.12"
+    uv: latest
+    ruby: "3.3"
+    java: [corretto-21, corretto-17]   # first entry is the default
+    go: latest
+    rust: latest
+
+  # Global npm packages, installed with mise's node (dev role) on every run that does not have them yet.
+  npm:
+    - localtunnel
+    - firebase-tools
+
+  tools:
+    # --- cli: prebuilt single-binary tools. brew on Apple Silicon, mise on Intel and Linux.
+    - {name: act, kind: cli, mise: act, brew: act}
+    - {name: atuin, kind: cli, mise: atuin, mise_intel: "cargo:atuin", brew: atuin, apt: atuin}
+    - {name: bat, kind: cli, mise: bat, brew: bat, apt: bat}
+    - {name: btop, kind: cli, mise: btop, mise_intel: false, brew: btop, port: btop, apt: btop}
+    - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, bin: bw}
+    - {name: cmake, kind: cli, mise: cmake, brew: cmake, apt: cmake}
+    - {name: docker, kind: cli, mise: docker-cli, brew: docker}
+    - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose}
+    - {name: dust, kind: cli, mise: dust, brew: dust}
+    - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}
+    - {name: fastfetch, kind: cli, mise: fastfetch, mise_intel: "github:fastfetch-cli/fastfetch", brew: fastfetch, apt: fastfetch}   # replaces neofetch (archived, gone from homebrew-core)
+    - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
+    - {name: gh, kind: cli, mise: gh, brew: gh, apt: gh}
+    - {name: git-delta, kind: cli, mise: delta, mise_intel: "cargo:git-delta", brew: git-delta, apt: git-delta, bin: delta}
+    - {name: git-lfs, kind: cli, mise: git-lfs, brew: git-lfs, apt: git-lfs}
+    - {name: lsd, kind: cli, mise: lsd, brew: lsd, apt: lsd}
+    - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, apt: mkcert}
+    - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, apt: neovim, bin: nvim}
+    - {name: payload-dumper-go, kind: cli, mise: github:ssut/payload-dumper-go, brew: payload-dumper-go}
+    - {name: pipx, kind: cli, mise: pipx, brew: pipx, apt: pipx}
+    - {name: poetry, kind: cli, mise: pypi:poetry, brew: poetry, apt: python3-poetry}
+    - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, apt: python3-pygments, bin: pygmentize}
+    - {name: rclone, kind: cli, mise: rclone, brew: rclone, apt: rclone}
+    - {name: tmux, kind: cli, mise: tmux, brew: tmux, apt: tmux}
+    - {name: zig, kind: cli, mise: zig, brew: zig}
+    - {name: zoxide, kind: cli, mise: zoxide, brew: zoxide, apt: zoxide}
+
+    # --- system: libraries, daemons and big apps. brew (Apple Silicon; Intel only with a bottle) / apt.
+    - {name: ansible, kind: system, brew: ansible, mise_fallback: pipx:ansible-core, apt: ansible, bin: ansible}   # Intel fallback: ansible-core only (collections: ansible-galaxy)
+    - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}
+    - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
+    - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
+    - {name: build-essential, kind: system, apt: build-essential}
+    - {name: coreutils, kind: system, brew: coreutils, port: coreutils}
+    - {name: curl, kind: system, apt: curl, bin: curl}
+    - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, apt: ffmpeg, bin: ffmpeg}
+    - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
+    - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, apt: ghostscript, bin: gs}
+    - {name: git, kind: system, brew: git, port: git, bin: git}   # apt: comes with git-flow (and bootstrap.sh installs it first)
+    - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
+    - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, apt: graphicsmagick, bin: gm}
+    # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
+    - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
+    - {name: htop, kind: system, brew: htop, port: htop, apt: htop, bin: htop}
+    - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, apt: imagemagick, bin: convert}
+    - {name: libheif, kind: system, apt: libheif-dev}   # brew: comes with imagemagick and graphicsmagick (their apt packages only need the runtime library)
+    - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}
+    - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
+    - {name: nginx, kind: system, brew: nginx, port: nginx, apt: nginx}
+    - {name: nmap, kind: system, brew: nmap, port: nmap, apt: nmap, bin: nmap}
+    - {name: openconnect, kind: system, brew: openconnect, port: openconnect, apt: openconnect, bin: openconnect}
+    - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
+    - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
+    - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
+    - {name: pwgen, kind: system, brew: pwgen, port: pwgen, apt: pwgen, bin: pwgen}
+    - {name: rsync, kind: system, brew: rsync, port: rsync, apt: rsync, bin: rsync}
+    - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
+    - {name: stow, kind: system, brew: stow, apt: stow, bin: stow}
+    - {name: subversion, kind: system, brew: subversion, port: subversion, apt: subversion, bin: svn}
+    - {name: telnet, kind: system, brew: telnet, apt: telnet, bin: telnet}
+    - {name: thefuck, kind: system, brew: thefuck, bin: thefuck}
+    - {name: unbound, kind: system, brew: unbound, port: unbound, apt: unbound}
+    - {name: unzip, kind: system, apt: unzip, bin: unzip}
+    # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
+    # - {name: xz-utils, kind: system, apt: xz-utils}   # comes with build-essential (through dpkg-dev)
+    - {name: zip, kind: system, apt: zip}
+    - {name: file, kind: system, apt: file}
+    - {name: wireguard-tools, kind: system, brew: wireguard-tools, port: wireguard-tools, apt: wireguard-tools, bin: wg}
+    - {name: zlib, kind: system, brew: zlib, port: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
+    - {name: zsh, kind: system, brew: zsh, port: zsh, apt: zsh, bin: zsh}
+
+    # --- apple: Apple-developer tools, macOS only.
+    - {name: carthage, kind: apple, brew: carthage}
+    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller, port: ideviceinstaller}   # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
+    - {name: ios-deploy, kind: apple, brew: ios-deploy, mise_fallback: npm:ios-deploy}
+    # - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}   # comes with ideviceinstaller
+    - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
+    - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, bin: xcodes}
+
+  # macOS only. Casks, Mac App Store apps and Ruby gems have no apt/mise equivalent.
+  darwin:
+    # Installed into mise's Ruby (not Homebrew's) by the dev role.
+    gems:
+      - fastlane
+      - cocoapods
+      - cocoapods-keys
+
+    # appdir: true = the app goes to cask_appdir (main.yml, ~/Applications by default) instead of /Applications
+    casks:
+      # - {name: alacritty, appdir: true}   # not used; the cask is also disabled upstream (2026-09-01)
+      # - name: 1password   # not used
+      # - name: 1password-cli   # not used
+      - {name: adobe-creative-cloud, appdir: true}
+      - {name: alfred, appdir: true}
+      - {name: android-file-transfer, appdir: true}
+      - {name: android-platform-tools, appdir: true}
+      - {name: balenaetcher, appdir: true}
+      - {name: bitwarden, appdir: true}
+      - {name: brave-origin, appdir: true}
+      - {name: bruno, appdir: true}
+      - {name: chatgpt, appdir: true}
+      - {name: claude, appdir: true}
+      # - {name: copilot-for-xcode, appdir: true} # Removed in favor of github-copilot-for-xcode
+      - {name: discord, appdir: true}
+      - {name: easyfind, appdir: true}
+      - {name: ente-auth, appdir: true}
+      # - {name: ferdium, appdir: true}   # not used
+      - {name: figma, appdir: true}
+      - {name: firefox, appdir: true}
+      - name: font-cascadia-code
+      - name: font-cascadia-code-pl
+      - name: font-caskaydia-cove-nerd-font
+      - name: font-fira-code
+      - name: font-fira-code-nerd-font
+      - name: font-hack-nerd-font
+      - name: font-jetbrains-mono-nerd-font
+      - name: font-meslo-lg-nerd-font
+      - name: font-sauce-code-pro-nerd-font
+      - name: font-source-code-pro
+      - name: ghostty
+      - name: github-copilot-for-xcode
+      - {name: gitkraken, appdir: true}
+      - {name: google-chrome, appdir: true}
+      - name: google-drive
+      - name: hp-easy-start
+      - name: iina
+      - {name: iterm2, appdir: true}
+      - {name: itsycal, appdir: true}
+      - name: jetbrains-toolbox
+      # - name: karabiner-elements   # not used
+      - name: kodi
+      # - name: languagetool-desktop   # not used
+      - name: little-snitch
+      - {name: localsend, appdir: true}
+      - name: macfuse
+      - name: micro-snitch
+      - name: microsoft-auto-update
+      - name: microsoft-office
+      - name: microsoft-teams
+      - name: nordvpn
+      - name: notion
+      - name: netbirdio/tap/netbird-ui   # GUI client from the netbirdio/tap tap (full name: installing it trusts it)
+      - name: openvpn-connect
+      - name: orbstack
+      # - name: postman   # not used
+      - name: qlmarkdown
+      - name: quicklook-video   # was qlvideo
+      - name: readdle-spark
+      - name: rustdesk
+      - name: setapp
+      - name: simpholders
+      - name: snagit
+      - name: sourcetree
+      - name: spotify
+      - name: stremio
+      - name: surfshark
+      - name: suspicious-package
+      - name: tailscale-app
+      - name: termius
+      # - name: ticktick   # not used
+      - {name: tower, appdir: true}   # Git Tower; needs macOS 14 or newer (universal binary)
+      - name: twingate
+      - name: visual-studio-code
+      - {name: vscodium, appdir: true}
+      - name: vlc
+      # - name: warp   # not used
+      - name: wezterm
+      - name: whatsapp@beta
+      - name: windscribe
+      - name: wordcraft
+      # - name: xcodes-app   # not used
+      - name: zoom
+
+    mas:
+      # - id: 1569813296
+      #   name: "1Password for Safari"
+      # - id: 937984704
+      #   name: "Amphetamine"
+      # - id: 1477089520    # Use though setapp subscription.
+      #   name: "Backtrack"
+      # - id: 1489591003
+      #   name: "Email"
+      # - id: 935235287
+      #   name: "Encrypto"
+      - id: 430255202
+        name: "Mactracker"
+      # - id: 999025824
+      #   name: "Speedify"
+      - id: 1183412116
+        name: "Swiftify for Xcode"
+      - id: 1157225201
+        name: "Text Toolset"
+      - id: 1451685025
+        name: "WireGuard"
+      - id: 1377998565
+        name: "Comment Wrapper for Xcode"
+      - id: 1165321484
+        name: "XCFormat"
+
+  darwin_arm:
+    # Apple Silicon-only entries. chatgpt used to live here; it installs on Intel too now.
+    casks: []
+
+    # mas:
+    #   - id: 1591187265
+    #     name: "Claude"

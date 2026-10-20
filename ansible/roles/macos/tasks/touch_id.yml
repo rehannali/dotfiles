@@ -1,0 +1,47 @@
+---
+# macOS 14 (Sonoma) and newer read /etc/pam.d/sudo_local, which an update never overwrites; /etc/pam.d/sudo does
+# `auth include sudo_local` (Apple's own way, see /etc/pam.d/sudo_local.template). Older macOS is left alone.
+# Inside tmux/screen Touch ID needs pam_reattach (brew install pam-reattach); its line is added when it is there.
+- name: Touch ID | does this Mac have a sensor, and macOS 14+  # noqa: risky-shell-pipe - grep -q ends early; pipefail would turn a match into a miss
+  # the built-in sensor (AppleBiometricSensor) or a Magic Keyboard with Touch ID (AppleMesaAccessory); bioutil reports
+  # "supported" on every Apple Silicon Mac, even a Mac mini without a keyboard, so it only counts on Intel (T2)
+  ansible.builtin.shell: |
+    [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 14 ] || { echo old-macos; exit 0; }
+    grep -q sudo_local /etc/pam.d/sudo 2> /dev/null || { echo no-sudo-local; exit 0; }
+    /usr/sbin/ioreg -rc AppleBiometricSensor 2> /dev/null | grep -q AppleBiometricSensor && { echo yes; exit 0; }
+    /usr/sbin/ioreg -rc AppleMesaAccessory 2> /dev/null | grep -q AppleMesaAccessory && { echo yes; exit 0; }
+    if [ "$(uname -m)" != arm64 ] && /usr/bin/bioutil -rs 2> /dev/null | grep -Eq '(Biometrics|Touch ID) functionality: *1'; then
+      echo yes; exit 0
+    fi
+    echo no-sensor
+  register: macos_touch_id
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+
+- name: Touch ID | pam_reattach (for tmux)
+  ansible.builtin.stat:
+    path: "{{ '/opt/homebrew' if dotfiles_arch == 'arm64' else '/usr/local' }}/lib/pam/pam_reattach.so"
+  register: macos_reattach
+
+- name: Touch ID | someone else's sudo_local?
+  ansible.builtin.slurp:
+    src: /etc/pam.d/sudo_local
+  register: macos_sudo_local
+  failed_when: false
+  when: macos_touch_id.stdout == 'yes'
+
+- name: Touch ID | /etc/pam.d/sudo_local
+  ansible.builtin.template:
+    src: sudo_local.j2
+    dest: /etc/pam.d/sudo_local
+    owner: root
+    group: wheel
+    mode: "0444"
+  vars:
+    macos_pam_reattach: "{{ macos_reattach.stat.path if macos_reattach.stat.exists else '' }}"
+  become: true
+  # a sudo_local that is not ours is kept as it is
+  when: >-
+    macos_touch_id.stdout == 'yes'
+    and (macos_sudo_local.content is not defined
+         or (macos_sudo_local.content | b64decode).startswith('# dotfiles: Touch ID'))

@@ -1,0 +1,23 @@
+{# WSL domain for wezterm on Windows. settings.wsl: distribution (default Ubuntu) and username. Without a username
+   wezterm uses the distribution's default user. #}
+{% set wsl = settings.wsl %}
+return {
+    -- ref: https://wezfurlong.org/wezterm/config/lua/SshDomain.html
+    ssh_domains = {},
+
+    -- ref: https://wezfurlong.org/wezterm/multiplexing.html#unix-domains
+    unix_domains = {},
+
+    -- ref: https://wezfurlong.org/wezterm/config/lua/WslDomain.html
+    wsl_domains = {
+        {
+            name = {{ ('WSL:' ~ wsl.distribution) | to_json }},
+            distribution = {{ wsl.distribution | to_json }},
+{% if wsl.username %}
+            username = {{ wsl.username | to_json }},
+            default_cwd = {{ ('/home/' ~ wsl.username) | to_json }},
+{% endif %}
+            default_prog = { 'bash', '-l' },
+        },
+    },
+}

@@ -1,0 +1,47 @@
+---
+# remove: in main.yml (or a group / host). Uninstalls exactly what is listed; nothing else.
+- name: Remove | Homebrew formulae
+  community.general.homebrew:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ remove.brew | default([]) }}"
+  register: removed_brew
+  ignore_errors: true
+
+- name: Remove | casks
+  community.general.homebrew_cask:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ remove.cask | default([]) }}"
+  register: removed_cask
+  ignore_errors: true
+
+- name: Remove | App Store apps
+  community.general.mas:
+    id: "{{ item }}"
+    state: absent
+  loop: "{{ remove.mas | default([]) }}"
+  become: true   # mas uninstall needs root
+  register: removed_mas
+  ignore_errors: true
+
+- name: Remove | MacPorts ports
+  ansible.builtin.command: /opt/local/bin/port -N uninstall {{ item }}
+  args:
+    removes: /opt/local/bin/port
+  loop: "{{ remove.port | default([]) }}"
+  become: true
+  register: removed_port
+  changed_when: "'not installed' not in removed_port.stderr | default('')"
+  failed_when: removed_port.rc != 0 and 'not installed' not in removed_port.stderr | default('')
+  ignore_errors: true
+
+- name: Remove | record what could not be removed
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['could not remove: ' ~ item.item] }}"
+  loop: >-
+    {{ ((removed_brew.results | default([])) + (removed_cask.results | default([]))
+        + (removed_mas.results | default([])) + (removed_port.results | default([])))
+       | selectattr('failed', 'defined') | selectattr('failed') | list }}
+  loop_control:
+    label: "{{ item.item }}"

@@ -1,0 +1,58 @@
+# Defaults for everything that is a matter of taste or differs between people and machines.
+#
+# To change one for a kind of machine or a single machine, don't edit this file: put only the keys you change in
+# `settings_override`, in group_vars/<group>.yml or host_vars/<host>.yml, for example
+#
+#   settings_override:
+#     git:
+#       default_branch: trunk
+#       signing_key: ABCD1234
+#
+# They are merged into these defaults (the rest keep the values below). A host's settings_override replaces its
+# group's, it is not merged with it. Name, email, and which parts a machine gets are in main.yml.
+settings_defaults:
+  git:
+    default_branch: main
+    sign_commits: false
+    signing_key: ""            # a GPG key id, or the path of an SSH public key when signing_format is ssh
+    signing_format: openpgp    # openpgp | ssh
+    gpg_program: gpg
+    commit_template: "~/.stCommitMsg"   # commit message template (Sourcetree writes it); empty for none
+
+  locale: en_US.UTF-8
+
+  terminal:
+    font: Hack Nerd Font Mono
+    font_size: 14              # alacritty, and wezterm on macOS
+    font_size_other: 11        # wezterm on Linux and Windows
+    alacritty_theme: blood_moon  # file name (without .toml) from https://github.com/alacritty/alacritty-theme
+
+  flutter:
+    version: stable            # installed with fvm and made the global one (install_flutter). Anything fvm accepts: stable, beta, 3.35.0
+
+  wsl:
+    distribution: Ubuntu       # the WSL distribution wezterm opens as a domain (Windows only)
+    username: ""               # your user inside it; empty = the distribution's default user
+
+  macos:                       # the Dock is set when macos_defaults is on (main.yml)
+    # Where the casks that ask for an appdir in packages.yml (most apps) install their .app. "~/Applications" keeps them
+    # out of /Applications; "/Applications" puts every app in one place. Casks without an appdir always use /Applications.
+    cask_appdir: ~/Applications
+    dock:
+      orientation: left        # left | bottom | right
+      tile_size: 42
+      autohide: true
+      show_recents: false
+
+  shell:
+    # Extra environment variables for every zsh (written to ~/.zshenv). Values may use $HOME.
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    # Extra directories put in front of PATH, first entry first. Example: ["$HOME/go/bin"]
+    path: []
+
+  apple:
+    # Bitwarden item with your Apple ID (username and password), used by xcodes when Bitwarden is on. An optional
+    # custom field FASTLANE_SESSION lets it skip the two-factor code, see docs/bitwarden.md.
+    bitwarden_item: Apple ID

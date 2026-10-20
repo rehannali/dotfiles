@@ -4,7 +4,7 @@ name: apple-session-check
 # with that session and stops it as soon as Apple has accepted the login. Manual only.
 #
 # It also shows which Xcode the dotfiles would install on that runner, picked by the same script
-# (home/.chezmoitemplates/xcode-pick.py) from what `xcodes list` offers for the CPU: run it once for the Apple
+# (ansible/roles/xcode/files/xcode-pick.py) from what `xcodes list` offers for the CPU: run it once for the Apple
 # Silicon runner and once for the Intel one to compare.
 #
 # Make the secret first (apple-session.yml, or `fastlane spaceauth` on your own machine), see docs/ci.md.
@@ -82,8 +82,8 @@ jobs:
             archs=(--architecture universal --architecture x86_64)
           fi
           xcodes list "${archs[@]}" > "$RUNNER_TEMP/listed.txt"
-          picked="$(python3 home/.chezmoitemplates/xcode-pick.py xcode --listed "$RUNNER_TEMP/listed.txt" || true)"
-          echo "The dotfiles would install on this runner: Xcode ${picked:-<nothing fits>}, iOS runtime $(python3 home/.chezmoitemplates/xcode-pick.py runtime --xcode "${picked:-0}" 2> /dev/null || echo '<none>')"
+          picked="$(python3 ansible/roles/xcode/files/xcode-pick.py xcode --listed "$RUNNER_TEMP/listed.txt" || true)"
+          echo "The dotfiles would install on this runner: Xcode ${picked:-<nothing fits>}, iOS runtime $(python3 ansible/roles/xcode/files/xcode-pick.py runtime --xcode "${picked:-0}" 2> /dev/null || echo '<none>')"
           if [ -z "$VERSION" ]; then
             VERSION="$picked"
           fi

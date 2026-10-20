@@ -1,0 +1,12 @@
+---
+# Xcode and the iOS simulator runtime: toolchain.yml (empty = the newest release this Mac can run), or for one run
+# -e xcode_version=26.6 / -e ios_runtime=26.5
+xcode_version: "{{ toolchain.xcode_version }}"
+ios_runtime: "{{ toolchain.ios_runtime }}"
+# A Xcode_<version>.xip you downloaded yourself: no Apple ID, no two-factor code
+xcode_xip: "{{ lookup('ansible.builtin.env', 'DOTFILES_XCODE_XIP') }}"
+# Bitwarden item with the Apple ID (login) and an optional custom field FASTLANE_SESSION, when bitwarden is on
+xcode_bitwarden_item: "{{ settings.apple.bitwarden_item }}"
+# The command a run could not do itself (the Apple ID needs a two-factor code typed on a terminal) is written here;
+# bootstrap.sh runs it with your terminal at the end.
+xcode_pending_script: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/xcode-install.sh"

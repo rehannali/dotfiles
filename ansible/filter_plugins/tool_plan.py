@@ -1,7 +1,4 @@
-"""tool_plan: which package manager installs each tool on a machine.
-
-The same policy as home/.chezmoitemplates/tool-plan (chezmoi), so both read packages.yml the same way while the
-setup moves to Ansible:
+"""tool_plan: which package manager installs each tool on a machine, from inventory/group_vars/all/packages.yml.
 
                    cli, or any entry with a mise key      system / apple, no mise key
     Apple Silicon  brew (mise only if there is no brew)   brew
@@ -63,7 +60,9 @@ def tool_plan(tools, system, arch, gui_apps=True):
 
         if via:
             bin_ = t.get("bin", "" if kind == "system" else t["name"])
-            plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_})
+            plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_, "source": source,
+                                   "port": str(t.get("port", "")) if intel_mac and via == "brew" else "",
+                                   "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac and via == "brew" else ""})
     return plan
 
 

@@ -1,0 +1,29 @@
+---
+- name: Dotfiles | what is in the way of the links
+  ansible.builtin.stat:
+    path: "{{ ansible_facts.env.HOME }}/{{ item.path }}"
+    get_checksum: false
+  loop: "{{ dotfiles_links }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: dotfiles_existing
+
+- name: Dotfiles | back up files in the way to {{ dotfiles_backup_dir }}
+  ansible.builtin.shell: |
+    set -e
+    mkdir -p "$(dirname {{ (dotfiles_backup_dir ~ '/' ~ item.item.path) | quote }})"
+    mv {{ item.stat.path | quote }} {{ (dotfiles_backup_dir ~ '/' ~ item.item.path) | quote }}
+  loop: "{{ dotfiles_existing.results | selectattr('stat.exists') | rejectattr('stat.islnk') | list }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  changed_when: true
+
+- name: Dotfiles | link into {{ dotfiles_dir }}/home
+  ansible.builtin.file:
+    src: "{{ dotfiles_dir }}/home/{{ item.path }}"
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.path }}"
+    state: link
+    force: true
+  loop: "{{ dotfiles_links }}"
+  loop_control:
+    label: "{{ item.path }}"

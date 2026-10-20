@@ -1,0 +1,2 @@
+---
+dev_mise: "{{ ansible_facts.env.HOME }}/.local/bin/mise"

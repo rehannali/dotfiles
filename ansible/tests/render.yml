@@ -1,0 +1,54 @@
+---
+# Renders every template (home/**/*.j2, the mise config, sudo_local) for each kind of machine into a temp directory
+# and checks the result: zsh -n for zsh files, a TOML parse for .toml. Runs on the controller, changes nothing.
+#
+#   ansible-playbook -i localhost, -c local tests/render.yml
+- name: Render the templates
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - ../inventory/group_vars/all/main.yml
+    - ../inventory/group_vars/all/packages.yml
+    - ../inventory/group_vars/all/settings.yml
+    - ../inventory/group_vars/all/secrets.yml
+  vars:
+    targets:
+      - {os: darwin, arch: arm64, system: Darwin, gui: true}
+      - {os: darwin, arch: x86_64, system: Darwin, gui: true}
+      - {os: linux, arch: x86_64, system: Linux, gui: true}
+      - {os: linux, arch: x86_64, system: Linux, gui: false}
+  tasks:
+    - name: Temp directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: render
+      register: render_dir
+
+    - name: Render each target
+      ansible.builtin.include_tasks: render_target.yml
+      loop: "{{ targets }}"
+      loop_control:
+        loop_var: target
+        label: "{{ target.os }}/{{ target.arch }} gui={{ target.gui }}"
+
+    - name: Zsh syntax of the rendered zsh files
+      ansible.builtin.shell: |
+        set -e
+        n=0
+        for f in $(find {{ render_dir.path | quote }} -type f \( -name .zshenv -o -name .zprofile -o -name '*.zsh' \)); do
+          zsh -n "$f"; n=$((n + 1))
+        done
+        echo "$n zsh files"
+      register: render_zsh
+      changed_when: false
+
+    - name: TOML parses
+      ansible.builtin.shell: >-
+        find {{ render_dir.path | quote }} -name '*.toml' -type f -exec
+        python3 -c "import sys, tomllib; [tomllib.load(open(f, 'rb')) for f in sys.argv[1:]]; print(len(sys.argv) - 1, 'toml files')" {} +
+      register: render_toml
+      changed_when: false
+
+    - name: Result
+      ansible.builtin.debug:
+        msg: "{{ render_zsh.stdout }}, {{ render_toml.stdout }}, in {{ render_dir.path }}"

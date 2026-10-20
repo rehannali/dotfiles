@@ -19,6 +19,7 @@
   ansible.builtin.command: brew trust --help
   register: brew_trust_help
   changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
   failed_when: false
   when: tap_result is succeeded
 

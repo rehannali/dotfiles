@@ -1,0 +1,15 @@
+---
+# Oh My Zsh and the plugins / theme .zsh/omz.zsh loads; updated (fast-forward) on every run
+shell_omz_repo: https://github.com/ohmyzsh/ohmyzsh.git
+shell_omz_plugins:
+  plugins/zsh-autosuggestions: https://github.com/zsh-users/zsh-autosuggestions.git
+  plugins/zsh-autocomplete: https://github.com/marlonrichert/zsh-autocomplete.git
+  plugins/fast-syntax-highlighting: https://github.com/zdharma-continuum/fast-syntax-highlighting.git
+  plugins/you-should-use: https://github.com/MichaelAquilina/zsh-you-should-use.git
+  plugins/ohmyzsh-full-autoupdate: https://github.com/Pilaton/OhMyZsh-full-autoupdate.git
+  plugins/zsh-lsd: https://github.com/z-shell/zsh-lsd.git
+  plugins/zsh-bat: https://github.com/fdellwing/zsh-bat.git
+  plugins/zsh-256color: https://github.com/chrissicool/zsh-256color.git
+  themes/spaceship-prompt: https://github.com/spaceship-prompt/spaceship-prompt.git
+shell_tmux_plugins:
+  tpm: https://github.com/tmux-plugins/tpm.git

@@ -1,7 +1,7 @@
 name: dotfiles
 
 # Runs the dotfiles for real on each supported machine type, through the same entry point you use
-# (bootstrap.sh -> chezmoi init --apply), then audits the result: every expected command resolves, comes from
+# (bootstrap.sh -> ansible/site.yml), then audits the result: every expected command resolves, comes from
 # the right package manager, starts, and is built for the right OS and CPU (no macOS binary on Debian, no
 # x86_64 binary on Apple Silicon, ...).
 #
@@ -18,12 +18,12 @@ on:
         description: Which machine type to run
         type: choice
         default: all
-        options: [all, debian, debian-cli, mac-intel, mac-arm]
+        options: [all, debian, mac-intel, mac-arm]
       casks:
-        description: "macOS casks: install = really install them, check = only verify they are installable here, skip"
+        description: "macOS casks: install = really install them (about 70 GUI apps), skip"
         type: choice
         default: install
-        options: [install, check, skip]
+        options: [install, skip]
       xcode:
         description: "macOS: really install Xcode with xcodes. Needs the FASTLANE_SESSION secret, see docs/ci.md"
         type: choice
@@ -51,27 +51,33 @@ permissions:
   contents: read
 
 jobs:
-  # Fast gate (about a minute): render every template for every target and profile, then bash -n,
-  # shellcheck, "other OS renders empty", valid mise TOML and "one package manager per tool".
+  # Fast gate (about a minute): ansible-lint, the package list checks (one manager per tool, tap trust lists),
+  # every template rendered for every kind of machine (zsh -n, TOML parse), shellcheck.
   static:
-    name: render + lint (all targets)
+    name: lint + render (all targets)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install chezmoi
-        shell: bash
+      - name: Tools
         run: |
-          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/chezmoi-bin"
-          echo "$RUNNER_TEMP/chezmoi-bin" >> "$GITHUB_PATH"
-      - name: shellcheck and zsh available
-        shell: bash
+          pipx install --include-deps ansible-lint
+          pipx inject ansible-lint pyyaml
+          command -v shellcheck > /dev/null || sudo apt-get install -y shellcheck
+          command -v zsh > /dev/null || sudo apt-get install -y zsh
+      - name: ansible-lint and syntax
+        working-directory: ansible
         run: |
-          command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
-          command -v zsh >/dev/null || sudo apt-get install -y zsh
-      - name: Render and lint
-        shell: bash
-        run: bash scripts/verify-render.sh "$RUNNER_TEMP/rendered"
+          ansible-galaxy collection install -r requirements.yml
+          ansible-lint
+          ansible-playbook --syntax-check site.yml
+      - name: Package list checks
+        working-directory: ansible
+        run: "$(pipx environment --value PIPX_LOCAL_VENVS)/ansible-lint/bin/python tests/packages_check.py"
+      - name: Render every template for every kind of machine
+        working-directory: ansible
+        run: ansible-playbook -i localhost, -c local tests/render.yml
+      - name: shellcheck
+        run: shellcheck bootstrap.sh ansible/roles/packages/files/*.sh
 
   # Picks the machines: everything on PR/push, one or all on a manual run.
   plan:
@@ -86,10 +92,9 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
         run: |
           all='[
-            {"id":"debian",     "profile":"full", "label":"Debian-based (Ubuntu runner, same as WSL2)", "os":"ubuntu-latest",  "timeout":60},
-            {"id":"debian-cli", "profile":"cli",  "label":"Debian-based, cli profile (server)",         "os":"ubuntu-latest",  "timeout":60},
-            {"id":"mac-intel",  "profile":"full", "label":"macOS Intel (x86_64)",                       "os":"macos-15-intel", "timeout":150},
-            {"id":"mac-arm",    "profile":"full", "label":"macOS Apple Silicon (arm64)",                "os":"macos-latest",   "timeout":150}
+            {"id":"debian",     "group":"servers",      "label":"Debian-based server (Ubuntu runner)", "os":"ubuntu-latest",  "timeout":60},
+            {"id":"mac-intel",  "group":"mac_personal", "label":"macOS Intel (x86_64)",                "os":"macos-15-intel", "timeout":150},
+            {"id":"mac-arm",    "group":"mac_personal", "label":"macOS Apple Silicon (arm64)",         "os":"macos-latest",   "timeout":150}
           ]'
           if [ -z "$PLATFORM" ] || [ "$PLATFORM" = all ]; then
             matrix="$(echo "$all" | jq -c .)"
@@ -109,11 +114,10 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      # Unattended first run: nothing is asked, no App Store, no Apple ID. Pull requests and pushes only verify
-      # the casks (about 70 GUI apps); a manual run installs them unless you choose otherwise.
+      # Unattended first run: nothing is asked, no App Store, no Apple ID. Pull requests and pushes skip the casks
+      # (about 70 GUI apps); a manual run installs them unless you choose otherwise.
       DOTFILES_NAME: CI
       DOTFILES_EMAIL: ci@dotfiles.invalid
-      DOTFILES_PROFILE: ${{ matrix.profile }}
       DOTFILES_BITWARDEN: "false"
       DOTFILES_MAS: skip
       # Xcode needs an Apple ID, so it is only installed when a manual run asks for it. The Apple secrets are
@@ -122,10 +126,9 @@ jobs:
       DOTFILES_XCODE_VERSION: ${{ inputs.xcode_version }}
       DOTFILES_RUNTIME: ${{ inputs.runtime == 'install' && 'install' || 'skip' }}
       FASTLANE_SESSION: ${{ inputs.xcode == 'install' && secrets.FASTLANE_SESSION || '' }}
-      DOTFILES_CASKS: ${{ inputs.casks || 'check' }}
+      DOTFILES_CASKS: ${{ inputs.casks || 'skip' }}
       DOTFILES_SKIP_CASKS: ${{ inputs.skip_casks }}
       DOTFILES_SOURCE: ${{ github.workspace }}
-      DOTFILES_CHEZMOI_ARGS: --verbose
       # mise resolves GitHub releases through the API; an authenticated token avoids anonymous rate limits.
       MISE_GITHUB_TOKEN: ${{ github.token }}
       HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
@@ -140,7 +143,7 @@ jobs:
         run: |
           uname -a
           if [ "$(uname -s)" = Darwin ]; then sw_vers; sysctl -n machdep.cpu.brand_string; fi
-          echo "profile=$DOTFILES_PROFILE casks=$DOTFILES_CASKS"
+          echo "group=${{ matrix.group }} casks=$DOTFILES_CASKS"
 
       - name: Apple session present?
         if: ${{ inputs.xcode == 'install' && runner.os == 'macOS' }}
@@ -151,22 +154,15 @@ jobs:
           fi
 
       # The entry point you run on a real machine, against this checkout instead of GitHub.
-      - name: bootstrap.sh
+      - name: bootstrap.sh --host ci --group ${{ matrix.group }}
         id: apply
         run: |
           set -o pipefail
-          bash bootstrap.sh 2>&1 | tee "$RUNNER_TEMP/chezmoi-apply.log"
-
-      # bootstrap.sh keeps no chezmoi behind; the audit needs one to read this machine's tool plan.
-      - name: Install chezmoi for the audit
-        if: ${{ !cancelled() && steps.apply.conclusion != 'skipped' }}
-        run: |
-          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/chezmoi-bin"
-          echo "$RUNNER_TEMP/chezmoi-bin" >> "$GITHUB_PATH"
+          bash bootstrap.sh --host ci --group ${{ matrix.group }} 2>&1 | tee "$RUNNER_TEMP/ansible.log"
 
       - name: Audit (expected tools, architecture, runtimes, shell, profile)
         if: ${{ !cancelled() && steps.apply.conclusion != 'skipped' }}
-        run: python3 scripts/check-install.py --source "$GITHUB_WORKSPACE" | tee "$RUNNER_TEMP/audit.md"
+        run: python3 scripts/check-install.py | tee "$RUNNER_TEMP/audit.md"
 
       - name: Keep the logs
         if: ${{ !cancelled() }}
@@ -174,7 +170,7 @@ jobs:
         with:
           name: logs-${{ matrix.id }}
           path: |
-            ${{ runner.temp }}/chezmoi-apply.log
+            ${{ runner.temp }}/ansible.log
             ${{ runner.temp }}/audit.md
           if-no-files-found: ignore
           retention-days: 14

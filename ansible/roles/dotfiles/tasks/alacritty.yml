@@ -1,0 +1,25 @@
+---
+# alacritty.toml imports ~/.config/alacritty/themes/themes/<settings.terminal.alacritty_theme>.toml
+- name: Dotfiles | alacritty themes directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.config/alacritty/themes"
+    state: directory
+    mode: "0755"
+
+- name: Dotfiles | alacritty themes ({{ dotfiles_alacritty_theme_commit[:7] }})
+  ansible.builtin.unarchive:
+    src: https://github.com/alacritty/alacritty-theme/archive/{{ dotfiles_alacritty_theme_commit }}.tar.gz
+    dest: "{{ ansible_facts.env.HOME }}/.config/alacritty/themes"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "{{ ansible_facts.env.HOME }}/.config/alacritty/themes/themes"
+  register: dotfiles_themes
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: dotfiles_themes is succeeded
+  ignore_errors: true
+
+- name: Dotfiles | alacritty themes not downloaded
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['alacritty themes: could not be downloaded'] }}"
+  when: dotfiles_themes is failed

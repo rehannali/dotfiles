@@ -1,0 +1,75 @@
+---
+- name: Shell | Oh My Zsh  # noqa: latest[git] - follows upstream on purpose, fast-forward on every run
+  ansible.builtin.git:
+    repo: "{{ shell_omz_repo }}"
+    dest: "{{ ansible_facts.env.HOME }}/.oh-my-zsh"
+    depth: 1
+    update: true
+  register: shell_omz
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: shell_omz is succeeded
+  ignore_errors: true
+
+- name: Shell | Oh My Zsh plugins and theme  # noqa: latest[git] - follows upstream on purpose, fast-forward on every run
+  ansible.builtin.git:
+    repo: "{{ item.value }}"
+    dest: "{{ ansible_facts.env.HOME }}/.oh-my-zsh/custom/{{ item.key }}"
+    depth: 1
+    update: true
+  loop: "{{ shell_omz_plugins | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: shell_plugins
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: shell_plugins is succeeded
+  ignore_errors: true
+  when: shell_omz is succeeded
+
+- name: Shell | spaceship theme
+  ansible.builtin.file:
+    src: "{{ ansible_facts.env.HOME }}/.oh-my-zsh/custom/themes/spaceship-prompt/spaceship.zsh-theme"
+    dest: "{{ ansible_facts.env.HOME }}/.oh-my-zsh/custom/themes/spaceship.zsh-theme"
+    state: link
+    force: true
+  when: shell_omz is succeeded
+
+- name: Shell | tmux plugins  # noqa: latest[git] - follows upstream on purpose, fast-forward on every run
+  ansible.builtin.git:
+    repo: "{{ item.value }}"
+    dest: "{{ ansible_facts.env.HOME }}/.tmux/plugins/{{ item.key }}"
+    depth: 1
+    update: true
+  loop: "{{ shell_tmux_plugins | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: shell_tmux
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: shell_tmux is succeeded
+  ignore_errors: true
+
+- name: Shell | record what could not be downloaded
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['shell: could not download ' ~ item] }}"
+  loop: >-
+    {{ (['Oh My Zsh'] if shell_omz is failed else [])
+       + ((shell_plugins.results | default([])) + (shell_tmux.results | default([]))) | selectattr('failed', 'defined')
+         | selectattr('failed') | map(attribute='item.key') | list }}
+
+- name: Shell | iTerm2 shell integration (.zshrc sources it)
+  ansible.builtin.get_url:
+    url: https://iterm2.com/shell_integration/zsh
+    dest: "{{ ansible_facts.env.HOME }}/.iterm2_shell_integration.zsh"
+    mode: "0644"
+  register: shell_iterm
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: shell_iterm is succeeded
+  ignore_errors: true
+  when: dotfiles_os == 'darwin' and gui_apps | bool
+
+- name: Shell | zsh as the login shell
+  ansible.builtin.include_tasks: login_shell.yml
+  when: login_shell_zsh | bool

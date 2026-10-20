@@ -37,7 +37,7 @@
 
     - name: Homebrew | taps and trust
       ansible.builtin.include_tasks: tap.yml
-      loop: "{{ packages_data.packages.taps }}"
+      loop: "{{ packages.taps }}"
       loop_control:
         loop_var: tap
 
@@ -77,27 +77,20 @@
             loop_var: formula
             label: "{{ formula.name }}"
 
-        # mise reads every ~/.config/mise/conf.d/*.toml, so chezmoi's config.toml stays as it renders it. Rewritten
-        # every run: a tool that gets a bottle or a port later drops out again (never two managers for one tool).
-        - name: Intel | mise fallback config
-          ansible.builtin.copy:
-            dest: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
-            mode: "0644"
-            content: |
-              # Written by Ansible (roles/packages): Intel Mac tools neither Homebrew nor MacPorts could install.
-              # Set mise_fallback in packages.yml, not here.
-              [tools]
-              {% for id in intel_mise_fallback %}
-              "{{ id }}" = "latest"
-              {% endfor %}
-          when: intel_mise_fallback | length > 0
-
-        - name: Intel | no mise fallbacks needed
+        # an older version of these dotfiles wrote the fallbacks here; the mise role puts them in config.toml now
+        - name: Intel | old mise fallback config
           ansible.builtin.file:
             path: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
             state: absent
-          when: intel_mise_fallback | length == 0
 
     - name: Casks and App Store apps
       ansible.builtin.include_tasks: apps.yml
       when: gui_apps | bool
+
+    - name: Remove (remove.brew / cask / mas / port)
+      ansible.builtin.include_tasks: darwin_remove.yml
+
+    - name: Homebrew | clean up old versions and downloads
+      ansible.builtin.command: brew cleanup
+      changed_when: false
+      failed_when: false

@@ -1,8 +1,25 @@
 ---
-# files: write the dotfiles only (before the packages). scripts: run chezmoi's own setup scripts (after them).
-dotfiles_phase: files
-# true: overwrite dotfiles you changed by hand on the machine. false: such a file is reported and left alone.
-dotfiles_force: false
-# false: apply the checkout as it is, never pull into it (bootstrap.sh --source: your working copy)
+# The dotfiles: home/ in the repo, laid out exactly as in your home directory.
+#   plain files   linked from the checkout on the machine (dotfiles_dir), so editing ~/.zshrc edits the repo
+#   *.j2          templates (settings, git identity, OS): written as the file without .j2; edit the .j2 in the repo
+#   .keep         only makes sure the directory exists
+dotfiles_source: "{{ playbook_dir }}/../home"
+
+# false: use the checkout as it is, never pull into it (bootstrap.sh --source: your working copy)
 dotfiles_update: true
-dotfiles_chezmoi_dir: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/bin"
+
+# Paths (relative to home/) that are copied instead of linked: apps that save by replacing the file would turn a
+# link back into a plain file. The machine's copy is overwritten on every run (the old one is kept as *~ backup).
+dotfiles_copy: [.config/karabiner]
+
+# Directories only you may read
+dotfiles_private_dirs: [.config/atuin, .config/karabiner, .config/dotfiles]
+
+# More paths (relative to home/) a machine leaves out, on top of the ones decided by OS and gui_apps
+dotfiles_skip_extra: []
+
+# A file in the way of a link (a different file, not a link) is moved here first, nothing is lost
+dotfiles_backup_dir: "{{ ansible_facts.env.HOME }}/.dotfiles-backup/{{ ansible_facts.date_time.iso8601_basic_short }}"
+
+# alacritty-theme, pinned (bump the commit to update); only for machines with gui_apps
+dotfiles_alacritty_theme_commit: 94e1dc0b9511969a426208fbba24bd7448493785

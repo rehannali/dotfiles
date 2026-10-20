@@ -1,10 +1,33 @@
 ---
-- name: Report | everything installed
+- name: Report | cache directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.cache/dotfiles"
+    state: directory
+    mode: "0755"
+  when: not ansible_check_mode
+
+# scripts/check-install.py reads this to know what should be on this machine
+- name: Report | what this machine should have (for scripts/check-install.py)
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/plan.json"
+    mode: "0644"
+    content: >-
+      {{ {'expect': tool_plan.expect, 'gui_apps': gui_apps | bool,
+          'flutter': settings.flutter.version if (install_flutter | bool and gui_apps | bool) else '',
+          'cask_appdir': settings.macos.cask_appdir,
+          'casks': ((packages.darwin.casks + (packages.darwin_arm.casks if dotfiles_arch == 'arm64' else []) + casks_extra)
+                    | rejectattr('name', 'in', casks_skip) | list)
+                   if (dotfiles_os == 'darwin' and gui_apps | bool and install_casks | bool) else []}
+         | to_nice_json }}
+  when: not ansible_check_mode
+  failed_when: false
+
+- name: Report | everything was done
   ansible.builtin.debug:
     msg: "{{ inventory_hostname }}: everything was installed."
   when: install_failures | default([]) | length == 0
 
-- name: Report | NOT installed (the rest of the setup went on; run the playbook again once the cause is fixed)
+- name: Report | NOT done (the rest of the setup went on; run the playbook again once the cause is fixed)
   ansible.builtin.debug:
     msg: "{{ install_failures }}"
   when: install_failures | default([]) | length > 0

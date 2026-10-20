@@ -1,79 +1,98 @@
 ---
-# chezmoi stays in charge of the files in your home directory (templates, `chezmoi diff`, `chezmoi re-add`).
-# Ansible gives it its answers (name, email, profile, Bitwarden) from the inventory and decides when it runs.
-- name: Dotfiles | checkout
-  ansible.builtin.git:
-    repo: "{{ dotfiles_repo }}"
-    dest: "{{ dotfiles_dir }}"
-    version: "{{ dotfiles_branch }}"
-    update: true
-  register: dotfiles_git
-  retries: "{{ install_retries | int - 1 }}"
-  delay: "{{ install_delay }}"
-  until: dotfiles_git is succeeded
-  when: dotfiles_phase == 'files' and dotfiles_update | bool
-  ignore_errors: true
+- name: Dotfiles | name and email for git are set
+  ansible.builtin.assert:
+    that: [git_name | length > 0, git_email | length > 0]
+    fail_msg: >-
+      git_name and git_email are empty: set them in inventory/group_vars/all/main.yml (or for this group / host),
+      or pass bootstrap.sh --name/--email. No dotfiles were written.
+    quiet: true
 
-- name: Dotfiles | checkout not updated
+- name: Dotfiles | update the checkout on the machine
+  ansible.builtin.include_tasks: checkout.yml
+  when: dotfiles_update | bool
+
+- name: Dotfiles | what this machine leaves out
   ansible.builtin.set_fact:
-    install_failures: "{{ install_failures | default([]) + ['dotfiles: could not update ' ~ dotfiles_dir ~ ' (local changes?); applied as it is'] }}"
-  when: dotfiles_phase == 'files' and dotfiles_git is failed
+    dotfiles_skip: >-
+      {{ dotfiles_skip_extra
+         + ([] if dotfiles_os == 'darwin' else ['.config/karabiner', '.hyper.js'])
+         + ([] if gui_apps | bool else ['.config/alacritty', '.config/wezterm', '.config/karabiner', '.hyper.js'])
+         + ([] if bitwarden | bool else ['.config/dotfiles/secrets.zsh.j2']) }}
 
-- name: Dotfiles | chezmoi on PATH?
-  ansible.builtin.command: which chezmoi
-  environment:
-    PATH: "{{ dotfiles_chezmoi_dir }}:/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
-  register: chezmoi_which
-  changed_when: false
-  failed_when: false
+- name: Dotfiles | the files in home/
+  ansible.builtin.set_fact:
+    dotfiles_files: >-
+      {{ lookup('community.general.filetree', dotfiles_source, wantlist=True)
+         | selectattr('state', 'equalto', 'file')
+         | rejectattr('path', 'match', '^(' ~ (dotfiles_skip | map('regex_escape') | join('|')) ~ ')(/|$)')
+         | list }}
 
-- name: Dotfiles | download chezmoi (kept out of PATH; Homebrew or mise installs the one you use)
-  # download first: `sh -c "$(curl ...)"` would report success when the download failed
-  ansible.builtin.shell: installer="$(curl -fsLS https://get.chezmoi.io)" && sh -c "$installer" -- -b {{ dotfiles_chezmoi_dir | quote }}
-  args:
-    creates: "{{ dotfiles_chezmoi_dir }}/chezmoi"
-  register: chezmoi_download
-  changed_when: true
-  retries: "{{ install_retries | int - 1 }}"
-  delay: "{{ install_delay }}"
-  until: chezmoi_download is succeeded
-  when: chezmoi_which.rc != 0
+- name: Dotfiles | directories
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/{{ item }}"
+    state: directory
+    mode: "{{ '0700' if item in dotfiles_private_dirs else '0755' }}"
+  # every directory on the way, parents first: creating a/b/c alone would give a and a/b the mode meant for c
+  loop: >-
+    {%- set ns = namespace(dirs=[]) -%}
+    {%- for d in dotfiles_files | map(attribute='path') | map('dirname') | reject('equalto', '') | unique -%}
+    {%-   set parts = d.split('/') -%}
+    {%-   for i in range(1, parts | length + 1) -%}{%- set ns.dirs = ns.dirs + [parts[:i] | join('/')] -%}{%- endfor -%}
+    {%- endfor -%}
+    {{ ns.dirs | unique | sort }}
 
-- name: Dotfiles | run chezmoi
+- name: Dotfiles | sort the files
+  ansible.builtin.set_fact:
+    dotfiles_templates: "{{ dotfiles_files | selectattr('path', 'search', '\\.j2$') | list }}"
+    dotfiles_copies: >-
+      {{ dotfiles_files | rejectattr('path', 'search', '(\.j2|/\.keep)$')
+         | selectattr('path', 'match', '^(' ~ (dotfiles_copy | map('regex_escape') | join('|')) ~ ')/') | list }}
+    dotfiles_links: >-
+      {{ dotfiles_files | rejectattr('path', 'search', '(\.j2|(^|/)\.keep)$')
+         | rejectattr('path', 'match', '^(' ~ (dotfiles_copy | map('regex_escape') | join('|')) ~ ')/') | list }}
+
+- name: Dotfiles | secrets from Bitwarden (secrets.yml)
+  ansible.builtin.set_fact:
+    dotfiles_secrets: >-
+      {{ dotfiles_secrets | default({}) | combine({item.key: lookup('community.general.bitwarden', item.value.item,
+         field=item.value.field | default('password'))[0]}) }}
+  loop: "{{ secrets.env | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  when: bitwarden | bool
+
+- name: Dotfiles | no secrets to write
+  ansible.builtin.set_fact:
+    dotfiles_secrets: {}
+  when: bitwarden | bool and dotfiles_secrets is not defined
+
+- name: Dotfiles | templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.path | regex_replace('\\.j2$', '') }}"
+    mode: "{{ '0600' if item.path.startswith('.config/dotfiles/') else '0644' }}"
+    backup: true
+  loop: "{{ dotfiles_templates }}"
+  loop_control:
+    label: "{{ item.path }}"
   vars:
-    chezmoi: "{{ chezmoi_which.stdout if chezmoi_which.rc == 0 else dotfiles_chezmoi_dir ~ '/chezmoi' }}"
-  environment:
-    PATH: "{{ dotfiles_chezmoi_dir }}:/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
-    # chezmoi init reads its answers from these instead of asking (home/.chezmoi.toml.tmpl)
-    DOTFILES_NAME: "{{ git_name }}"
-    DOTFILES_EMAIL: "{{ git_email }}"
-    DOTFILES_PROFILE: "{{ 'full' if gui_apps | bool else 'cli' }}"
-    DOTFILES_BITWARDEN: "{{ bitwarden | bool | lower }}"
-    BW_SESSION: "{{ lookup('ansible.builtin.env', 'BW_SESSION') }}"
-    # chezmoi's package scripts stand down: the packages and mise roles did that part
-    DOTFILES_PACKAGES: ansible
-  block:
-    - name: Dotfiles | name and email are set
-      ansible.builtin.assert:
-        that: [git_name | length > 0, git_email | length > 0]
-        fail_msg: git_name and git_email are empty; set them in inventory/group_vars/all.yml or pass --name/--email
-        quiet: true
+    dotfiles_secret_values: "{{ dotfiles_secrets | default({}) }}"
+  when: not item.path.startswith('.config/dotfiles/') or dotfiles_secrets is defined
 
-    - name: Dotfiles | chezmoi config from the inventory
-      ansible.builtin.command: "{{ chezmoi }} init --source {{ dotfiles_dir | quote }} --no-tty"
-      changed_when: false
+- name: Dotfiles | copies
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.path }}"
+    mode: "0600"
+    backup: true
+  loop: "{{ dotfiles_copies }}"
+  loop_control:
+    label: "{{ item.path }}"
 
-    - name: Dotfiles | files
-      ansible.builtin.command: >-
-        {{ chezmoi }} apply --source {{ dotfiles_dir | quote }} --no-tty --exclude scripts
-        {{ '--force' if dotfiles_force | bool else '' }}
-      register: chezmoi_files
-      changed_when: chezmoi_files.stdout | length > 0
-      when: dotfiles_phase == 'files'
+- name: Dotfiles | links
+  ansible.builtin.include_tasks: links.yml
 
-    - name: Dotfiles | setup scripts (shell, macOS defaults, Xcode, gems, Flutter, ...)
-      ansible.builtin.command: >-
-        {{ chezmoi }} apply --source {{ dotfiles_dir | quote }} --no-tty --include scripts
-      register: chezmoi_scripts
-      changed_when: true
-      when: dotfiles_phase == 'scripts'
+- name: Dotfiles | alacritty themes
+  ansible.builtin.include_tasks: alacritty.yml
+  when: gui_apps | bool

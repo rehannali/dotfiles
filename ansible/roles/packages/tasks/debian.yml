@@ -15,6 +15,7 @@
   loop: "{{ tool_plan.apt }}"
   register: apt_known
   changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
   failed_when: false
 
 - name: Apt | split the list
@@ -58,3 +59,17 @@
   loop: "{{ apt_single.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
   loop_control:
     label: "{{ item.item }}"
+
+- name: Apt | remove (remove.apt)
+  ansible.builtin.apt:
+    name: "{{ remove.apt }}"
+    state: absent
+  become: true
+  register: apt_removed
+  ignore_errors: true
+  when: remove.apt | default([]) | length > 0
+
+- name: Apt | record a failed removal
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['apt: could not remove ' ~ (remove.apt | join(' '))] }}"
+  when: apt_removed is failed

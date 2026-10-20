@@ -1,16 +1,24 @@
 ---
+# Some casks are Intel-only; Apple Silicon runs them through Rosetta
+- name: Rosetta (Apple Silicon)
+  ansible.builtin.command: /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+  args:
+    creates: /Library/Apple/usr/libexec/oah/libRosettaRuntime
+  become: true
+  failed_when: false
+  when: not intel_mac
+
 - name: Casks | the list for this Mac
   ansible.builtin.set_fact:
     casks_wanted: >-
-      {{ (packages_data.packages.darwin.casks
-          + (packages_data.packages.darwin_arm.casks | default([]) if not intel_mac else []))
-         | list }}
+      {{ (packages.darwin.casks + (packages.darwin_arm.casks | default([]) if not intel_mac else []) + casks_extra)
+         | rejectattr('name', 'in', casks_skip) | list }}
 
 - name: Casks | install
   community.general.homebrew_cask:
     name: "{{ item.name }}"
     state: present
-    install_options: "{{ ['appdir=' ~ (cask_appdir | replace('~', ansible_facts.env.HOME))] if 'appdir' in (item.args_str | default('')) else omit }}"
+    install_options: "{{ ['appdir=' ~ (settings.macos.cask_appdir | replace('~', ansible_facts.env.HOME))] if item.appdir | default(false) else omit }}"
   loop: "{{ casks_wanted }}"
   loop_control:
     label: "{{ item.name }}"
@@ -19,6 +27,7 @@
   delay: "{{ install_delay }}"
   until: casks_result is succeeded
   ignore_errors: true
+  # casks_skip takes the short name too (netbird-ui for netbirdio/tap/netbird-ui)
   when: install_casks | bool and (item.name | basename) not in casks_skip
 
 - name: Casks | record what did not install
@@ -44,7 +53,7 @@
       community.general.mas:
         id: "{{ item.id }}"
         state: present
-      loop: "{{ packages_data.packages.darwin.mas | rejectattr('id', 'in', mas_skip) | list }}"
+      loop: "{{ (packages.darwin.mas + mas_extra) | rejectattr('id', 'in', mas_skip) | list }}"
       loop_control:
         label: "{{ item.name }}"
       register: mas_result

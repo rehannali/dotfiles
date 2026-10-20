@@ -14,12 +14,14 @@
   ansible.builtin.command: brew list --formula {{ formula.name }}
   register: formula_listed
   changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
   failed_when: false
 
 - name: "{{ formula.name }} | installed from MacPorts already?"
   ansible.builtin.command: /opt/local/bin/port installed {{ formula.port }}
   register: formula_ported
   changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
   failed_when: false
   when: formula.port | length > 0 and formula_listed.rc != 0
 
@@ -32,6 +34,7 @@
   ansible.builtin.script: brew-unbottled.sh {{ formula.name | quote }} {{ formula.prebuilt | lower }}
   register: formula_unbottled
   changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
   when: not formula_done
 
 - name: "{{ formula.name }} | from a bottle"

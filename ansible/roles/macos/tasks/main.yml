@@ -1,0 +1,8 @@
+---
+- name: MacOS | Dock, Finder and trackpad
+  ansible.builtin.include_tasks: defaults.yml
+  when: macos_defaults | bool and gui_apps | bool
+
+- name: MacOS | Touch ID for sudo
+  ansible.builtin.include_tasks: touch_id.yml
+  when: touch_id_sudo | bool

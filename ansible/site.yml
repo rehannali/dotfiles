@@ -1,59 +1,102 @@
 ---
-# Sets up every machine in the inventory, or the ones picked with -l. Order:
-#   1. dotfiles (files)    chezmoi writes the files, also the mise config the next steps read
-#   2. packages            Homebrew / MacPorts / apt, casks, App Store apps
-#   3. mise                runtimes and command-line tools
-#   4. dotfiles (scripts)  chezmoi's remaining setup scripts (shell, macOS defaults, Xcode, gems, Flutter);
-#                          its package scripts stand down because Ansible did that part
-#   5. report              everything that could not be installed, in one list
-# A step that fails is reported and the next one still runs.
+# Sets up every machine in the inventory, or the ones picked with -l. One part only: --tags dotfiles (or packages,
+# shell, mise, dev, macos, xcode). What would change, without changing it: --check --diff.
+# Every part reports what it could not do and the next one still runs; the report at the end lists all of it.
 - name: Set up the machine
   hosts: all
-  tasks:
-    - name: Dotfiles (files)
-      block:
-        - name: Dotfiles (files)
-          ansible.builtin.include_role:
-            name: dotfiles
-          vars:
-            dotfiles_phase: files
-      rescue:
-        - name: Dotfiles (files) did not finish
-          ansible.builtin.set_fact:
-            install_failures: "{{ install_failures | default([]) + ['dotfiles (files): ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+  pre_tasks:
+    - name: What every part needs to know about this machine
+      ansible.builtin.set_fact:
+        dotfiles_os: "{{ ansible_facts.system | lower }}"
+        dotfiles_arch: "{{ 'arm64' if ansible_facts.architecture in ['arm64', 'aarch64'] else 'x86_64' }}"
+        settings: "{{ settings_defaults | combine(settings_override | default({}), recursive=True) }}"
+        tool_plan: >-
+          {{ (packages.tools + tools_extra) | rejectattr('name', 'in', tools_skip) | list
+             | tool_plan(ansible_facts.system, ansible_facts.architecture, gui_apps | bool) }}
+        install_failures: []
+      tags: [always]
 
-    - name: Packages
+  tasks:
+    - name: Dotfiles (links and templates from home/)
+      tags: [dotfiles]
+      block:
+        - name: Dotfiles
+          ansible.builtin.import_role:
+            name: dotfiles
+      rescue:
+        - name: Dotfiles did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['dotfiles: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Packages (apt / Homebrew / MacPorts, casks, App Store, removals)
+      tags: [packages]
       block:
         - name: Packages
-          ansible.builtin.include_role:
+          ansible.builtin.import_role:
             name: packages
       rescue:
         - name: Packages did not finish
           ansible.builtin.set_fact:
-            install_failures: "{{ install_failures | default([]) + ['packages: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+            install_failures: "{{ install_failures + ['packages: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
 
-    - name: Mise
+    - name: Shell (Oh My Zsh, plugins, login shell)
+      tags: [shell]
+      block:
+        - name: Shell
+          ansible.builtin.import_role:
+            name: shell
+      rescue:
+        - name: Shell did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['shell: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Mise (runtimes and command-line tools)
+      tags: [mise]
       block:
         - name: Mise
-          ansible.builtin.include_role:
+          ansible.builtin.import_role:
             name: mise
       rescue:
         - name: Mise did not finish
           ansible.builtin.set_fact:
-            install_failures: "{{ install_failures | default([]) + ['mise: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+            install_failures: "{{ install_failures + ['mise: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
 
-    - name: Dotfiles (scripts)
+    - name: Dev (gems, npm packages, Flutter)
+      tags: [dev]
       block:
-        - name: Dotfiles (scripts)
-          ansible.builtin.include_role:
-            name: dotfiles
-          vars:
-            dotfiles_phase: scripts
+        - name: Dev
+          ansible.builtin.import_role:
+            name: dev
       rescue:
-        - name: Dotfiles (scripts) did not finish
+        - name: Dev did not finish
           ansible.builtin.set_fact:
-            install_failures: "{{ install_failures | default([]) + ['dotfiles (scripts): ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+            install_failures: "{{ install_failures + ['dev: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: MacOS (defaults, Touch ID)
+      tags: [macos]
+      when: dotfiles_os == 'darwin'
+      block:
+        - name: MacOS
+          ansible.builtin.import_role:
+            name: macos
+      rescue:
+        - name: MacOS did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['macos: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Xcode (Xcode and the iOS simulator runtime)
+      tags: [xcode]
+      when: dotfiles_os == 'darwin' and gui_apps | bool and (install_xcode | bool or install_ios_runtime | bool)
+      block:
+        - name: Xcode
+          ansible.builtin.import_role:
+            name: xcode
+      rescue:
+        - name: Xcode did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['xcode: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
 
     - name: Report
-      ansible.builtin.include_role:
+      ansible.builtin.import_role:
         name: report
+      tags: [always]

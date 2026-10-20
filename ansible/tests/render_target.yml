@@ -1,0 +1,43 @@
+---
+- name: Facts for {{ target.os }}/{{ target.arch }}
+  ansible.builtin.set_fact:
+    dotfiles_os: "{{ target.os }}"
+    dotfiles_arch: "{{ target.arch }}"
+    gui_apps: "{{ target.gui }}"
+    settings: "{{ settings_defaults }}"
+    tool_plan: "{{ packages.tools | tool_plan(target.system, target.arch, target.gui) }}"
+    render_out: "{{ render_dir.path }}/{{ target.os }}-{{ target.arch }}-{{ target.gui }}"
+    dotfiles_secret_values: {TEST_TOKEN: "it's a secret"}
+    git_name: Test User
+    git_email: test@example.com
+
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ render_out }}/{{ item | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ lookup('community.general.filetree', playbook_dir ~ '/../../home', wantlist=True) | selectattr('path', 'search', '\\.j2$')
+            | map(attribute='path') | list + ['.config/mise/config.toml.j2', 'sudo_local.j2'] }}"
+
+- name: Home templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ render_out }}/{{ item.path | regex_replace('\\.j2$', '') }}"
+    mode: "0644"
+  loop: "{{ lookup('community.general.filetree', playbook_dir ~ '/../../home', wantlist=True) | selectattr('path', 'search', '\\.j2$') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Mise config
+  ansible.builtin.template:
+    src: ../roles/mise/templates/config.toml.j2
+    dest: "{{ render_out }}/.config/mise/config.toml"
+    mode: "0644"
+
+- name: Touch ID sudo_local
+  ansible.builtin.template:
+    src: ../roles/macos/templates/sudo_local.j2
+    dest: "{{ render_out }}/sudo_local"
+    mode: "0644"
+  vars:
+    macos_pam_reattach: /opt/homebrew/lib/pam/pam_reattach.so

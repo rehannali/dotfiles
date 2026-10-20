@@ -1,6 +1,11 @@
 ---
-# Runtimes (node, python, ruby, ...) and, on Intel Macs and Linux, the command-line tools. What to install is in
-# ~/.config/mise/config.toml (written by chezmoi from packages.yml) and conf.d/ (Intel fallbacks, packages role).
+# Runtimes (node, python, ruby, ...) and, on Intel Macs and Linux, the command-line tools, from packages.yml.
+- name: Mise | config
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: "{{ ansible_facts.env.HOME }}/.config/mise/config.toml"
+    mode: "0644"
+
 - name: Mise | installed?
   ansible.builtin.stat:
     path: "{{ mise_bin }}"
@@ -12,22 +17,28 @@
   args:
     creates: "{{ mise_bin }}"
   register: mise_installer
-  changed_when: true
   retries: "{{ install_retries | int - 1 }}"
   delay: "{{ install_delay }}"
   until: mise_installer is succeeded
   when: not mise_stat.stat.exists
 
+- name: Mise | remove (remove.mise)
+  ansible.builtin.command: "{{ mise_bin }} uninstall --all {{ item }}"
+  loop: "{{ remove.mise | default([]) }}"
+  register: mise_removed
+  changed_when: mise_removed.rc == 0
+  failed_when: false
+
 - name: Mise | install the tools
   ansible.builtin.command: >-
-    {{ 'nice -n 10' if (ansible_facts.system == 'Darwin' and ansible_facts.architecture != 'arm64') else '' }}
+    {{ 'nice -n 10' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '' }}
     {{ mise_bin }} install
   environment:
     PATH: >-
       {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:{{
       ansible_facts.env.PATH }}
     # Intel Macs: mise has no prebuilt Ruby there, it compiles; keep the machine usable
-    MISE_JOBS: "{{ '2' if (ansible_facts.system == 'Darwin' and ansible_facts.architecture != 'arm64') else '4' }}"
+    MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
     MAKE_OPTS: -j2
     RUBY_MAKE_OPTS: -j2
   register: mise_install

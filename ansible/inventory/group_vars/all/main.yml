@@ -1,0 +1,51 @@
+---
+# What every machine gets. A kind of machine (group_vars/<group>.yml) or one machine (host_vars/<host>.yml)
+# overrides any of these. A list or dict set there replaces this one, it is not merged with it.
+# bootstrap.sh --name / --email set git_name / git_email for one run. The other files here: packages.yml (the
+# package list), settings.yml (taste: git, terminal, Dock, shell), secrets.yml (Bitwarden), toolchain.yml (Xcode).
+
+git_name: ""                     # for git commits: set it here (or per group/host), or pass --name
+git_email: ""
+
+# --- Which parts a machine gets
+gui_apps: true                   # false: command-line tools and terminal setup only (servers, WSL)
+install_casks: true              # macOS GUI apps (Homebrew casks); needs gui_apps
+install_app_store: true          # Mac App Store apps (needs a signed-in App Store); needs gui_apps
+macports_fallback: true          # Intel Mac: MacPorts for formulae Homebrew has no bottle for
+macos_defaults: true             # Dock, Finder and trackpad settings (settings.yml macos); needs gui_apps
+touch_id_sudo: true              # Touch ID for sudo on a Mac with a sensor, macOS 14+
+install_xcode: true              # Xcode with xcodes (needs your Apple ID, see docs/bitwarden.md); needs gui_apps
+install_ios_runtime: true        # the iOS simulator runtime that goes with that Xcode
+install_flutter: true            # Flutter with fvm (settings.yml flutter.version); needs gui_apps
+login_shell_zsh: true            # make zsh the login shell
+bitwarden: false                 # fetch the secrets in secrets.yml (and the Apple ID) from Bitwarden
+
+# --- Packages on top of packages.yml, or left out of it, for this kind of machine
+tools_extra: []                  # more entries in the packages.yml `tools` format
+tools_skip: []                   # tool names (the `name` key) this machine does not get
+casks_extra: []                  # e.g. [{name: slack, appdir: true}, {name: zoom}]
+casks_skip: []                   # cask names
+mas_extra: []                    # e.g. [{id: 803453959, name: Slack}]
+mas_skip: []                     # App Store ids
+
+# Uninstalled on every run, so a package you no longer want goes away everywhere. Deleting an entry from the lists
+# above only stops installing it; to take it off machines that have it, put it here. Run with --check first to see
+# what would go.
+remove:
+  brew: []                       # Homebrew formulae
+  cask: []                       # Homebrew casks
+  mas: []                        # App Store ids
+  apt: []                        # Debian packages
+  mise: []                       # mise tool ids (also dropped from the mise config)
+  port: []                       # MacPorts ports (Intel Macs)
+
+# --- Network hiccups: every install is tried this many times in all, waiting install_delay seconds in between.
+# What still fails is reported at the end; the run goes on.
+install_retries: 3
+install_delay: 10
+
+# --- Where the repo lives on the machine. The dotfiles in home/ are linked from here, so editing ~/.zshrc edits
+# the checkout (commit and push from there). bootstrap.sh clones it here too.
+dotfiles_repo: https://github.com/rehannali/dotfiles.git
+dotfiles_branch: main
+dotfiles_dir: "{{ ansible_facts.env.HOME }}/.dotfiles"
