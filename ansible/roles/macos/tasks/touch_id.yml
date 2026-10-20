@@ -45,3 +45,21 @@
     macos_touch_id.stdout == 'yes'
     and (macos_sudo_local.content is not defined
          or (macos_sudo_local.content | b64decode).startswith('# dotfiles: Touch ID'))
+
+# A sudo_local someone else wrote: keep it, and add the Touch ID lines at its end unless it already enables Touch ID
+- name: Touch ID | add to your own sudo_local
+  ansible.builtin.blockinfile:
+    path: /etc/pam.d/sudo_local
+    marker: "# {mark} dotfiles: Touch ID"
+    block: |
+      {% if macos_reattach.stat.exists %}
+      auth       optional       {{ macos_reattach.stat.path }} ignore_ssh
+      {% endif %}
+      auth       sufficient     pam_tid.so
+  become: true
+  when: >-
+    macos_touch_id.stdout == 'yes'
+    and macos_sudo_local.content is defined
+    and not (macos_sudo_local.content | b64decode).startswith('# dotfiles: Touch ID')
+    and ('BEGIN dotfiles: Touch ID' in (macos_sudo_local.content | b64decode)
+         or (macos_sudo_local.content | b64decode) is not regex('(?m)^\\s*auth\\s+sufficient\\s+pam_tid\\.so'))

@@ -83,6 +83,25 @@
             path: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
             state: absent
 
+    # brew_service in packages.yml; a tool that came from MacPorts or mise instead (Intel) has no Homebrew service
+    - name: Homebrew | services
+      ansible.builtin.shell: |
+        brew list --formula {{ item.name | quote }} > /dev/null 2>&1 || { echo "not from Homebrew"; exit 0; }
+        brew services start {{ item.name | quote }}
+      loop: "{{ tool_plan.brew | selectattr('service') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: brew_services
+      changed_when: "'Successfully started' in brew_services.stdout"
+      ignore_errors: true
+
+    - name: Homebrew | record services that did not start
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['brew services: ' ~ item.item.name ~ ' did not start'] }}"
+      loop: "{{ brew_services.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
     - name: Casks and App Store apps
       ansible.builtin.include_tasks: apps.yml
       when: gui_apps | bool

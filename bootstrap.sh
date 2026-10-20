@@ -359,28 +359,41 @@ if ! ansible-inventory -i inventory/hosts.yml --host "$HOST" > /dev/null 2>&1 ||
 fi
 args+=(-l "$HOST")
 
-# options and DOTFILES_* variables -> inventory switches for this run
+# options and DOTFILES_* variables -> inventory switches. They are this machine's choices: kept in
+# ~/.config/dotfiles/local.yml (dot remember), so every later `dot apply` / `dot sync` uses them too
+yaml_str() { local s="${1//\\/\\\\}"; printf '"%s"' "${s//\"/\\\"}"; }
+saved=()
+choice() { args+=(-e "{\"$1\": $2}"); saved+=("$1: $2"); }
 [ -z "$SOURCE" ] || args+=(-e dotfiles_update=false)
-[ -z "${DOTFILES_NAME:-}" ] || args+=(-e "git_name=$DOTFILES_NAME")
-[ -z "${DOTFILES_EMAIL:-}" ] || args+=(-e "git_email=$DOTFILES_EMAIL")
-[ "${DOTFILES_PROFILE:-}" != cli ] || args+=(-e gui_apps=false)
-[ "${DOTFILES_BITWARDEN:-}" != true ] || args+=(-e bitwarden=true)
-[ "${DOTFILES_XCODE:-}" != skip ] || args+=(-e install_xcode=false -e install_ios_runtime=false)
-[ "${DOTFILES_RUNTIME:-}" != skip ] || args+=(-e install_ios_runtime=false)
-[ -z "${DOTFILES_XCODE_VERSION:-}" ] || args+=(-e "xcode_version=$DOTFILES_XCODE_VERSION")
-[ -z "${DOTFILES_IOS_RUNTIME:-}" ] || args+=(-e "ios_runtime=$DOTFILES_IOS_RUNTIME")
-[ "${DOTFILES_FLUTTER:-}" != skip ] || args+=(-e install_flutter=false)
-case "${DOTFILES_CASKS:-}" in skip | check) args+=(-e install_casks=false) ;; esac
-# DOTFILES_SKIP_CASKS="netbird-ui other": apps (names in packages.yml) left out of this run (replaces apps_skip)
+[ -z "${DOTFILES_NAME:-}" ] || choice git_name "$(yaml_str "$DOTFILES_NAME")"
+[ -z "${DOTFILES_EMAIL:-}" ] || choice git_email "$(yaml_str "$DOTFILES_EMAIL")"
+case "${DOTFILES_PROFILE:-}" in cli) choice gui_apps false ;; full) choice gui_apps true ;; esac
+[ "${DOTFILES_BITWARDEN:-}" != true ] || choice bitwarden true
+[ "${DOTFILES_XCODE:-}" != skip ] || { choice install_xcode false; choice install_ios_runtime false; }
+[ "${DOTFILES_RUNTIME:-}" != skip ] || [ "${DOTFILES_XCODE:-}" = skip ] || choice install_ios_runtime false
+[ -z "${DOTFILES_XCODE_VERSION:-}" ] || choice xcode_version "$(yaml_str "$DOTFILES_XCODE_VERSION")"
+[ -z "${DOTFILES_IOS_RUNTIME:-}" ] || choice ios_runtime "$(yaml_str "$DOTFILES_IOS_RUNTIME")"
+[ "${DOTFILES_FLUTTER:-}" != skip ] || choice install_flutter false
+case "${DOTFILES_CASKS:-}" in skip | check) choice install_casks false ;; esac
+# DOTFILES_SKIP_CASKS="netbird-ui other": apps (names in packages.yml) left out (replaces apps_skip)
 if [ -n "${DOTFILES_SKIP_CASKS:-}" ]; then
-  skip_json=""
-  for c in $DOTFILES_SKIP_CASKS; do skip_json="$skip_json${skip_json:+, }\"$c\""; done
-  args+=(-e "{\"apps_skip\": [$skip_json]}")
+  skip_list=""
+  for c in $DOTFILES_SKIP_CASKS; do skip_list="$skip_list${skip_list:+, }$(yaml_str "$c")"; done
+  choice apps_skip "[$skip_list]"
 fi
-[ "${DOTFILES_MACPORTS:-}" != skip ] || args+=(-e macports_fallback=false)
-[ "${DOTFILES_MAS:-}" != skip ] || args+=(-e install_app_store=false)
-[ "${DOTFILES_DEFAULTS:-}" != skip ] || args+=(-e macos_defaults=false)
-[ "${DOTFILES_CHSH:-}" != skip ] || args+=(-e login_shell_zsh=false)
+[ "${DOTFILES_MACPORTS:-}" != skip ] || choice macports_fallback false
+[ "${DOTFILES_MAS:-}" != skip ] || choice install_app_store false
+[ "${DOTFILES_DEFAULTS:-}" != skip ] || choice macos_defaults false
+[ "${DOTFILES_CHSH:-}" != skip ] || choice login_shell_zsh false
+
+# keep them, and ask for a git name / email nothing has given yet (not with --check: that changes nothing)
+dot_cmd() { DOTFILES_DIR="$REPO_DIR" DOTFILES_HOST="$HOST" DOTFILES_GROUP="$GROUP" bash "$REPO_DIR/home/.local/bin/dot" "$@"; }
+if [ -z "$CHECK" ]; then
+  if [ ${#saved[@]} -gt 0 ]; then dot_cmd remember "${saved[@]}" || die "Could not save this machine's choices"; fi
+  dot_cmd remember || true
+fi
+local_vars="$HOME/.config/dotfiles/local.yml"
+[ ! -f "$local_vars" ] || args+=(-i "$local_vars")
 [ -z "$CHECK" ] || args+=(--check --diff)
 # DOTFILES_ANSIBLE_ARGS="-e install_casks=false --tags dotfiles": extra ansible-playbook options (word-split)
 if [ -n "${DOTFILES_ANSIBLE_ARGS:-}" ]; then read -r -a extra_ansible <<< "$DOTFILES_ANSIBLE_ARGS"; args+=("${extra_ansible[@]}"); fi

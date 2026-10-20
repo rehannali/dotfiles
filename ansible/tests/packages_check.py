@@ -37,6 +37,8 @@ for t in all_tools:
     for key in ("port", "mise_fallback"):
         if t.get(key) and not t.get("brew"):
             bad.append(f"{t['name']}: {key} is only a fallback for a brew formula")
+    if "brew_service" in t and (t["brew_service"] is not True or not t.get("brew")):
+        bad.append(f"{t['name']}: brew_service is true or absent, and needs a brew formula")
     if "port_build" in t and (t["port_build"] is not True or not t.get("port")):
         bad.append(f"{t['name']}: port_build is true or absent, and needs a port")
 for a in all_apps:

@@ -6,7 +6,7 @@ applying. It uses Ansible's `community.general.bitwarden` lookup, which calls th
 ## Turn it on
 
 ```sh
-bootstrap.sh --bitwarden            # or DOTFILES_BITWARDEN=true, for one run
+bootstrap.sh --bitwarden            # or DOTFILES_BITWARDEN=true; kept for this machine
 ```
 
 or for good: `bitwarden: true` in `ansible/inventory/group_vars/all/main.yml`, or only for a group or host.
@@ -58,6 +58,12 @@ password to unlock the vault: type it, or put it in `BW_PASSWORD` for the run.
 
 Don't leave `BW_PASSWORD` or the API key in your shell profile. Export them for the one command, or read them
 from somewhere safe.
+
+## Every run after that
+
+`bootstrap.sh --bitwarden` keeps `bitwarden: true` for this machine (`~/.config/dotfiles/local.yml`), and `dot apply`
+/ `dot sync` unlock the vault before they run: they ask for the master password, or use `BW_PASSWORD`, or nothing
+when `BW_SESSION` is already set. The CLI stays logged in between runs; after `bw logout`, run `bw login` once.
 
 ## Without bootstrap.sh
 

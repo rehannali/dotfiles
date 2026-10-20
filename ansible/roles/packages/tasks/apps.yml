@@ -73,6 +73,17 @@
       loop: "{{ mas_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
       loop_control:
         label: "{{ item.item.name }}"
+
+    - name: App Store | update the apps (mas upgrade)
+      ansible.builtin.command: mas upgrade
+      register: mas_upgrade
+      changed_when: "'Upgrading' in mas_upgrade.stdout"
+      ignore_errors: true
+
+    - name: App Store | update failed
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: mas upgrade failed (signed in?)'] }}"
+      when: mas_upgrade is failed
   rescue:
     - name: App Store | mas could not be installed
       ansible.builtin.set_fact:

@@ -60,6 +60,7 @@ def tool_plan(tools, platform, managers, gui_apps=True):
             plan["brew"].append({
                 "name": ident,
                 "prebuilt": t.get("prebuilt") is True,
+                "service": t.get("brew_service") is True,
                 "source": mise_intel is False,
                 "port": str(t.get("port", "")) if intel_mac else "",
                 "port_build": intel_mac and t.get("port_build") is True,

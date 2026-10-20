@@ -39,14 +39,14 @@
       failed_when: false
 
     - name: Runtime | install iOS {{ xcode_runtime }}
-      ansible.builtin.command: xcodes runtimes install "iOS {{ xcode_runtime }}"
+      ansible.builtin.command: xcodes runtimes install "iOS {{ xcode_runtime }}" {{ xcode_aria2_arg }}
       environment: "{{ xcode_env | combine(xcode_auth_env) }}"
       changed_when: true
       when: xcode_runtime_have.rc != 0 and xcode_unattended
 
     - name: Runtime | needs a terminal (two-factor code)
       ansible.builtin.set_fact:
-        xcode_pending: "{{ xcode_pending + ['xcodes runtimes install ' ~ ('iOS ' ~ xcode_runtime) | quote] }}"
+        xcode_pending: "{{ xcode_pending + ['xcodes runtimes install ' ~ ('iOS ' ~ xcode_runtime) | quote ~ ' ' ~ xcode_aria2_arg] }}"
       when: xcode_runtime_have.rc != 0 and not xcode_unattended
   rescue:
     - name: Runtime | not installed

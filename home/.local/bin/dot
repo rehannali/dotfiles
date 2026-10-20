@@ -2,25 +2,34 @@
 # dot: everyday use of the dotfiles on this machine (linked from ~/.dotfiles/home/.local/bin/dot).
 #
 #   dot                 same as dot apply
-#   dot apply [ARGS]    set this machine up from ~/.dotfiles as it is (ARGS go to ansible-playbook,
+#   dot apply [ARGS]    set this machine up from ~/.dotfiles as it is, without pulling (ARGS go to ansible-playbook,
 #                       e.g. --tags dotfiles, --tags packages, -e install_casks=false)
 #   dot sync [ARGS]     pull the latest from GitHub, then apply: how another machine's changes arrive here
 #   dot check [ARGS]    what apply would change, without changing anything (--check --diff)
 #   dot save [MESSAGE]  commit everything changed in ~/.dotfiles and push it, for the other machines to sync
-#   dot status          this machine's host and group, and what is changed / not pushed in ~/.dotfiles
+#   dot status          this machine's host and group, its saved choices, what is changed / not pushed in ~/.dotfiles
 #   dot audit           check what is installed against what this machine should have
+#   dot remember 'KEY: VALUE' ...
+#                       keep a setting for this machine on every run, e.g. 'gui_apps: false' (no arguments: ask
+#                       for a missing git name / email)
 #   dot cd              print the repo path:  cd "$(dot cd)"
 #
 # Which machine this is (host and group in ansible/inventory/hosts.yml) comes from ~/.config/dotfiles/machine,
 # written by every run. Override for one command with DOTFILES_HOST / DOTFILES_GROUP.
+# This machine's own choices (bootstrap.sh options, your name and email) are in ~/.config/dotfiles/local.yml, an
+# inventory every run reads: they win over group_vars, and lose to host_vars/<host>.yml in the repo and to -e.
+# With bitwarden on, dot unlocks the vault first (BW_PASSWORD, or it asks), unless BW_SESSION is set.
 set -euo pipefail
 
 REPO="${DOTFILES_DIR:-$HOME/.dotfiles}"
 MACHINE_FILE="$HOME/.config/dotfiles/machine"
-export PATH="$HOME/.local/bin:$PATH"
+LOCAL_VARS="$HOME/.config/dotfiles/local.yml"
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 
 die() { printf '\033[1;31mdot:\033[0m %s\n' "$*" >&2; exit 1; }
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+yaml_str() { local s="${1//\\/\\\\}"; printf '"%s"' "${s//\"/\\\"}"; }
+has_tty() { ( : < /dev/tty ) 2> /dev/null; }
 
 case "${1:-}" in -h | --help | help) sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;; esac
 [ -d "$REPO/ansible" ] || die "no checkout at $REPO (set DOTFILES_DIR, or run bootstrap.sh first)"
@@ -31,26 +40,98 @@ if [ -f "$MACHINE_FILE" ]; then   # written by the report role: DOTFILES_HOST=..
   [ -n "$group" ] || group="$(sed -n 's/^DOTFILES_GROUP=//p' "$MACHINE_FILE")"
 fi
 [ -n "$host" ] || host="$(hostname -s 2> /dev/null || hostname)"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# remember 'KEY: VALUE' ...: add or replace this machine's settings in local.yml (VALUE is YAML)
+remember() {
+  local line key keys=" "
+  for line in "$@"; do keys="$keys${line%%:*} "; done
+  mkdir -p "$(dirname "$LOCAL_VARS")"
+  {
+    printf '%s\n' "# This machine's choices (bootstrap.sh options, the name and email you typed); every dot run uses them." \
+      "# Change or delete a line to change one; host_vars/<host>.yml in the repo and -e KEY=VALUE win over them." \
+      "all:" "  hosts:" "    $host:"
+    if [ -f "$LOCAL_VARS" ]; then
+      grep -E '^      [a-z_]+: ' "$LOCAL_VARS" | while IFS= read -r line; do
+        key="${line#      }"; key="${key%%:*}"
+        case "$keys" in *" $key "*) ;; *) printf '%s\n' "$line" ;; esac
+      done || true
+    fi
+    for line in "$@"; do printf '      %s\n' "$line"; done
+  } > "$TMP/local.yml"
+  chmod 600 "$TMP/local.yml"
+  mv "$TMP/local.yml" "$LOCAL_VARS"
+}
+
+# the inventory for this machine: hosts.yml, its group if it is not in there yet, and its saved choices
+inv=(-i inventory/hosts.yml)
+inventory() {
+  command -v ansible-playbook > /dev/null 2>&1 || die "Ansible is not installed: run bootstrap.sh (or: uv tool install --python 3.13 ansible-core)"
+  cd "$REPO/ansible"
+  export ANSIBLE_CONFIG="$REPO/ansible/ansible.cfg"
+  if ! ansible-inventory -i inventory/hosts.yml --host "$host" > /dev/null 2>&1; then
+    [ -n "$group" ] || die "$host is not in ansible/inventory/hosts.yml; add it there, or say which group: DOTFILES_GROUP=mac_work dot"
+    # Ansible only reads a YAML inventory whose name ends in .yml
+    printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$group" "$host" > "$TMP/host.yml"
+    inv+=(-i "$TMP/host.yml")
+  fi
+  [ ! -f "$LOCAL_VARS" ] || inv+=(-i "$LOCAL_VARS")
+}
+host_vars() { ansible-inventory "${inv[@]}" --host "$host" 2> /dev/null || true; }
+
+# git needs a name and an email; ask once and keep them (bootstrap.sh --name / --email do the same)
+ask_name_email() {
+  local vars name="" email="" lines=()
+  vars="$(host_vars)"
+  if grep -q '"git_name": ""' <<< "$vars"; then
+    has_tty || return 0
+    read -r -p "Your name, for git commits: " name < /dev/tty
+    [ -z "$name" ] || lines+=("git_name: $(yaml_str "$name")")
+  fi
+  if grep -q '"git_email": ""' <<< "$vars"; then
+    has_tty || return 0
+    read -r -p "Your email, for git commits: " email < /dev/tty
+    [ -z "$email" ] || lines+=("git_email: $(yaml_str "$email")")
+  fi
+  [ ${#lines[@]} -eq 0 ] && return 0
+  remember "${lines[@]}"
+  say "kept in $LOCAL_VARS"
+  case " ${inv[*]} " in *" $LOCAL_VARS "*) ;; *) inv+=(-i "$LOCAL_VARS") ;; esac
+}
+
+# bitwarden: true for this machine: the playbook reads secrets from the vault, which has to be unlocked
+bitwarden_unlock() {
+  [ -z "${BW_SESSION:-}" ] || return 0
+  case " $* " in *bitwarden=false*) return 0 ;; esac
+  grep -q '"bitwarden": true' <<< "$(host_vars)" || return 0
+  command -v bw > /dev/null 2>&1 || die "bitwarden is on for $host but bw is not installed (once without it: dot apply -e bitwarden=false)"
+  case "$(bw status 2> /dev/null)" in
+    *'"status":"unlocked"'*) return 0 ;;
+    *'"status":"unauthenticated"'*) die "bitwarden is on for $host: log in first (bw login, see docs/bitwarden.md)" ;;
+  esac
+  say "Unlocking Bitwarden (secrets for the dotfiles)"
+  if [ -n "${BW_PASSWORD:-}" ]; then
+    BW_SESSION="$(bw unlock --passwordenv BW_PASSWORD --raw)" || die "could not unlock Bitwarden"
+  else
+    has_tty || die "Bitwarden is locked and there is no terminal to ask for the password: set BW_SESSION or BW_PASSWORD"
+    BW_SESSION="$(bw unlock --raw < /dev/tty)" || die "could not unlock Bitwarden"
+  fi
+  export BW_SESSION
+}
 
 playbook() {
-  command -v ansible-playbook > /dev/null 2>&1 || die "Ansible is not installed: run bootstrap.sh (or: uv tool install --python 3.13 ansible-core)"
-  local args=(-i inventory/hosts.yml -c local -e "dotfiles_dir=$REPO")
-  local tmp=""
-  if ! (cd "$REPO/ansible" && ansible-inventory -i inventory/hosts.yml --host "$host" > /dev/null 2>&1); then
-    [ -n "$group" ] || die "$host is not in ansible/inventory/hosts.yml; add it there, or say which group: DOTFILES_GROUP=mac_work dot $*"
-    tmp="$(mktemp -d)"   # Ansible only reads a YAML inventory whose name ends in .yml
-    printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$group" "$host" > "$tmp/host.yml"
-    args+=(-i "$tmp/host.yml")
-  fi
+  inventory
+  ask_name_email
+  bitwarden_unlock "$@"
+  # dotfiles_update=false: apply ~/.dotfiles as it is (dot sync pulls first)
+  local args=("${inv[@]}" -c local -e "dotfiles_dir=$REPO" -e dotfiles_update=false)
   # sudo for the steps that need it: Ansible asks once if it can't use an already unlocked sudo
   if [ "$(id -u)" -ne 0 ] && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
     args+=(--ask-become-pass)
   fi
   say "ansible-playbook site.yml for $host${group:+ ($group)} $*"
-  local rc=0
-  (cd "$REPO/ansible" && ANSIBLE_CONFIG="$REPO/ansible/ansible.cfg" ansible-playbook "${args[@]}" -l "$host" "$@" site.yml) || rc=$?
-  if [ -n "$tmp" ]; then rm -f "$tmp/host.yml"; rmdir "$tmp"; fi
-  return "$rc"
+  ansible-playbook "${args[@]}" -l "$host" "$@" site.yml
 }
 
 cmd="${1:-apply}"
@@ -76,8 +157,25 @@ case "$cmd" in
     say "pushed; on the other machines: dot sync"
     ;;
   status)
-    printf 'machine: %s%s\nrepo:    %s (%s)\n\n' "$host" "${group:+ (group $group)}" "$REPO" "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+    printf 'machine: %s%s\nrepo:    %s (%s)\n' "$host" "${group:+ (group $group)}" "$REPO" "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+    if [ -f "$LOCAL_VARS" ]; then
+      printf 'choices: %s\n' "$LOCAL_VARS"
+      grep -E '^      [a-z_]+: ' "$LOCAL_VARS" | sed 's/^      /  /' || true
+    fi
+    printf '\n'
     git -C "$REPO" status --short --branch
+    ;;
+  remember)
+    if [ $# -gt 0 ]; then
+      for line in "$@"; do
+        [[ "$line" =~ ^[a-z_]+:\ .+ ]] || die "dot remember 'KEY: VALUE' (got: $line)"
+      done
+      remember "$@"
+      say "kept in $LOCAL_VARS"
+    else
+      inventory
+      ask_name_email
+    fi
     ;;
   audit) python3 "$REPO/scripts/check-install.py" "$@" ;;
   cd) printf '%s\n' "$REPO" ;;

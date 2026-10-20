@@ -26,6 +26,19 @@
     install_failures: "{{ install_failures | default([]) + ['xcode: xcodes is not installed, no Xcode and no simulator runtime'] }}"
   when: xcode_xcodes.rc != 0
 
+- name: Xcode | aria2 (faster downloads)
+  ansible.builtin.command: which aria2c
+  environment: "{{ xcode_env }}"
+  register: xcode_aria2
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: xcode_xcodes.rc == 0
+
+- name: Xcode | aria2 option
+  ansible.builtin.set_fact:
+    xcode_aria2_arg: "{{ ('--aria2 ' ~ (xcode_aria2.stdout | quote)) if xcode_aria2.rc | default(1) == 0 else '' }}"
+
 - name: Xcode | Apple ID
   ansible.builtin.include_tasks: credentials.yml
   when: xcode_xcodes.rc == 0
@@ -48,6 +61,14 @@
       # bootstrap.sh runs this at the end; or run it yourself.
       set -e
       export PATH="{{ xcode_env.PATH }}"
+      {% if bitwarden | bool %}
+      # the Apple ID from Bitwarden ({{ xcode_bitwarden_item }}) when the vault is unlocked (BW_SESSION); else xcodes asks
+      if [ -z "${XCODES_USERNAME:-}" ] && [ -n "${BW_SESSION:-}" ] && command -v bw > /dev/null 2>&1; then
+        XCODES_USERNAME="$(bw get username {{ xcode_bitwarden_item | quote }} 2> /dev/null || true)"
+        XCODES_PASSWORD="$(bw get password {{ xcode_bitwarden_item | quote }} 2> /dev/null || true)"
+        export XCODES_USERNAME XCODES_PASSWORD
+      fi
+      {% endif %}
       {% for line in xcode_pending %}
       {{ line }}
       {% endfor %}

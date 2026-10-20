@@ -54,7 +54,9 @@ Mac: turn on Remote Login and install the Command Line Tools first; `bootstrap.s
 Every option is in `bootstrap.sh --help`; every variable, by scenario, in [docs/environment.md](docs/environment.md).
 
 Afterwards the machine has the repo in `~/.dotfiles` and a `dot` command: `dot` applies it, `dot sync` pulls and
-applies, `dot save` commits and pushes, `dot check` shows what would change. See [docs/usage.md](docs/usage.md).
+applies, `dot save` commits and pushes, `dot check` shows what would change. The options you gave `bootstrap.sh`
+(name, email, `--cli`, `--no-xcode`, ...) are kept in `~/.config/dotfiles/local.yml`, so every later `dot` run uses
+them. See [docs/usage.md](docs/usage.md).
 
 ## Machines
 

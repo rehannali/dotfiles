@@ -33,6 +33,7 @@
 #               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,
 #               otherwise built from source. (Do not use false for Rust tools: Homebrew's rust has no Intel
 #               bottle either, so it compiles LLVM, which took >4 hours in CI.)
+#   brew_service  true = start it with `brew services` once Homebrew installed it (apt starts its own services)
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
 #   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
 #               system entries have none unless set). Used by scripts/check-install.py after an apply.
@@ -127,6 +128,7 @@ packages:
         - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, apt: python3-pygments, bin: pygmentize}
         - {name: zig, kind: cli, mise: zig, brew: zig}
         - {name: ansible, kind: system, brew: ansible, mise_fallback: pipx:ansible-core, apt: ansible, bin: ansible}   # Intel fallback: ansible-core only
+        - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}   # also makes xcodes downloads faster
         - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
         - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
         - {name: build-essential, kind: system, apt: build-essential}
@@ -155,7 +157,6 @@ packages:
     # Network tools.
     network:
       tools:
-        - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}
         - {name: nmap, kind: system, brew: nmap, port: nmap, port_build: true, apt: nmap, bin: nmap}
         - {name: openconnect, kind: system, brew: openconnect, port: openconnect, apt: openconnect, bin: openconnect}
         - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
@@ -166,7 +167,7 @@ packages:
     # A local web stack.
     web:
       tools:
-        - {name: nginx, kind: system, brew: nginx, port: nginx, mise_fallback: 'conda:nginx', apt: nginx}
+        - {name: nginx, kind: system, brew: nginx, port: nginx, mise_fallback: 'conda:nginx', apt: nginx, brew_service: true}
         - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
 
     # Apple development (macOS, with gui_apps): command-line tools, gems, Xcode extensions. Xcode itself is the xcode

@@ -1,8 +1,13 @@
 # bootstrap.sh options and environment variables
 
 What a machine gets is decided by the inventory (`ansible/inventory/`, see [configuration.md](configuration.md)).
-These options and variables change **one run** of `bootstrap.sh`; nothing here is stored. Each turns into an
-`ansible-playbook -e ...` for that run, so the same can be done with `-e` when you run the playbook yourself.
+These options and variables are for `bootstrap.sh`. Each turns into an `ansible-playbook -e ...`, so the same can be
+done with `-e` when you run the playbook yourself.
+
+The options that describe the machine (name, email, `--cli`, `--bitwarden`, the `--no-*` ones, `--xcode`, casks left
+out) are kept in `~/.config/dotfiles/local.yml`, so later `dot apply` / `dot sync` runs use them too; see
+[usage.md](usage.md#this-machines-choices). `--check`, `--branch`, `--source` and `DOTFILES_ANSIBLE_ARGS` are for the
+one run.
 
 Put variables in front of the command (`DOTFILES_CASKS=skip bash bootstrap.sh`) or export them for the session.
 Do not put passwords or tokens in your shell profile.

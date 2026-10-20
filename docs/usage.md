@@ -19,16 +19,38 @@ From then on the machine has `~/.dotfiles` (the repo) and the `dot` command.
 
 | Command | Does |
 |---|---|
-| `dot` or `dot apply` | set this machine up from `~/.dotfiles` as it is now |
+| `dot` or `dot apply` | set this machine up from `~/.dotfiles` as it is now (no `git pull`) |
 | `dot apply --tags dotfiles` | only one part: `dotfiles`, `packages`, `shell`, `mise`, `dev`, `macos`, `xcode` |
 | `dot check` | show what `dot apply` would change, change nothing |
 | `dot sync` | `git pull`, then apply: picks up what you changed on another machine |
 | `dot save "message"` | commit everything you changed in `~/.dotfiles` and push it |
-| `dot status` | which machine and group this is, what is changed or not pushed yet |
+| `dot status` | which machine and group this is, its saved choices, what is changed or not pushed yet |
+| `dot remember 'gui_apps: false'` | keep a setting for this machine on every run (see below) |
 | `dot audit` | check that everything this machine should have is there, from the right manager, and starts |
 | `cd "$(dot cd)"` | go to the repo |
 
-Extra options after the command go to `ansible-playbook`, e.g. `dot apply -e install_casks=false`.
+Extra options after the command go to `ansible-playbook`, e.g. `dot apply -e install_casks=false` (that run only).
+
+### This machine's choices
+
+What you told `bootstrap.sh` (`--name`, `--email`, `--cli`, `--no-xcode`, `--no-casks`, `--bitwarden`, ...) is kept in
+`~/.config/dotfiles/local.yml`, and every `dot apply` / `dot sync` uses it, so a later run does not install what you
+left out. If no name or email for git is set anywhere, the first run asks and keeps them there too. The file is
+an inventory with this machine's variables only, outside the repo (it is per machine, and has your email in it):
+
+```yaml
+all:
+  hosts:
+    office-mac:
+      git_email: "you@company.com"
+      install_xcode: false
+```
+
+`dot status` shows it. Change or delete a line to change a choice, or `dot remember 'install_xcode: true'`. A value
+in `host_vars/<host>.yml` in the repo wins over it, and `-e KEY=VALUE` wins over both for one run.
+
+With `bitwarden` on, `dot` unlocks the vault before it runs (it asks for the master password, or uses
+`BW_PASSWORD`); log in once with `bw login` first. `BW_SESSION` set in your shell skips the question.
 
 ## Changing a dotfile
 

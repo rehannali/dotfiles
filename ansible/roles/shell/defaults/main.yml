@@ -11,5 +11,8 @@ shell_omz_plugins:
   plugins/zsh-bat: https://github.com/fdellwing/zsh-bat.git
   plugins/zsh-256color: https://github.com/chrissicool/zsh-256color.git
   themes/spaceship-prompt: https://github.com/spaceship-prompt/spaceship-prompt.git
+# iTerm2's utilities (https://iterm2.com/utilities/<name>), as its install_shell_integration_and_utilities.sh lists them
+shell_iterm_utilities: [imgcat, imgls, it2api, it2attention, it2check, it2copy, it2dl, it2getvar, it2git, it2setcolor,
+                        it2setkeylabel, it2tip, it2ul, it2universion, it2profile, it2cat]
 shell_tmux_plugins:
   tpm: https://github.com/tmux-plugins/tpm.git

@@ -29,8 +29,9 @@ For a single run, `-e` beats everything: `ansible-playbook site.yml -l macbook -
 ## Name and email
 
 `git_name` and `git_email` in `main.yml` (or per group, e.g. a work email in `group_vars/mac_work.yml`). They go
-into `~/.gitconfig`. `bootstrap.sh --name/--email` sets them for one run. A run without them writes no dotfiles
-and says so.
+into `~/.gitconfig`. `bootstrap.sh --name/--email` sets them for this machine (kept in
+`~/.config/dotfiles/local.yml`), and when nothing sets them the first run asks. A run without them writes no
+dotfiles and says so.
 
 ## Switches
 
@@ -230,7 +231,8 @@ The iOS simulator runtime defaults to the one that belongs to the selected Xcode
 
 To pin a version, in order of priority:
 
-1. `bootstrap.sh --xcode 26.6 --ios-runtime 26.5` (or `-e xcode_version=26.6 -e ios_runtime=26.5`) for one run
+1. `-e xcode_version=26.6 -e ios_runtime=26.5` for one run; `bootstrap.sh --xcode 26.6 --ios-runtime 26.5` keeps them
+   for this machine (`~/.config/dotfiles/local.yml`)
 2. `toolchain:` in `host_vars/<host>.yml` for one machine (both keys)
 3. `group_vars/all/toolchain.yml` for every machine (both are empty there)
 
@@ -259,6 +261,7 @@ manager uses. Leave a key out where the tool isn't available from that manager.
 | `port_build` | `true`: MacPorts may compile the port itself when it has no binary archive (nmap has none, for its licence), but only once every dependency came from an archive, so it is minutes, never a chain of builds |
 | `mise_fallback` | mise tool id, used on Intel Macs only, when Homebrew has no bottle and MacPorts (no `port`, or its install failed) cannot install the tool either. It goes into the mise config. `conda:<package>` installs conda-forge's prebuilt build (ffmpeg, imagemagick, ghostscript: MacPorts would compile their libpng and everything above it) |
 | `mise_intel` | tool has no Intel Mac build in mise. A mise id (`"cargo:atuin"`) means Intel installs that instead, `false` means Intel uses Homebrew |
+| `brew_service` | `true`: started with `brew services` once Homebrew installed it (nginx). Not when it came from MacPorts or mise instead; apt starts its own services |
 | `prebuilt` | a tap formula that downloads a ready-made binary (so there is no bottle to look for) |
 
 List what you want, not what it needs. When another listed package already installs a package as a runtime

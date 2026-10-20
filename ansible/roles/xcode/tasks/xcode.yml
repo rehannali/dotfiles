@@ -50,33 +50,40 @@
       check_mode: false   # only looks, so it runs in --check too
       failed_when: false
 
-    - name: Xcode | aria2 (faster download)
-      ansible.builtin.command: which aria2c
-      environment: "{{ xcode_env }}"
-      register: xcode_aria2
-      changed_when: false
-      check_mode: false   # only looks, so it runs in --check too
-      failed_when: false
-
     - name: Xcode | the install command
       ansible.builtin.set_fact:
         xcode_install_cmd: >-
           xcodes install {{ xcode_chosen | quote }} --experimental-unxip --select --empty-trash
-          {{ ('--aria2 ' ~ xcode_aria2.stdout) if xcode_aria2.rc == 0 else '' }}
+          {{ xcode_aria2_arg }}
           {{ '--use-fastlane-auth' if xcode_auth_env.FASTLANE_SESSION else '' }}
           {{ ('--path ' ~ (xcode_xip | quote)) if xcode_xip else '' }}
 
     - name: Xcode | install {{ xcode_chosen }} (takes a while)
       ansible.builtin.command: "{{ xcode_install_cmd }}"
       environment: "{{ xcode_env | combine(xcode_auth_env) }}"
+      register: xcode_installed
       changed_when: true
       when: xcode_have.rc != 0 and xcode_unattended
+
+    # a version can exist as an Apple Silicon build and as a universal one: make sure this Mac got one it can run
+    - name: Xcode | built for this Mac?  # noqa: command-instead-of-shell - xcode_arch_check is a shell snippet ($(), case)
+      ansible.builtin.shell: "{{ xcode_arch_check }}"
+      register: xcode_arch
+      changed_when: false
+      failed_when: false
+      when: xcode_installed is not skipped
+
+    - name: Xcode | not built for this Mac
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['xcode: ' ~ xcode_arch.stdout] }}"
+      when: xcode_installed is not skipped and xcode_arch.rc != 0
 
     - name: Xcode | needs a terminal (two-factor code)
       ansible.builtin.set_fact:
         xcode_pending: >-
-          {{ xcode_pending + [xcode_install_cmd]
-             + (['rt="$(python3 ' ~ xcode_pick_copy ~ ' runtime --xcode ' ~ (xcode_chosen | quote) ~ ')" && xcodes runtimes install "iOS $rt"']
+          {{ xcode_pending + [xcode_install_cmd, xcode_arch_check]
+             + (['rt="$(python3 ' ~ xcode_pick_copy ~ ' runtime --xcode ' ~ (xcode_chosen | quote)
+                 ~ ')" && xcodes runtimes install "iOS $rt" ' ~ xcode_aria2_arg]
                 if install_ios_runtime | bool and not ios_runtime else []) }}
       when: xcode_have.rc != 0 and not xcode_unattended
 

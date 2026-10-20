@@ -58,17 +58,54 @@
        + ((shell_plugins.results | default([])) + (shell_tmux.results | default([]))) | selectattr('failed', 'defined')
          | selectattr('failed') | map(attribute='item.key') | list }}
 
-- name: Shell | iTerm2 shell integration (.zshrc sources it)
-  ansible.builtin.get_url:
-    url: https://iterm2.com/shell_integration/zsh
-    dest: "{{ ansible_facts.env.HOME }}/.iterm2_shell_integration.zsh"
-    mode: "0644"
-  register: shell_iterm
-  retries: "{{ install_retries | int - 1 }}"
-  delay: "{{ install_delay }}"
-  until: shell_iterm is succeeded
-  ignore_errors: true
+# What iTerm2's install_shell_integration_and_utilities.sh does, without it appending to ~/.zshrc (a link into the
+# repo): the zsh integration, which .zshrc sources, and the utilities in ~/.iterm2, which .zshrc puts on PATH
+- name: Shell | iTerm2 installed?
+  ansible.builtin.stat:
+    path: /Applications/iTerm.app
+  register: shell_iterm_app
   when: dotfiles_os == 'darwin' and gui_apps | bool
+
+- name: Shell | iTerm2
+  when: dotfiles_os == 'darwin' and gui_apps | bool and shell_iterm_app.stat.exists
+  block:
+    - name: Shell | iTerm2 shell integration
+      ansible.builtin.get_url:
+        url: https://iterm2.com/shell_integration/zsh
+        dest: "{{ ansible_facts.env.HOME }}/.iterm2_shell_integration.zsh"
+        mode: "0644"
+      register: shell_iterm
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: shell_iterm is succeeded
+      ignore_errors: true
+
+    - name: Shell | ~/.iterm2
+      ansible.builtin.file:
+        path: "{{ ansible_facts.env.HOME }}/.iterm2"
+        state: directory
+        mode: "0755"
+
+    - name: Shell | iTerm2 utilities
+      ansible.builtin.get_url:
+        url: https://iterm2.com/utilities/{{ item }}
+        dest: "{{ ansible_facts.env.HOME }}/.iterm2/{{ item }}"
+        mode: "0755"
+      loop: "{{ shell_iterm_utilities }}"
+      register: shell_iterm_utils
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: shell_iterm_utils is succeeded
+      ignore_errors: true
+
+    - name: Shell | record iTerm2 downloads that failed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['shell: could not download the iTerm2 '
+             ~ ((['shell integration'] if shell_iterm is failed else [])
+                + (shell_iterm_utils.results | selectattr('failed', 'defined') | selectattr('failed')
+                   | map(attribute='item') | list)) | join(', ')] }}
+      when: shell_iterm is failed or shell_iterm_utils is failed
 
 - name: Shell | zsh as the login shell
   ansible.builtin.include_tasks: login_shell.yml
