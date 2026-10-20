@@ -154,7 +154,9 @@ packages:
 
     # --- apple: Apple-developer tools, macOS only.
     - {name: carthage, kind: apple, brew: carthage}
-    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller, port: ideviceinstaller}   # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
+    # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...). No port: MacPorts' Intel archive is linked against a
+    # libplist it no longer ships (dyld: libplist-2.0.4.dylib not loaded), so on Intel it is skipped like other formulae without a bottle
+    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}
     - {name: ios-deploy, kind: apple, brew: ios-deploy, mise_fallback: npm:ios-deploy}
     # - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}   # comes with ideviceinstaller
     - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
