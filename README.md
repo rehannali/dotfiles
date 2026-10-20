@@ -155,6 +155,7 @@ To check a change without installing anything:
 cd ansible
 ansible-lint
 python tests/packages_check.py                       # needs ansible-core and PyYAML
+python tests/apps_check.py                           # every cask / App Store / Flathub / formula / apt id exists
 ansible-playbook -i localhost, -c local tests/render.yml
 ansible-playbook site.yml -l <host> --check --diff   # on a machine: what a run would change
 ```

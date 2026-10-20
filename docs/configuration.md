@@ -311,6 +311,11 @@ PATH. The CI check is what actually tells.
 | `flatpak` | Flathub id (Linux desktops) |
 | `arch` | `arm64`: Apple Silicon only |
 
+`ansible/tests/apps_check.py` looks every id up in its store (Homebrew's API for casks and formulae, Apple's lookup
+for App Store ids, Flathub's API for flatpak ids, `apt-cache` for apt names) and prints the name each one resolves to;
+CI runs it on every change, so a typo or a withdrawn app fails there instead of on a machine. Run it yourself after
+adding an app: `python ansible/tests/apps_check.py`.
+
 ### The other keys of a bundle
 
 | Key | What it is |

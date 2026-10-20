@@ -73,6 +73,15 @@ jobs:
       - name: Package list checks
         working-directory: ansible
         run: "$(pipx environment --value PIPX_LOCAL_VENVS)/ansible-lint/bin/python tests/packages_check.py"
+      # Every cask, App Store id, Flathub id, Homebrew formula and apt name asked for in its store: a wrong or
+      # withdrawn id fails here instead of on a machine. A store that can't be reached only warns.
+      - name: Package ids exist in their stores
+        working-directory: ansible
+        run: |
+          rc=0
+          "$(pipx environment --value PIPX_LOCAL_VENVS)/ansible-lint/bin/python" tests/apps_check.py --markdown "$GITHUB_STEP_SUMMARY" || rc=$?
+          if [ "$rc" -eq 2 ]; then echo "::warning::a package store could not be reached, some ids were not checked"; exit 0; fi
+          exit "$rc"
       - name: Render every template for every kind of machine
         working-directory: ansible
         run: ansible-playbook -i localhost, -c local tests/render.yml

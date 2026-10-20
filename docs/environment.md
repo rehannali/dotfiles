@@ -132,5 +132,6 @@ You should not need to set these. They are listed so you recognise them in logs.
 |---|---|---|
 | `scripts/check-install.py` | `--plan FILE` (default `~/.cache/dotfiles/plan.json`, written by every run), `--no-shell` (skip the interactive zsh check) | the plan says what this machine should have; writes the summary to `$GITHUB_STEP_SUMMARY` in Actions |
 | `ansible/tests/packages_check.py` | | `packages.yml`: one manager per tool, tap trust lists; needs ansible-core and PyYAML |
+| `ansible/tests/apps_check.py` | `--markdown FILE` | every cask, App Store id, Flathub id, Homebrew formula and apt name, looked up in its store; needs PyYAML and the internet |
 | `ansible/tests/render.yml` | `ansible-playbook -i localhost, -c local tests/render.yml` | renders every template for every kind of machine into a temp dir; changes nothing |
 | `scripts/apple-session.sh APPLE_ID [--save]` | `--save` stores the session as the repository secret `FASTLANE_SESSION` with `gh` | see [ci.md](ci.md) |
