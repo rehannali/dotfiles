@@ -147,6 +147,7 @@ if [ "$(id -u)" -ne 0 ]; then
   sudo -v
   ( while true; do sudo -n true 2> /dev/null || exit; sleep 50; kill -0 "$$" 2> /dev/null || exit; done ) &
   SUDO_KEEPALIVE_PID=$!
+  disown "$SUDO_KEEPALIVE_PID" 2> /dev/null || true   # no "Terminated: 15" when cleanup stops it
 fi
 CHEZMOI_TMP="$(mktemp -d)"
 cleanup() {
@@ -306,6 +307,23 @@ if [ "${DOTFILES_BITWARDEN:-}" = true ]; then bw_open_vault; fi
 # Extra chezmoi flags, e.g. DOTFILES_CHEZMOI_ARGS="--verbose" (CI uses it for a readable log)
 extra=()
 if [ -n "${DOTFILES_CHEZMOI_ARGS:-}" ]; then read -r -a extra <<< "$DOTFILES_CHEZMOI_ARGS"; fi
+
+# `chezmoi init` clones only when there is no checkout yet: on a Mac that ran this before, it would apply the old
+# copy of the dotfiles again. So bring an existing checkout up to date first.
+CHEZMOI_SOURCE="${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi"
+if [ -z "$SOURCE" ] && [ -d "$CHEZMOI_SOURCE/.git" ]; then
+  say "Updating the existing checkout in $CHEZMOI_SOURCE"
+  if [ -n "$BRANCH" ]; then
+    git -C "$CHEZMOI_SOURCE" fetch --quiet origin "$BRANCH" \
+      && { git -C "$CHEZMOI_SOURCE" checkout --quiet "$BRANCH" 2> /dev/null \
+           || git -C "$CHEZMOI_SOURCE" checkout --quiet -b "$BRANCH" --track "origin/$BRANCH"; } \
+      && git -C "$CHEZMOI_SOURCE" merge --quiet --ff-only "origin/$BRANCH" \
+      || printf '\n\033[1;33mWARNING:\033[0m could not update %s to %s (local changes?); applying it as it is.\n' "$CHEZMOI_SOURCE" "$BRANCH" >&2
+  else
+    git -C "$CHEZMOI_SOURCE" pull --quiet --ff-only \
+      || printf '\n\033[1;33mWARNING:\033[0m could not update %s (local changes?); applying it as it is.\n' "$CHEZMOI_SOURCE" >&2
+  fi
+fi
 
 # ${extra[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
 if [ -n "$SOURCE" ]; then
