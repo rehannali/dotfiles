@@ -3,7 +3,7 @@
 [tools]
 
 # Language runtimes: every machine. Replaces pyenv, rbenv, rvm, sdkman and brew-installed languages.
-{% for name, version in packages.runtimes.items() %}
+{% for name, version in selected.runtimes.items() %}
 {{ name | to_json }} = {{ version | to_json }}
 {% endfor %}
 {% if tool_plan.mise %}

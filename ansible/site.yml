@@ -9,11 +9,42 @@
       ansible.builtin.set_fact:
         dotfiles_os: "{{ ansible_facts.system | lower }}"
         dotfiles_arch: "{{ 'arm64' if ansible_facts.architecture in ['arm64', 'aarch64'] else 'x86_64' }}"
+        # macos_arm64 / macos_x86_64 / debian, or the OS family (redhat, archlinux, ...) for a platform without packages
+        dotfiles_platform: >-
+          {{ ('macos_' ~ ('arm64' if ansible_facts.architecture in ['arm64', 'aarch64'] else 'x86_64'))
+             if ansible_facts.system == 'Darwin' else ansible_facts.os_family | lower }}
         settings: "{{ settings_defaults | combine(settings_override | default({}), recursive=True) }}"
-        tool_plan: >-
-          {{ (packages.tools + tools_extra) | rejectattr('name', 'in', tools_skip) | list
-             | tool_plan(ansible_facts.system, ansible_facts.architecture, gui_apps | bool) }}
         install_failures: []
+      tags: [always]
+
+    - name: The bundles this machine gets, and the package managers of its platform
+      ansible.builtin.set_fact:
+        selected: "{{ packages.bundles | select_bundles(bundles) }}"
+        pkg_managers: >-
+          {{ platform_managers[dotfiles_platform]
+             | default({'cli': 'mise', 'system': 'none', 'apps': []}) }}
+      tags: [always]
+
+    - name: Which manager installs each tool
+      ansible.builtin.set_fact:
+        tool_plan: >-
+          {{ (selected.tools + tools_extra) | rejectattr('name', 'in', tools_skip) | list
+             | tool_plan(dotfiles_platform, pkg_managers, gui_apps | bool) }}
+        apps_wanted: "{{ (selected.apps + apps_extra) | rejectattr('name', 'in', apps_skip) | list }}"
+      tags: [always]
+
+    - name: No package list for this OS yet
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures + [ansible_facts.distribution ~ ': no system packages (platforms.yml has no ' ~ dotfiles_platform
+          ~ '); dotfiles, shell and mise tools are set up'] }}
+      when: dotfiles_platform not in platform_managers
+      tags: [always]
+
+    - name: Tools no package manager here can install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures + ['not available on ' ~ dotfiles_platform ~ ': ' ~ (tool_plan.unplanned | join(', '))] }}"
+      when: tool_plan.unplanned | length > 0 and dotfiles_platform in platform_managers
       tags: [always]
 
   tasks:

@@ -1,14 +1,16 @@
 ---
-- name: Debian-based Linux
+# What gets installed is tool_plan (which manager for each tool) and apps_wanted (GUI apps), both worked out in
+# site.yml from the machine's bundles and its platform's managers (platforms.yml).
+- name: Apt (Debian, Ubuntu, Raspberry Pi OS, WSL)
   ansible.builtin.include_tasks: debian.yml
-  when: ansible_facts.os_family == 'Debian'
-
-- name: Other Linux
-  ansible.builtin.set_fact:
-    install_failures: >-
-      {{ install_failures | default([]) + ['packages: ' ~ ansible_facts.distribution ~ ' has no package list here (only Debian-based Linux)'] }}
-  when: ansible_facts.system == 'Linux' and ansible_facts.os_family != 'Debian'
+  when: pkg_managers.system == 'apt'
 
 - name: MacOS
   ansible.builtin.include_tasks: darwin.yml
-  when: ansible_facts.system == 'Darwin'
+  when: dotfiles_os == 'darwin'
+
+- name: Flatpak apps (Linux desktops)
+  ansible.builtin.include_tasks: flatpak.yml
+  when: >-
+    'flatpak' in pkg_managers.apps | default([]) and gui_apps | bool and install_flatpaks | bool
+    and (apps_wanted | selectattr('flatpak', 'defined') | list | length > 0 or remove.flatpak | default([]) | length > 0)

@@ -1,3 +1,4 @@
 ---
-# Home servers: command-line tools and the terminal setup, no GUI apps.
+# Servers (a Raspberry Pi 4, a Hetzner VPS, ...): command-line tools, the terminal setup, dev tools and runtimes; no GUI.
+bundles: [core, runtimes, dev]
 gui_apps: false

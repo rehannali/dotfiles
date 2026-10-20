@@ -8,15 +8,21 @@
   failed_when: false
   when: not intel_mac
 
-- name: Casks | the list for this Mac
+- name: Apps | the casks and App Store apps for this Mac (bundles + apps_extra - apps_skip)
   ansible.builtin.set_fact:
     casks_wanted: >-
-      {{ (packages.darwin.casks + (packages.darwin_arm.casks | default([]) if not intel_mac else []) + casks_extra)
-         | rejectattr('name', 'in', casks_skip) | list }}
+      {{ apps_wanted | selectattr('cask', 'defined')
+         | rejectattr('arch', 'defined') | list
+         + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
+            | selectattr('arch', 'equalto', dotfiles_arch) | list)
+         if 'cask' in pkg_managers.apps else [] }}
+    mas_wanted: >-
+      {{ apps_wanted | selectattr('mas', 'defined') | rejectattr('cask', 'defined') | list
+         if 'mas' in pkg_managers.apps else [] }}
 
 - name: Casks | install
   community.general.homebrew_cask:
-    name: "{{ item.name }}"
+    name: "{{ item.cask }}"
     state: present
     install_options: "{{ ['appdir=' ~ (settings.macos.cask_appdir | replace('~', ansible_facts.env.HOME))] if item.appdir | default(false) else omit }}"
   loop: "{{ casks_wanted }}"
@@ -27,8 +33,7 @@
   delay: "{{ install_delay }}"
   until: casks_result is succeeded
   ignore_errors: true
-  # casks_skip takes the short name too (netbird-ui for netbirdio/tap/netbird-ui)
-  when: install_casks | bool and (item.name | basename) not in casks_skip
+  when: install_casks | bool
 
 - name: Casks | record what did not install
   ansible.builtin.set_fact:
@@ -38,7 +43,7 @@
     label: "{{ item.item.name }}"
 
 - name: App Store
-  when: install_app_store | bool
+  when: install_app_store | bool and mas_wanted | length > 0
   block:
     - name: App Store | mas (command line for the App Store)
       community.general.homebrew:
@@ -51,9 +56,9 @@
 
     - name: App Store | apps (needs a signed-in App Store)
       community.general.mas:
-        id: "{{ item.id }}"
+        id: "{{ item.mas }}"
         state: present
-      loop: "{{ (packages.darwin.mas + mas_extra) | rejectattr('id', 'in', mas_skip) | list }}"
+      loop: "{{ mas_wanted }}"
       loop_control:
         label: "{{ item.name }}"
       register: mas_result

@@ -60,15 +60,18 @@ applies, `dot save` commits and pushes, `dot check` shows what would change. See
 
 `ansible/inventory/hosts.yml` lists the machines by kind. Rename the example hosts to yours.
 
-| group          | gets                                                                           |
-| -------------- | ------------------------------------------------------------------------------ |
-| `mac_personal` | everything                                                                     |
-| `mac_work`     | the development setup, without the personal apps (`casks_skip`) and App Store  |
-| `servers`      | command-line tools and the terminal setup (`gui_apps: false`)                  |
-| `wsl`          | the same as servers                                                            |
+| group           | bundles                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `mac_personal`  | everything                                                                                |
+| `mac_work`      | core, runtimes, dev, mac_dev, fonts, apps_dev, apps_productivity (no personal apps, no App Store) |
+| `servers`       | core, runtimes, dev; no GUI (a Raspberry Pi 4, a Hetzner VPS)                             |
+| `wsl`           | core, runtimes, dev; no GUI                                                               |
+| `linux_desktop` | core, runtimes, dev, media, network and GUI apps from Flathub                            |
 
-What every machine gets is in `inventory/group_vars/all/` (`main.yml` has the switches, `packages.yml` the
-packages); a group changes it in `group_vars/<group>.yml`, one machine in `host_vars/<host>.yml`. Adding a package
+The packages are grouped in **bundles** (`core`, `runtimes`, `dev`, `media`, `network`, `web`, `mac_dev`, `fonts`,
+`apps_dev`, `apps_productivity`, `apps_network`, `apps_personal`) in `inventory/group_vars/all/packages.yml`, and each
+group picks its bundles; `platforms.yml` says which package manager installs what on each OS. A group changes the
+rest in `group_vars/<group>.yml`, one machine in `host_vars/<host>.yml`. Adding a package
 for the office Macs only, leaving one out, or uninstalling one everywhere is a line there, see
 [docs/configuration.md](docs/configuration.md).
 
@@ -108,10 +111,12 @@ pulled in LLVM and ran for hours). So the package manager depends on the machine
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
 | Intel Mac | mise | Homebrew if there is a bottle, else MacPorts, else mise | casks | mise |
-| Linux | mise | apt | | mise |
+| Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak (desktops) | mise |
+| Another Linux (Fedora, ...) | mise | not yet: reported and skipped | | mise |
 
-A tool is never installed by two managers. The rule lives in one place, `ansible/filter_plugins/tool_plan.py`,
-and `packages.yml` lists every tool with the name each manager knows it by.
+A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`
+(when Homebrew stops supporting Intel Macs in 2027, that is a one-line change there), and `packages.yml` lists every
+tool with the name each manager knows it by.
 
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its Rust (a
 few minutes), btop comes from Homebrew. Homebrew formulae with no Intel bottle (ffmpeg, nmap and others) come from

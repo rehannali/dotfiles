@@ -11,12 +11,13 @@
     - ../inventory/group_vars/all/packages.yml
     - ../inventory/group_vars/all/settings.yml
     - ../inventory/group_vars/all/secrets.yml
+    - ../inventory/group_vars/all/platforms.yml
   vars:
     targets:
-      - {os: darwin, arch: arm64, system: Darwin, gui: true}
-      - {os: darwin, arch: x86_64, system: Darwin, gui: true}
-      - {os: linux, arch: x86_64, system: Linux, gui: true}
-      - {os: linux, arch: x86_64, system: Linux, gui: false}
+      - {os: darwin, arch: arm64, platform: macos_arm64, gui: true}
+      - {os: darwin, arch: x86_64, platform: macos_x86_64, gui: true}
+      - {os: linux, arch: x86_64, platform: debian, gui: true}
+      - {os: linux, arch: arm64, platform: debian, gui: false}
   tasks:
     - name: Temp directory
       ansible.builtin.tempfile:

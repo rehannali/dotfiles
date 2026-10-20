@@ -1,0 +1,17 @@
+---
+# Which package manager installs what, per platform. The playbook works out a machine's platform:
+#   macos_arm64    Apple Silicon Mac
+#   macos_x86_64   Intel Mac
+#   debian         Debian, Ubuntu, Raspberry Pi OS (Pi 4, arm64), WSL, Hetzner's images: any Debian-family Linux
+#
+#   cli     command-line tools (kind cli, and anything with a mise key):   brew | mise
+#   system  libraries, daemons, big tools (kind system / apple):           brew | apt | port
+#   apps    GUI apps, in order of preference:                              cask, mas | flatpak
+#
+# On an Intel Mac `system: brew` means: a Homebrew bottle if there is one, else the tool's MacPorts `port`, else its
+# `mise_fallback`, else skipped (nothing is compiled). When Homebrew stops supporting Intel Macs (Tier 3 until
+# September 2027), change macos_x86_64 to `system: port` (MacPorts, then mise_fallback) and `apps: [mas]`.
+platform_managers:
+  macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
+  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}
+  debian: {cli: mise, system: apt, apps: [flatpak]}

@@ -9,16 +9,22 @@
         ansible_facts.env.PATH }}
 
 - name: Dev | Ruby gems (macOS)
-  ansible.builtin.command: "{{ dev_mise }} exec ruby@{{ packages.runtimes.ruby }} -- gem install --no-document --conservative {{ item }}"
+  ansible.builtin.command: "{{ dev_mise }} exec ruby@{{ selected.runtimes.ruby }} -- gem install --no-document --conservative {{ item }}"
   environment: "{{ dev_env }}"
-  loop: "{{ packages.darwin.gems }}"
+  loop: "{{ selected.gems }}"
   register: dev_gems
   changed_when: "'Successfully installed' in dev_gems.stdout"
   retries: "{{ install_retries | int - 1 }}"
   delay: "{{ install_delay }}"
   until: dev_gems is succeeded
   ignore_errors: true
-  when: dotfiles_os == 'darwin' and gui_apps | bool
+  # the gems go into mise's Ruby: the runtimes bundle has to be there too
+  when: dotfiles_os == 'darwin' and gui_apps | bool and 'ruby' in selected.runtimes
+
+- name: Dev | gems without mise's Ruby
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['gems (' ~ (selected.gems | join(', ')) ~ '): need the runtimes bundle (mise Ruby)'] }}"
+  when: selected.gems | length > 0 and 'ruby' not in selected.runtimes
 
 - name: Dev | global npm packages already there
   ansible.builtin.command: "{{ dev_mise }} exec node -- npm ls -g --depth=0 --json"
@@ -27,11 +33,12 @@
   changed_when: false
   check_mode: false   # only looks, so it runs in --check too
   failed_when: false
+  when: selected.npm | length > 0 and 'node' in selected.runtimes
 
 - name: Dev | global npm packages
   ansible.builtin.command: "{{ dev_mise }} exec node -- npm install -g {{ item }}"
   environment: "{{ dev_env }}"
-  loop: "{{ packages.npm | default([]) }}"
+  loop: "{{ selected.npm if 'node' in selected.runtimes else [] }}"
   register: dev_npm
   retries: "{{ install_retries | int - 1 }}"
   delay: "{{ install_delay }}"

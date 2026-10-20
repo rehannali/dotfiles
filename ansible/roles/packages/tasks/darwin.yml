@@ -94,3 +94,31 @@
       ansible.builtin.command: brew cleanup
       changed_when: false
       failed_when: false
+
+# platforms.yml `system: port` (an Intel Mac after Homebrew dropped it): ports straight from MacPorts, binary archives
+# only, nothing compiled
+- name: MacPorts | ports (platform system is port)
+  when: tool_plan.port | length > 0 and macports_fallback | bool
+  block:
+    - name: MacPorts | installed?
+      ansible.builtin.include_tasks: macports.yml
+      when: macports_ready is not defined
+
+    - name: MacPorts | ports
+      ansible.builtin.command: /opt/local/bin/port -N -b install {{ item }}
+      loop: "{{ tool_plan.port }}"
+      become: true
+      register: ports_result
+      changed_when: "'is already installed' not in ports_result.stdout"
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: ports_result is succeeded
+      ignore_errors: true
+      when: macports_ready | bool
+
+    - name: MacPorts | record what did not install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['port: ' ~ item.item] }}"
+      loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item }}"

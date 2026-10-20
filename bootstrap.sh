@@ -371,11 +371,11 @@ args+=(-l "$HOST")
 [ -z "${DOTFILES_IOS_RUNTIME:-}" ] || args+=(-e "ios_runtime=$DOTFILES_IOS_RUNTIME")
 [ "${DOTFILES_FLUTTER:-}" != skip ] || args+=(-e install_flutter=false)
 case "${DOTFILES_CASKS:-}" in skip | check) args+=(-e install_casks=false) ;; esac
-# DOTFILES_SKIP_CASKS="netbird-ui other": casks left out of this run (replaces the group's casks_skip)
+# DOTFILES_SKIP_CASKS="netbird-ui other": apps (names in packages.yml) left out of this run (replaces apps_skip)
 if [ -n "${DOTFILES_SKIP_CASKS:-}" ]; then
   skip_json=""
   for c in $DOTFILES_SKIP_CASKS; do skip_json="$skip_json${skip_json:+, }\"$c\""; done
-  args+=(-e "{\"casks_skip\": [$skip_json]}")
+  args+=(-e "{\"apps_skip\": [$skip_json]}")
 fi
 [ "${DOTFILES_MACPORTS:-}" != skip ] || args+=(-e macports_fallback=false)
 [ "${DOTFILES_MAS:-}" != skip ] || args+=(-e install_app_store=false)

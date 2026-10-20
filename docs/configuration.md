@@ -11,7 +11,8 @@ Looking for a `bootstrap.sh` option or an environment variable? [environment.md]
 |---|---|
 | `inventory/hosts.yml` | which machines there are, and which group each is in |
 | `inventory/group_vars/all/main.yml` | what every machine gets: name and email, the switches below, extra / skipped / removed packages |
-| `inventory/group_vars/all/packages.yml` | the package list for every machine |
+| `inventory/group_vars/all/packages.yml` | every package any machine can get, in bundles |
+| `inventory/group_vars/all/platforms.yml` | which package manager installs what on each OS (Apple Silicon, Intel Mac, Debian) |
 | `inventory/group_vars/all/settings.yml` | matters of taste: git, terminal fonts and theme, Dock, shell variables, Flutter version |
 | `inventory/group_vars/all/secrets.yml` | environment variables fetched from Bitwarden |
 | `inventory/group_vars/all/toolchain.yml` | Xcode and simulator runtime version (empty = newest that fits) |
@@ -39,6 +40,7 @@ All in `main.yml`, `true` unless noted:
 |---|---|
 | `gui_apps` | `false`: command-line tools and the terminal setup only. No casks, no App Store apps, no Xcode, no Flutter, no macOS defaults, no alacritty / wezterm / karabiner / hyper configs, no `apple` tools. The `servers` and `wsl` groups set it |
 | `install_casks` | macOS GUI apps (Homebrew casks) |
+| `install_flatpaks` | Linux GUI apps from Flathub (machines with `gui_apps`, e.g. the `linux_desktop` group) |
 | `install_app_store` | Mac App Store apps (needs an App Store that is signed in). `mac_work` sets it to `false` |
 | `macports_fallback` | Intel Mac: MacPorts for formulae Homebrew has no bottle for |
 | `macos_defaults` | the Dock (from `settings.macos.dock`), Finder and trackpad preferences |
@@ -50,23 +52,69 @@ All in `main.yml`, `true` unless noted:
 | `install_retries`, `install_delay` | `3` tries, `10` seconds apart, for every install and download |
 | `dotfiles_dir` | where the repo lives on the machine, `~/.dotfiles` |
 
-## Packages per kind of machine
+## Packages per kind of machine: bundles
 
-`packages.yml` is the list for every machine. A group or host changes it with these (in `main.yml` they are empty):
+`packages.yml` holds everything, grouped in **bundles**. A kind of machine says which bundles it gets in its group
+file; nothing else reaches it:
+
+| bundle | what |
+|---|---|
+| `core` | the shell and everyday command-line tools (zsh, git, tmux, neovim, bat, eza, zoxide, atuin, btop, gh, rclone, ...) |
+| `runtimes` | node, python, ruby, java, go, rust, uv from mise, and the global npm packages |
+| `dev` | building software: docker, cmake, act, mkcert, poetry, zig, fvm, ansible, compilers and headers |
+| `media` | ffmpeg, imagemagick, graphicsmagick, ghostscript |
+| `network` | nmap, aria2, wireguard-tools, openconnect, speedtest, unbound, telnet |
+| `web` | nginx, php |
+| `mac_dev` | Apple development: xcodes, swiftlint, carthage, ios-deploy, ideviceinstaller, fastlane / cocoapods, Xcode extensions |
+| `fonts` | the nerd fonts the terminal configs use (macOS) |
+| `apps_dev` | terminals, editors, git clients, API and device tools |
+| `apps_productivity` | browsers, office, notes, passwords, file sharing: what a work machine needs too |
+| `apps_network` | VPNs, firewalls, remote networks |
+| `apps_personal` | music, video, chat, the rest of a personal machine |
+
+| group | bundles |
+|---|---|
+| `mac_personal` | all of them |
+| `mac_work` | core, runtimes, dev, mac_dev, fonts, apps_dev, apps_productivity (and no App Store) |
+| `servers` (a Pi 4, a Hetzner VPS) | core, runtimes, dev |
+| `wsl` | core, runtimes, dev |
+| `linux_desktop` | core, runtimes, dev, media, network, apps_dev, apps_productivity, apps_personal (apps from Flathub) |
+
+Change a group's list in `group_vars/<group>.yml`, or give one machine its own `bundles:` in `host_vars/<host>.yml`.
+A new bundle is a new key under `bundles:` in `packages.yml`. For single packages on top of the bundles:
 
 ```yaml
-# group_vars/mac_work.yml
+# host_vars/office-mac.yml
 tools_extra:
   - {name: awscli, kind: cli, mise: aws-cli, brew: awscli}
-tools_skip: [ffmpeg, php]          # by `name`
-casks_extra:
-  - {name: slack, appdir: true}
-  - {name: zoom}
-casks_skip: [spotify, discord]     # short names work for tap casks too
-mas_extra:
-  - {id: 803453959, name: Slack}
-mas_skip: [430255202]              # App Store ids
+tools_skip: [ffmpeg]               # by `name`
+apps_extra:
+  - {name: slack, cask: slack, appdir: true, flatpak: com.slack.Slack}
+apps_skip: [spotify, discord]      # by `name`
 ```
+
+### Which manager installs what (platforms.yml)
+
+Each entry in `packages.yml` names the package for every manager that has it; `platforms.yml` says, per platform,
+which manager is used:
+
+```yaml
+platform_managers:
+  macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
+  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}   # brew = bottles only, then port, then mise_fallback
+  debian: {cli: mise, system: apt, apps: [flatpak]}            # Debian, Ubuntu, Raspberry Pi OS, WSL
+```
+
+- **Intel Macs after Homebrew:** Homebrew supports Intel Macs as Tier 3 until September 2027. When that ends, set
+  `macos_x86_64: {cli: mise, system: port, apps: [mas]}`. Command-line tools already come from mise, system tools
+  then come from MacPorts (`port`) or their `mise_fallback`. `tests/packages_check.py` prints what would be left
+  without a source.
+- **Another Linux (Fedora, Arch, ...):** a machine whose platform is not in the table still gets the dotfiles, the
+  shell and every mise tool and runtime; only the system packages are skipped, and the report says so. Supporting it
+  fully means a `dnf:` / `pacman:` name on the system entries, a platform line here, and its install task in the
+  packages role.
+- **Linux GUI apps:** an app reaches a Linux desktop when it has a `flatpak` id (Flathub). Apps without one (most
+  Mac-only apps) are left out there.
 
 ### Removing packages
 
@@ -81,6 +129,7 @@ remove:
   apt: [telnet]
   mise: [zig]          # also dropped from the mise config
   port: [ffmpeg]       # MacPorts, Intel Macs
+  flatpak: [com.spotify.Client]
 ```
 
 Exactly those are uninstalled, on every run; nothing else is touched. Look first with `--check --diff`.
@@ -193,8 +242,8 @@ carries on; open Xcode once and add it under Settings, Components.
 
 ## packages.yml
 
-One entry per tool in the `tools:` list, with the name each package manager uses. Leave a key out where the tool
-isn't available from that manager.
+Each bundle has `tools`, `apps`, `runtimes`, `npm` and / or `gems`. One entry per tool, with the name each package
+manager uses. Leave a key out where the tool isn't available from that manager.
 
 ```yaml
 - {name: bat, kind: cli, mise: bat, brew: bat, apt: bat}
@@ -229,7 +278,7 @@ used from it:
 ```yaml
 taps:
   - {name: xcodesorg/made, formulae: [xcodes]}
-  - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}   # the cask is listed as netbirdio/tap/netbird-ui under darwin.casks
+  - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}   # the app's cask is netbirdio/tap/netbird-ui
 ```
 
 The packages role taps it and runs `brew trust --formula xcodesorg/made/xcodes` (or `--cask`) for exactly those
@@ -247,16 +296,29 @@ mise lock --platform macos-x64,macos-arm64,linux-x64 <tool>    # run in an empty
 A download URL for each platform is a good sign, not proof: one tool had a URL but the program ended up nowhere on
 PATH. The CI check is what actually tells.
 
-### The other lists in packages.yml
+### Apps
+
+```yaml
+- {name: firefox, cask: firefox, appdir: true, flatpak: org.mozilla.firefox}
+- {name: wireguard, mas: 1451685025}
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | what the log calls it (and what `apps_skip` matches) |
+| `cask` | Homebrew cask (macOS). `appdir: true` installs it into `settings.macos.cask_appdir` instead of `/Applications` |
+| `mas` | Mac App Store id (needs an App Store that is signed in); used when there is no cask |
+| `flatpak` | Flathub id (Linux desktops) |
+| `arch` | `arm64`: Apple Silicon only |
+
+### The other keys of a bundle
 
 | Key | What it is |
 |---|---|
-| `taps` | Homebrew taps, each with the exact formulae and casks that are trusted |
-| `runtimes` | languages mise installs on every machine: `node`, `python`, `ruby`, `java` (a list; the first is the default), `go`, `rust`, `uv`. A version, `lts` or `latest` |
+| `runtimes` | languages mise installs: `node`, `python`, `ruby`, `java` (a list; the first is the default), `go`, `rust`, `uv`. A version, `lts` or `latest` |
 | `npm` | global npm packages (with mise's node), installed when missing |
-| `darwin.gems` | Ruby gems installed into mise's Ruby on macOS (fastlane, cocoapods) |
-| `darwin.casks` | Homebrew casks. `appdir: true` installs the app into `settings.macos.cask_appdir` instead of `/Applications` |
-| `darwin.mas` | Mac App Store apps, `id` and `name` (needs an App Store that is signed in) |
-| `darwin_arm.casks` | casks only for Apple Silicon (empty at the moment) |
+| `gems` | Ruby gems installed into mise's Ruby on macOS (fastlane, cocoapods); they need the `runtimes` bundle too |
+
+`taps` (top level) are the Homebrew taps, each with the exact formulae and casks that are trusted.
 
 Windows: `windows/install.ps1` has its own winget list.

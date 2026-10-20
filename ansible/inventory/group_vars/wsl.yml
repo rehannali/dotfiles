@@ -1,3 +1,4 @@
 ---
-# WSL2 (Debian-based): command-line tools and the terminal setup; Windows itself has the GUI apps (winget).
+# WSL2 (Debian-based): command-line tools and the terminal setup; Windows itself has the GUI apps (windows/install.ps1).
+bundles: [core, runtimes, dev]
 gui_apps: false

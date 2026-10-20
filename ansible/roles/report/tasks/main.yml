@@ -15,8 +15,10 @@
       {{ {'expect': tool_plan.expect, 'gui_apps': gui_apps | bool,
           'flutter': settings.flutter.version if (install_flutter | bool and gui_apps | bool) else '',
           'cask_appdir': settings.macos.cask_appdir,
-          'casks': ((packages.darwin.casks + (packages.darwin_arm.casks if dotfiles_arch == 'arm64' else []) + casks_extra)
-                    | rejectattr('name', 'in', casks_skip) | list)
+          'casks': (apps_wanted | selectattr('cask', 'defined')
+                    | rejectattr('arch', 'defined') | list
+                    + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
+                       | selectattr('arch', 'equalto', dotfiles_arch) | list))
                    if (dotfiles_os == 'darwin' and gui_apps | bool and install_casks | bool) else []}
          | to_nice_json }}
   when: not ansible_check_mode
@@ -36,7 +38,7 @@
     mode: "0644"
     content: |
       DOTFILES_HOST={{ inventory_hostname }}
-      DOTFILES_GROUP={{ (group_names | intersect(['mac_personal', 'mac_work', 'servers', 'wsl']) | first) | default('') }}
+      DOTFILES_GROUP={{ (group_names | intersect(['mac_personal', 'mac_work', 'servers', 'wsl', 'linux_desktop']) | first) | default('') }}
   when: not ansible_check_mode
 
 - name: Report | everything was done

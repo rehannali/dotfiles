@@ -362,7 +362,7 @@ def check_casks(plan):
     installed = set(out.split()) if rc == 0 else set()
     rows = []
     for c in wanted:
-        name = c["name"]
+        name = c.get("cask") or c["name"]   # apps from packages.yml: name, cask (token), appdir
         token = name.rsplit("/", 1)[-1]
         appdir = cask_appdir if c.get("appdir") else "/Applications"
         rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)

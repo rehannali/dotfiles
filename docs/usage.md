@@ -55,11 +55,12 @@ All in `ansible/inventory/`, then `dot apply --tags packages` (and `mise` for mi
 
 | You want | Put it in |
 |---|---|
-| a tool on every machine | a line in `group_vars/all/packages.yml` under `tools:` (`{name: jq, kind: cli, mise: jq, brew: jq, apt: jq}`) |
-| an app on every Mac | `darwin.casks` (`{name: slack, appdir: true}`) or `darwin.mas` (`{id: 803453959, name: Slack}`) in the same file |
-| something on one kind of machine only | `tools_extra` / `casks_extra` / `mas_extra` in `group_vars/<group>.yml` |
-| something on one machine only | the same keys in `host_vars/<host>.yml` |
-| leave something out on some machines | `tools_skip` / `casks_skip` / `mas_skip` there |
+| a tool for every machine that has a bundle | a line under that bundle's `tools:` in `group_vars/all/packages.yml` (`{name: jq, kind: cli, mise: jq, brew: jq, apt: jq}`; `core` is on every machine) |
+| an app | a line under an `apps_*` bundle's `apps:` (`{name: slack, cask: slack, appdir: true, flatpak: com.slack.Slack}`) |
+| a whole bundle on a kind of machine | its name in `bundles:` in `group_vars/<group>.yml` |
+| something on one kind of machine only | `tools_extra` / `apps_extra` in `group_vars/<group>.yml` |
+| something on one machine only | the same keys (or its own `bundles:`) in `host_vars/<host>.yml` |
+| leave something out on some machines | `tools_skip` / `apps_skip` there (by `name`) |
 | **uninstall** something | `remove:` in `group_vars/all/main.yml` (every machine) or a group / host file |
 
 **Commenting out or deleting a package does not uninstall it.** It only stops installing it: machines that already

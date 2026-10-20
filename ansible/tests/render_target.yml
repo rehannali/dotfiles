@@ -5,7 +5,10 @@
     dotfiles_arch: "{{ target.arch }}"
     gui_apps: "{{ target.gui }}"
     settings: "{{ settings_defaults }}"
-    tool_plan: "{{ packages.tools | tool_plan(target.system, target.arch, target.gui) }}"
+    selected: "{{ packages.bundles | select_bundles(packages.bundles.keys() | list) }}"
+    tool_plan: >-
+      {{ (packages.bundles | select_bundles(packages.bundles.keys() | list)).tools
+         | tool_plan(target.platform, platform_managers[target.platform], target.gui) }}
     render_out: "{{ render_dir.path }}/{{ target.os }}-{{ target.arch }}-{{ target.gui }}"
     dotfiles_secret_values: {TEST_TOKEN: "it's a secret"}
     git_name: Test User

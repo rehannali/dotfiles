@@ -70,7 +70,7 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host m
 | | `DOTFILES_XCODE_XIP` | read by the xcode role: install that `.xip`, no Apple login |
 | `--no-flutter` | `DOTFILES_FLUTTER=skip` | `install_flutter=false` |
 | `--no-casks` | `DOTFILES_CASKS=skip` | `install_casks=false` |
-| | `DOTFILES_SKIP_CASKS` | `casks_skip` (replaces the group's list for this run) |
+| | `DOTFILES_SKIP_CASKS` | `apps_skip`: apps (by name in packages.yml) left out of this run |
 | `--no-appstore` | `DOTFILES_MAS=skip` | `install_app_store=false` |
 | `--no-macports` | `DOTFILES_MACPORTS=skip` | `macports_fallback=false` |
 | `--no-defaults` | `DOTFILES_DEFAULTS=skip` | `macos_defaults=false` |
