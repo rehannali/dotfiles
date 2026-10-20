@@ -1,0 +1,4 @@
+---
+# The package list. Shared with chezmoi (home/.chezmoidata/packages.yml) while the setup moves to Ansible, so
+# there is one list; the tool_plan filter decides the manager per tool exactly like chezmoi's tool-plan.
+packages_file: "{{ playbook_dir }}/../home/.chezmoidata/packages.yml"

@@ -1,0 +1,36 @@
+---
+# Homebrew 6 loads nothing from a tap that is not trusted (docs.brew.sh/Tap-Trust). Trust exactly the formulae and
+# casks used from it (packages.yml lists them), never the whole tap.
+- name: "Tap | {{ tap.name }}"
+  ansible.builtin.command: brew tap {{ tap.name }}
+  register: tap_result
+  changed_when: "'Tapped' in tap_result.stderr"
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: tap_result is succeeded
+  ignore_errors: true
+
+- name: "Tap | {{ tap.name }} could not be added"
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['tap ' ~ tap.name ~ ': cannot be cloned'] }}"
+  when: tap_result is failed
+
+- name: "Tap | does this Homebrew know trust"
+  ansible.builtin.command: brew trust --help
+  register: brew_trust_help
+  changed_when: false
+  failed_when: false
+  when: tap_result is succeeded
+
+- name: "Tap | trust what is used from {{ tap.name }}"
+  ansible.builtin.command: brew trust {{ item.kind }} {{ tap.name }}/{{ item.name }}
+  loop: >-
+    {{ ((tap.formulae | default([])) + (tap.needs | default([]))) | map('community.general.dict_kv', 'name')
+       | map('combine', {'kind': '--formula'}) | list
+       + (tap.casks | default([])) | map('community.general.dict_kv', 'name') | map('combine', {'kind': '--cask'}) | list }}
+  loop_control:
+    label: "{{ tap.name }}/{{ item.name }}"
+  register: trust_result
+  changed_when: true
+  ignore_errors: true
+  when: tap_result is succeeded and brew_trust_help.rc == 0

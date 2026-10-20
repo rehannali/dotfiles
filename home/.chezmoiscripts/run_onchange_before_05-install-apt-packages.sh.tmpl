@@ -7,6 +7,12 @@ set -euo pipefail
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+# Ansible (ansible/site.yml) installs the packages itself and runs chezmoi with DOTFILES_PACKAGES=ansible.
+if [ "${DOTFILES_PACKAGES:-}" = ansible ]; then
+  info "apt packages: installed by Ansible, nothing to do here."
+  exit 0
+fi
+
 continue_on_failure "apt packages"
 
 command -v apt-get > /dev/null 2>&1 || bail "apt-get not found - system packages are only handled for Debian/Ubuntu (incl. WSL2)."

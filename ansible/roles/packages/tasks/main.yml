@@ -1,0 +1,23 @@
+---
+- name: Read the package list
+  ansible.builtin.include_vars:
+    file: "{{ packages_file }}"
+    name: packages_data
+
+- name: Decide the package manager per tool
+  ansible.builtin.set_fact:
+    tool_plan: "{{ packages_data.packages.tools | tool_plan(ansible_facts.system, ansible_facts.architecture, gui_apps) }}"
+
+- name: Debian-based Linux
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Other Linux
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['packages: ' ~ ansible_facts.distribution ~ ' has no package list here (only Debian-based Linux)'] }}
+  when: ansible_facts.system == 'Linux' and ansible_facts.os_family != 'Debian'
+
+- name: MacOS
+  ansible.builtin.include_tasks: darwin.yml
+  when: ansible_facts.system == 'Darwin'

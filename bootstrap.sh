@@ -41,10 +41,15 @@
 #   --no-chsh           do not make zsh the login shell (that step needs sudo)        (DOTFILES_CHSH=skip)
 #   --branch NAME       use this branch of the repo instead of the default one
 #   --source PATH       use a local checkout instead of GitHub                    (DOTFILES_SOURCE)
+#   --ansible           set the machine up with Ansible (ansible/site.yml) instead of chezmoi alone; needs --host
+#   --host NAME         Ansible: this machine's name in ansible/inventory/hosts.yml   (DOTFILES_HOST)
+#   --group GROUP       Ansible: a machine not in the inventory yet gets what GROUP gets (mac_personal, mac_work,
+#                       servers, wsl)                                              (DOTFILES_GROUP)
 #   -h, --help          this text
 #
 # Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_CHEZMOI_ARGS (extra
-# flags for chezmoi, e.g. --verbose), DOTFILES_CHEZMOI_VERSION (a chezmoi release tag such as v2.73.2 instead of the
+# flags for chezmoi, e.g. --verbose), DOTFILES_ANSIBLE_ARGS (extra ansible-playbook options with --ansible),
+# DOTFILES_CHEZMOI_VERSION (a chezmoi release tag such as v2.73.2 instead of the
 # latest), and for Bitwarden BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is
 # not asked) and BW_SESSION (an already unlocked vault). Every variable, by scenario: docs/environment.md
 set -euo pipefail
@@ -52,6 +57,9 @@ set -euo pipefail
 REPO="${DOTFILES_REPO:-rehannali/dotfiles}"
 BRANCH=""
 SOURCE="${DOTFILES_SOURCE:-}"
+ANSIBLE=""
+HOST="${DOTFILES_HOST:-}"
+GROUP="${DOTFILES_GROUP:-}"
 
 say() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -77,6 +85,9 @@ while [ $# -gt 0 ]; do
     --no-chsh)     export DOTFILES_CHSH=skip ;;
     --branch)      [ $# -ge 2 ] || die "--branch needs a value"; BRANCH="$2"; shift ;;
     --source)      [ $# -ge 2 ] || die "--source needs a value"; SOURCE="$2"; shift ;;
+    --ansible)     ANSIBLE=1 ;;
+    --host)        [ $# -ge 2 ] || die "--host needs a name"; HOST="$2"; ANSIBLE=1; shift ;;
+    --group)       [ $# -ge 2 ] || die "--group needs a group"; GROUP="$2"; ANSIBLE=1; shift ;;
     -h | --help)   sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
     *)             die "unknown option: $1 (try --help)" ;;
   esac
@@ -323,6 +334,53 @@ if [ -z "$SOURCE" ] && [ -d "$CHEZMOI_SOURCE/.git" ]; then
     git -C "$CHEZMOI_SOURCE" pull --quiet --ff-only \
       || printf '\n\033[1;33mWARNING:\033[0m could not update %s (local changes?); applying it as it is.\n' "$CHEZMOI_SOURCE" >&2
   fi
+fi
+
+# Ansible: it installs the packages and runs chezmoi for the dotfiles (ansible/README.md)
+run_ansible() {
+  local repo_dir="${SOURCE:-$CHEZMOI_SOURCE}" installer branch args
+  [ -n "$HOST" ] || die "--ansible needs --host NAME: this machine's name in ansible/inventory/hosts.yml (with --group GROUP for a new one)"
+  if [ ! -d "$repo_dir/.git" ]; then
+    [ -z "$SOURCE" ] || die "--source $SOURCE is not a git checkout"
+    say "Cloning $REPO into $repo_dir"
+    git clone --quiet ${BRANCH:+--branch "$BRANCH"} "https://github.com/$REPO.git" "$repo_dir" || die "Could not clone $REPO"
+  fi
+  branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD)"
+
+  # Ansible runs from uv: a Python of its own, nothing goes into the system Python
+  export PATH="$HOME/.local/bin:$PATH"
+  if ! command -v uv > /dev/null 2>&1; then
+    say "Installing uv (for Ansible)"
+    installer="$(curl -fsSL https://astral.sh/uv/install.sh)" || die "Could not download the uv installer (no network?)"
+    UV_NO_MODIFY_PATH=1 sh -c "$installer" || die "The uv installer failed"
+  fi
+  say "Installing Ansible"
+  uv tool install --quiet --upgrade ansible-core || die "Could not install Ansible"
+  ansible-galaxy collection install --upgrade -r "$repo_dir/ansible/requirements.yml" > /dev/null || die "Could not install the Ansible collections"
+
+  args=(-i inventory/hosts.yml -l "$HOST" -c local -e "dotfiles_dir=$repo_dir" -e "dotfiles_branch=$branch")
+  if [ -n "$GROUP" ]; then
+    # a machine that is not in the inventory yet: give it the group's setup for this run
+    printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$GROUP" "$HOST" > "$CHEZMOI_TMP/new-host.yml"
+    args+=(-i "$CHEZMOI_TMP/new-host.yml")
+  fi
+  # --source: your working copy, Ansible must not pull into it
+  [ -z "$SOURCE" ] || args+=(-e dotfiles_update=false)
+  [ -z "${DOTFILES_NAME:-}" ] || args+=(-e "git_name=$DOTFILES_NAME")
+  [ -z "${DOTFILES_EMAIL:-}" ] || args+=(-e "git_email=$DOTFILES_EMAIL")
+  [ "${DOTFILES_BITWARDEN:-}" != true ] || args+=(-e bitwarden=true)
+  # DOTFILES_ANSIBLE_ARGS="-e install_casks=false --check": extra ansible-playbook options (word-split)
+  if [ -n "${DOTFILES_ANSIBLE_ARGS:-}" ]; then read -r -a extra_ansible <<< "$DOTFILES_ANSIBLE_ARGS"; args+=("${extra_ansible[@]}"); fi
+  # sudo was unlocked in step 1 and is kept unlocked, so Ansible needs no password for it
+  say "ansible-playbook site.yml for $HOST${GROUP:+ (group $GROUP)}"
+  cd "$repo_dir/ansible"
+  ANSIBLE_CONFIG="$repo_dir/ansible/ansible.cfg" with_tty ansible-playbook "${args[@]}" site.yml
+}
+
+if [ -n "$ANSIBLE" ]; then
+  run_ansible
+  say "Done. Open a new terminal."
+  exit 0
 fi
 
 # ${extra[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`

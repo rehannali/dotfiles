@@ -1,0 +1,59 @@
+---
+# Sets up every machine in the inventory, or the ones picked with -l. Order:
+#   1. dotfiles (files)    chezmoi writes the files, also the mise config the next steps read
+#   2. packages            Homebrew / MacPorts / apt, casks, App Store apps
+#   3. mise                runtimes and command-line tools
+#   4. dotfiles (scripts)  chezmoi's remaining setup scripts (shell, macOS defaults, Xcode, gems, Flutter);
+#                          its package scripts stand down because Ansible did that part
+#   5. report              everything that could not be installed, in one list
+# A step that fails is reported and the next one still runs.
+- name: Set up the machine
+  hosts: all
+  tasks:
+    - name: Dotfiles (files)
+      block:
+        - name: Dotfiles (files)
+          ansible.builtin.include_role:
+            name: dotfiles
+          vars:
+            dotfiles_phase: files
+      rescue:
+        - name: Dotfiles (files) did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures | default([]) + ['dotfiles (files): ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Packages
+      block:
+        - name: Packages
+          ansible.builtin.include_role:
+            name: packages
+      rescue:
+        - name: Packages did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures | default([]) + ['packages: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Mise
+      block:
+        - name: Mise
+          ansible.builtin.include_role:
+            name: mise
+      rescue:
+        - name: Mise did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures | default([]) + ['mise: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Dotfiles (scripts)
+      block:
+        - name: Dotfiles (scripts)
+          ansible.builtin.include_role:
+            name: dotfiles
+          vars:
+            dotfiles_phase: scripts
+      rescue:
+        - name: Dotfiles (scripts) did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures | default([]) + ['dotfiles (scripts): ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Report
+      ansible.builtin.include_role:
+        name: report

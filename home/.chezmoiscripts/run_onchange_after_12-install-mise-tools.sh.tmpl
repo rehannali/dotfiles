@@ -6,6 +6,12 @@
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+# Ansible (ansible/site.yml) installs the packages itself and runs chezmoi with DOTFILES_PACKAGES=ansible.
+if [ "${DOTFILES_PACKAGES:-}" = ansible ]; then
+  info "mise tools: installed by Ansible, nothing to do here."
+  exit 0
+fi
+
 if ! command -v mise > /dev/null 2>&1; then
   info "Installing mise (official installer, prebuilt binary)"
   retry run sh -c "$(curl -fsSL --retry 3 https://mise.run)" || error "The mise installer failed (see above)."

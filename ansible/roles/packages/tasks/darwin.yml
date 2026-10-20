@@ -1,0 +1,103 @@
+---
+- name: Homebrew | where is it
+  ansible.builtin.set_fact:
+    brew_prefix: "{{ '/opt/homebrew' if ansible_facts.architecture == 'arm64' else '/usr/local' }}"
+    intel_mac: "{{ ansible_facts.architecture != 'arm64' }}"
+
+- name: Homebrew | installed?
+  ansible.builtin.stat:
+    path: "{{ brew_prefix }}/bin/brew"
+  register: brew_stat
+
+- name: Homebrew | missing
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['homebrew: not installed at ' ~ brew_prefix ~ ' (bootstrap.sh installs it); no Homebrew packages'] }}
+  when: not brew_stat.stat.exists
+
+- name: Homebrew packages
+  when: brew_stat.stat.exists
+  environment:
+    PATH: "{{ brew_prefix }}/bin:{{ brew_prefix }}/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+    HOMEBREW_NO_ANALYTICS: "1"
+    HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    # Intel Macs (Tier 3): never update, upgrade or compile on the side
+    HOMEBREW_NO_AUTO_UPDATE: "{{ '1' if intel_mac else '' }}"
+    HOMEBREW_NO_INSTALL_UPGRADE: "{{ '1' if intel_mac else '' }}"
+    HOMEBREW_MAKE_JOBS: "{{ '2' if intel_mac else '' }}"
+  block:
+    - name: Homebrew | update the formula index
+      ansible.builtin.command: brew update
+      register: brew_update
+      changed_when: false
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: brew_update is succeeded
+      ignore_errors: true
+
+    - name: Homebrew | taps and trust
+      ansible.builtin.include_tasks: tap.yml
+      loop: "{{ packages_data.packages.taps }}"
+      loop_control:
+        loop_var: tap
+
+    - name: Homebrew | formulae (Apple Silicon)
+      community.general.homebrew:
+        name: "{{ item.name }}"
+        state: present
+      loop: "{{ tool_plan.brew }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: brew_formulae
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: brew_formulae is succeeded
+      ignore_errors: true
+      when: not intel_mac
+
+    - name: Homebrew | record formulae that did not install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['brew: ' ~ item.item.name] }}"
+      loop: "{{ brew_formulae.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: not intel_mac
+
+    - name: Homebrew | formulae (Intel - bottle, else MacPorts, else mise, else skipped)
+      when: intel_mac
+      block:
+        - name: Intel | start the mise fallback list
+          ansible.builtin.set_fact:
+            intel_mise_fallback: []
+
+        - name: Intel | one formula at a time
+          ansible.builtin.include_tasks: intel_formula.yml
+          loop: "{{ tool_plan.brew }}"
+          loop_control:
+            loop_var: formula
+            label: "{{ formula.name }}"
+
+        # mise reads every ~/.config/mise/conf.d/*.toml, so chezmoi's config.toml stays as it renders it. Rewritten
+        # every run: a tool that gets a bottle or a port later drops out again (never two managers for one tool).
+        - name: Intel | mise fallback config
+          ansible.builtin.copy:
+            dest: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
+            mode: "0644"
+            content: |
+              # Written by Ansible (roles/packages): Intel Mac tools neither Homebrew nor MacPorts could install.
+              # Set mise_fallback in packages.yml, not here.
+              [tools]
+              {% for id in intel_mise_fallback %}
+              "{{ id }}" = "latest"
+              {% endfor %}
+          when: intel_mise_fallback | length > 0
+
+        - name: Intel | no mise fallbacks needed
+          ansible.builtin.file:
+            path: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
+            state: absent
+          when: intel_mise_fallback | length == 0
+
+    - name: Casks and App Store apps
+      ansible.builtin.include_tasks: apps.yml
+      when: gui_apps | bool

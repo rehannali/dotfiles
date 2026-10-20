@@ -1,0 +1,10 @@
+---
+- name: Report | everything installed
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: everything was installed."
+  when: install_failures | default([]) | length == 0
+
+- name: Report | NOT installed (the rest of the setup went on; run the playbook again once the cause is fixed)
+  ansible.builtin.debug:
+    msg: "{{ install_failures }}"
+  when: install_failures | default([]) | length > 0

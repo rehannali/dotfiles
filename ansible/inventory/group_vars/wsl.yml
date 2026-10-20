@@ -1,0 +1,3 @@
+---
+# WSL2 (Debian-based): command-line tools and the terminal setup; Windows itself has the GUI apps (winget).
+gui_apps: false

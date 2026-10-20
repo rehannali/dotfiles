@@ -1,0 +1,79 @@
+---
+# chezmoi stays in charge of the files in your home directory (templates, `chezmoi diff`, `chezmoi re-add`).
+# Ansible gives it its answers (name, email, profile, Bitwarden) from the inventory and decides when it runs.
+- name: Dotfiles | checkout
+  ansible.builtin.git:
+    repo: "{{ dotfiles_repo }}"
+    dest: "{{ dotfiles_dir }}"
+    version: "{{ dotfiles_branch }}"
+    update: true
+  register: dotfiles_git
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: dotfiles_git is succeeded
+  when: dotfiles_phase == 'files' and dotfiles_update | bool
+  ignore_errors: true
+
+- name: Dotfiles | checkout not updated
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['dotfiles: could not update ' ~ dotfiles_dir ~ ' (local changes?); applied as it is'] }}"
+  when: dotfiles_phase == 'files' and dotfiles_git is failed
+
+- name: Dotfiles | chezmoi on PATH?
+  ansible.builtin.command: which chezmoi
+  environment:
+    PATH: "{{ dotfiles_chezmoi_dir }}:/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+  register: chezmoi_which
+  changed_when: false
+  failed_when: false
+
+- name: Dotfiles | download chezmoi (kept out of PATH; Homebrew or mise installs the one you use)
+  # download first: `sh -c "$(curl ...)"` would report success when the download failed
+  ansible.builtin.shell: installer="$(curl -fsLS https://get.chezmoi.io)" && sh -c "$installer" -- -b {{ dotfiles_chezmoi_dir | quote }}
+  args:
+    creates: "{{ dotfiles_chezmoi_dir }}/chezmoi"
+  register: chezmoi_download
+  changed_when: true
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: chezmoi_download is succeeded
+  when: chezmoi_which.rc != 0
+
+- name: Dotfiles | run chezmoi
+  vars:
+    chezmoi: "{{ chezmoi_which.stdout if chezmoi_which.rc == 0 else dotfiles_chezmoi_dir ~ '/chezmoi' }}"
+  environment:
+    PATH: "{{ dotfiles_chezmoi_dir }}:/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+    # chezmoi init reads its answers from these instead of asking (home/.chezmoi.toml.tmpl)
+    DOTFILES_NAME: "{{ git_name }}"
+    DOTFILES_EMAIL: "{{ git_email }}"
+    DOTFILES_PROFILE: "{{ 'full' if gui_apps | bool else 'cli' }}"
+    DOTFILES_BITWARDEN: "{{ bitwarden | bool | lower }}"
+    BW_SESSION: "{{ lookup('ansible.builtin.env', 'BW_SESSION') }}"
+    # chezmoi's package scripts stand down: the packages and mise roles did that part
+    DOTFILES_PACKAGES: ansible
+  block:
+    - name: Dotfiles | name and email are set
+      ansible.builtin.assert:
+        that: [git_name | length > 0, git_email | length > 0]
+        fail_msg: git_name and git_email are empty; set them in inventory/group_vars/all.yml or pass --name/--email
+        quiet: true
+
+    - name: Dotfiles | chezmoi config from the inventory
+      ansible.builtin.command: "{{ chezmoi }} init --source {{ dotfiles_dir | quote }} --no-tty"
+      changed_when: false
+
+    - name: Dotfiles | files
+      ansible.builtin.command: >-
+        {{ chezmoi }} apply --source {{ dotfiles_dir | quote }} --no-tty --exclude scripts
+        {{ '--force' if dotfiles_force | bool else '' }}
+      register: chezmoi_files
+      changed_when: chezmoi_files.stdout | length > 0
+      when: dotfiles_phase == 'files'
+
+    - name: Dotfiles | setup scripts (shell, macOS defaults, Xcode, gems, Flutter, ...)
+      ansible.builtin.command: >-
+        {{ chezmoi }} apply --source {{ dotfiles_dir | quote }} --no-tty --include scripts
+      register: chezmoi_scripts
+      changed_when: true
+      when: dotfiles_phase == 'scripts'

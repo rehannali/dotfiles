@@ -1,0 +1,60 @@
+---
+- name: Apt | refresh the package lists
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  register: apt_update
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: apt_update is succeeded
+  ignore_errors: true
+
+- name: Apt | which packages this release has
+  ansible.builtin.command: apt-cache show {{ item }}
+  loop: "{{ tool_plan.apt }}"
+  register: apt_known
+  changed_when: false
+  failed_when: false
+
+- name: Apt | split the list
+  ansible.builtin.set_fact:
+    apt_wanted: "{{ apt_known.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+    apt_unknown: "{{ apt_known.results | rejectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+
+- name: Apt | not available on this release
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['apt: not available on this release: ' ~ (apt_unknown | join(' '))] }}"
+  when: apt_unknown | length > 0
+
+- name: Apt | install everything at once
+  ansible.builtin.apt:
+    name: "{{ apt_wanted }}"
+    state: present
+  become: true
+  register: apt_batch
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: apt_batch is succeeded
+  ignore_errors: true
+
+# one package that cannot be fetched must not keep the others out
+- name: Apt | one at a time (the batch failed)
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  become: true
+  loop: "{{ apt_wanted }}"
+  register: apt_single
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: apt_single is succeeded
+  ignore_errors: true
+  when: apt_batch is failed
+
+- name: Apt | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['apt: ' ~ item.item] }}"
+  loop: "{{ apt_single.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"

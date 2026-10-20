@@ -1,0 +1,8 @@
+---
+# files: write the dotfiles only (before the packages). scripts: run chezmoi's own setup scripts (after them).
+dotfiles_phase: files
+# true: overwrite dotfiles you changed by hand on the machine. false: such a file is reported and left alone.
+dotfiles_force: false
+# false: apply the checkout as it is, never pull into it (bootstrap.sh --source: your working copy)
+dotfiles_update: true
+dotfiles_chezmoi_dir: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/bin"

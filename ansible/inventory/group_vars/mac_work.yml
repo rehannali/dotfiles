@@ -1,0 +1,13 @@
+---
+# Office / work Macs: the development setup without the personal apps.
+# git_email: you@company.com
+install_app_store: false
+casks_skip:
+  - discord
+  - kodi
+  - nordvpn
+  - spotify
+  - stremio
+  - surfshark
+  - whatsapp@beta
+  - windscribe

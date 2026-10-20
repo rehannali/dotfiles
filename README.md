@@ -21,6 +21,13 @@ For a server where you only want the command-line tools and the terminal setup, 
 curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --cli
 ```
 
+With Ansible instead (per kind of machine: personal Mac, work Mac, server, WSL; also pushes to machines over
+SSH), name the machine from `ansible/inventory/hosts.yml`, see [ansible/README.md](ansible/README.md):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook
+```
+
 `bootstrap.sh` takes care of what has to happen before chezmoi can even start, then hands over to
 `chezmoi init --apply`:
 

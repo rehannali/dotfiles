@@ -1,0 +1,3 @@
+---
+# Home servers: command-line tools and the terminal setup, no GUI apps.
+gui_apps: false

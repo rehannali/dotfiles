@@ -1,0 +1,80 @@
+---
+# MacPorts, the fallback for what Homebrew has no Intel bottle for. Installed on demand, once per run. Its installer
+# appends a PATH line to your shell profiles, which chezmoi manages, so those are put back afterwards.
+- name: MacPorts | installed?
+  ansible.builtin.stat:
+    path: /opt/local/bin/port
+  register: macports_stat
+
+- name: MacPorts | install
+  when: not macports_stat.stat.exists
+  block:
+    - name: MacPorts | installer for this macOS
+      ansible.builtin.set_fact:
+        macports_suffix: >-
+          {{ {'27': '27-GoldenGate', '26': '26-Tahoe', '15': '15-Sequoia', '14': '14-Sonoma', '13': '13-Ventura',
+              '12': '12-Monterey', '11': '11-BigSur'}[ansible_facts.distribution_major_version] | default('') }}
+
+    - name: MacPorts | newest release
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/macports/macports-base/releases/latest
+        return_content: true
+      register: macports_release
+      failed_when: false
+
+    - name: MacPorts | download
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/macports/macports-base/releases/download/v{{ macports_version }}/MacPorts-{{ macports_version }}-{{ macports_suffix }}.pkg
+        dest: /tmp/MacPorts.pkg
+        mode: "0644"
+      vars:
+        macports_version: "{{ (macports_release.json.tag_name | default('v2.12.7')) | regex_replace('^v', '') }}"
+      register: macports_pkg
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: macports_pkg is succeeded
+      when: macports_suffix | length > 0
+
+    - name: MacPorts | keep the shell profiles
+      ansible.builtin.shell: |
+        set -eu
+        mkdir -p /tmp/macports-profiles
+        for f in .zprofile .profile .bash_profile .zshrc; do
+          if [ -e "$HOME/$f" ]; then cp -p "$HOME/$f" "/tmp/macports-profiles/$f"; else : > "/tmp/macports-profiles/$f.absent"; fi
+        done
+      changed_when: false
+
+    - name: MacPorts | run the installer
+      ansible.builtin.command: installer -pkg /tmp/MacPorts.pkg -target /
+      become: true
+      changed_when: true
+
+    - name: MacPorts | put the shell profiles back
+      ansible.builtin.shell: |
+        set -eu
+        for f in .zprofile .profile .bash_profile .zshrc; do
+          if [ -e "/tmp/macports-profiles/$f" ]; then cp -p "/tmp/macports-profiles/$f" "$HOME/$f"; else rm -f "$HOME/$f"; fi
+        done
+        rm -rf /tmp/macports-profiles /tmp/MacPorts.pkg
+      changed_when: true
+
+    - name: MacPorts | update the ports tree
+      ansible.builtin.command: /opt/local/bin/port -N selfupdate
+      become: true
+      changed_when: true
+      failed_when: false
+  rescue:
+    - name: MacPorts | could not be installed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['macports: could not be installed (' ~ (ansible_failed_result.msg | default('failed')) ~ ')'] }}
+
+- name: MacPorts | ready?
+  ansible.builtin.stat:
+    path: /opt/local/bin/port
+  register: macports_stat_after
+
+- name: MacPorts | remember for this run
+  ansible.builtin.set_fact:
+    macports_ready: "{{ macports_stat_after.stat.exists }}"

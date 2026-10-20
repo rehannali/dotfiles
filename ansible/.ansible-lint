@@ -1,0 +1,7 @@
+---
+profile: production
+skip_list:
+  # install_failures, tool_plan, ... are shared between the roles on purpose (one report at the end)
+  - var-naming[no-role-prefix]
+  # task names carry the item they work on ("Tap | owner/repo"), which reads best in the log
+  - name[template]

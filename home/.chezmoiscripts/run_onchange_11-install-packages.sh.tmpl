@@ -12,6 +12,12 @@ set -euo pipefail
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+# Ansible (ansible/site.yml) installs the packages itself and runs chezmoi with DOTFILES_PACKAGES=ansible.
+if [ "${DOTFILES_PACKAGES:-}" = ansible ]; then
+  info "Homebrew packages: installed by Ansible, nothing to do here."
+  exit 0
+fi
+
 # Never stop chezmoi here. A package that cannot be installed is reported and left out; even if this script fails
 # somewhere unexpected, it says so and exits 0, so the scripts after it (mise tools, gems, Flutter, shell) still run.
 # scripts/check-install.py reports what is missing afterwards.

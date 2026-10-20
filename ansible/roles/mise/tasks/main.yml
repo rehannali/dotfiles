@@ -1,0 +1,48 @@
+---
+# Runtimes (node, python, ruby, ...) and, on Intel Macs and Linux, the command-line tools. What to install is in
+# ~/.config/mise/config.toml (written by chezmoi from packages.yml) and conf.d/ (Intel fallbacks, packages role).
+- name: Mise | installed?
+  ansible.builtin.stat:
+    path: "{{ mise_bin }}"
+  register: mise_stat
+
+- name: Mise | install (official installer, prebuilt binary)
+  # download first: `sh -c "$(curl ...)"` would report success when the download failed
+  ansible.builtin.shell: installer="$(curl -fsSL https://mise.run)" && sh -c "$installer"
+  args:
+    creates: "{{ mise_bin }}"
+  register: mise_installer
+  changed_when: true
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_installer is succeeded
+  when: not mise_stat.stat.exists
+
+- name: Mise | install the tools
+  ansible.builtin.command: >-
+    {{ 'nice -n 10' if (ansible_facts.system == 'Darwin' and ansible_facts.architecture != 'arm64') else '' }}
+    {{ mise_bin }} install
+  environment:
+    PATH: >-
+      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:{{
+      ansible_facts.env.PATH }}
+    # Intel Macs: mise has no prebuilt Ruby there, it compiles; keep the machine usable
+    MISE_JOBS: "{{ '2' if (ansible_facts.system == 'Darwin' and ansible_facts.architecture != 'arm64') else '4' }}"
+    MAKE_OPTS: -j2
+    RUBY_MAKE_OPTS: -j2
+  register: mise_install
+  changed_when: "'installed' in mise_install.stderr"
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_install is succeeded
+  ignore_errors: true
+
+- name: Mise | record a failed install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['mise install: some tools did not install, run  mise install  to see which'] }}"
+  when: mise_install is failed
+
+- name: Mise | shims
+  ansible.builtin.command: "{{ mise_bin }} reshim"
+  changed_when: false
+  failed_when: false

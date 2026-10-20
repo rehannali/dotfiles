@@ -1,0 +1,2 @@
+---
+mise_bin: "{{ ansible_facts.env.HOME }}/.local/bin/mise"

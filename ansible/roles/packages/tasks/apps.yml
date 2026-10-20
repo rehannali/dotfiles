@@ -1,0 +1,65 @@
+---
+- name: Casks | the list for this Mac
+  ansible.builtin.set_fact:
+    casks_wanted: >-
+      {{ (packages_data.packages.darwin.casks
+          + (packages_data.packages.darwin_arm.casks | default([]) if not intel_mac else []))
+         | list }}
+
+- name: Casks | install
+  community.general.homebrew_cask:
+    name: "{{ item.name }}"
+    state: present
+    install_options: "{{ ['appdir=' ~ (cask_appdir | replace('~', ansible_facts.env.HOME))] if 'appdir' in (item.args_str | default('')) else omit }}"
+  loop: "{{ casks_wanted }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: casks_result
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: casks_result is succeeded
+  ignore_errors: true
+  when: install_casks | bool and (item.name | basename) not in casks_skip
+
+- name: Casks | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['cask: ' ~ item.item.name] }}"
+  loop: "{{ casks_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: App Store
+  when: install_app_store | bool
+  block:
+    - name: App Store | mas (command line for the App Store)
+      community.general.homebrew:
+        name: mas
+        state: present
+      register: mas_cli
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: mas_cli is succeeded
+
+    - name: App Store | apps (needs a signed-in App Store)
+      community.general.mas:
+        id: "{{ item.id }}"
+        state: present
+      loop: "{{ packages_data.packages.darwin.mas | rejectattr('id', 'in', mas_skip) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: mas_result
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: mas_result is succeeded
+      ignore_errors: true
+
+    - name: App Store | record what did not install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: ' ~ item.item.name] }}"
+      loop: "{{ mas_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+  rescue:
+    - name: App Store | mas could not be installed
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: mas could not be installed, no App Store apps'] }}"
