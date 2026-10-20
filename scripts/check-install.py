@@ -237,6 +237,8 @@ def check_expected(plan):
         want = {"mise": "mise", "brew": "brew", "apt": "system"}[e["via"]]
         if e["via"] == "brew" and e.get("port") and mgr == "macports":
             want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
+        if e["via"] == "brew" and e.get("mise_fallback") and mgr == "mise":
+            want = "mise"   # Intel: neither a bottle nor MacPorts, mise_fallback is the last planned fallback
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))

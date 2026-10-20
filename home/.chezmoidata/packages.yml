@@ -12,7 +12,11 @@
 #   apt         Debian/Ubuntu package
 #   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
 #               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
-#               packages.macports.org; a tool without it is skipped on an Intel Mac as before.
+#               packages.macports.org. If the port cannot be installed either, mise_fallback is tried next.
+#   mise_fallback  Intel Macs only, the last resort for a brew tool: a mise tool id used when Homebrew has no bottle
+#               and MacPorts (no `port`, or its install failed) cannot provide it either. Written to
+#               ~/.config/mise/conf.d/intel-fallback.toml, so mise installs it like any other tool. A tool with
+#               none of the three is reported and skipped, never compiled (unless mise_intel: false).
 #   brew_args   Brewfile options for the formula (used by `brew bundle`, i.e. Apple Silicon)
 #   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
 #               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
@@ -28,7 +32,8 @@
 #
 #                  cli (+ apple with a mise key)   system / apple
 #   Apple Silicon  brew                            brew
-#   Intel Mac      mise                            brew, only if a bottle exists, else MacPorts (if `port` is set)
+#   Intel Mac      mise                            brew, only if a bottle exists, else MacPorts (if `port` is set),
+#                                                  else mise (if `mise_fallback` is set), else skipped with a message
 #   Linux          mise                            apt
 #
 # A tool is never installed by two managers on one machine. Casks, mas apps and gems
@@ -104,19 +109,19 @@ packages:
     - {name: zoxide, kind: cli, mise: zoxide, brew: zoxide, apt: zoxide}
 
     # --- system: libraries, daemons and big apps. brew (Apple Silicon; Intel only with a bottle) / apt.
-    - {name: ansible, kind: system, brew: ansible, apt: ansible, bin: ansible}
+    - {name: ansible, kind: system, brew: ansible, mise_fallback: pipx:ansible-core, apt: ansible, bin: ansible}   # Intel fallback: ansible-core only (collections: ansible-galaxy)
     - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}
     - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
-    - {name: automake, kind: system, brew: automake, apt: automake, bin: automake}
+    - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
     - {name: build-essential, kind: system, apt: build-essential}
     - {name: coreutils, kind: system, brew: coreutils, port: coreutils}
     - {name: curl, kind: system, apt: curl, bin: curl}
     - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, apt: ffmpeg, bin: ffmpeg}
     - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
     - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, apt: ghostscript, bin: gs}
-    - {name: git, kind: system, brew: git, bin: git}   # apt: comes with git-flow (and bootstrap.sh installs it first)
+    - {name: git, kind: system, brew: git, port: git, bin: git}   # apt: comes with git-flow (and bootstrap.sh installs it first)
     - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
-    - {name: graphicsmagick, kind: system, brew: graphicsmagick, apt: graphicsmagick, bin: gm}
+    - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, apt: graphicsmagick, bin: gm}
     # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
     - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
     - {name: htop, kind: system, brew: htop, port: htop, apt: htop, bin: htop}
@@ -149,8 +154,8 @@ packages:
 
     # --- apple: Apple-developer tools, macOS only.
     - {name: carthage, kind: apple, brew: carthage}
-    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}   # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
-    - {name: ios-deploy, kind: apple, brew: ios-deploy}
+    - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller, port: ideviceinstaller}   # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
+    - {name: ios-deploy, kind: apple, brew: ios-deploy, mise_fallback: npm:ios-deploy}
     # - {name: libimobiledevice, kind: apple, brew: libimobiledevice, bin: ideviceinfo}   # comes with ideviceinstaller
     - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
     - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, bin: xcodes}

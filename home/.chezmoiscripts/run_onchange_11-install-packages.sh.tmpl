@@ -12,6 +12,22 @@ set -euo pipefail
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+# Never stop chezmoi here. A package that cannot be installed is reported and left out; even if this script fails
+# somewhere unexpected, it says so and exits 0, so the scripts after it (mise tools, gems, Flutter, shell) still run.
+# scripts/check-install.py reports what is missing afterwards.
+BREWFILE=""
+CHECKER=""
+finish() {
+  local status=$?
+  [ -z "$BREWFILE" ] || rm -f "$BREWFILE" "$BREWFILE.new"
+  [ -z "$CHECKER" ] || rm -f "$CHECKER"
+  if [ "$status" -ne 0 ]; then
+    error "The package script stopped early (exit status $status, see above). The rest of the setup continues; run  chezmoi apply  again once the cause is fixed."
+  fi
+  exit 0
+}
+trap finish EXIT
+
 {{ if $appleSilicon -}}
 info "chezmoi: Apple Silicon - CLI tools, system packages{{ if ne $profile "cli" }}, casks and App Store apps{{ end }} via Homebrew"
 {{- else -}}
@@ -42,10 +58,9 @@ mkdir -p "{{ $appdir | replace "~" "$HOME" }}"
 
 {{ end -}}
 # Refresh the formula index on purpose. Never `brew upgrade`: on Intel (Tier 3) it can compile from source.
-run brew update || error "brew update failed; continuing with the cached formula index."
+retry run brew update || error "brew update failed; continuing with the cached formula index."
 
 BREWFILE="$(mktemp)"
-trap 'rm -f "$BREWFILE"' EXIT
 cat > "$BREWFILE" <<'BrewfileEOF'
 {{ if $appleSilicon -}}
 {{- range $plan.brew }}
@@ -77,7 +92,6 @@ BrewfileEOF
 cask_mode="${DOTFILES_CASKS:-install}"
 mas_mode="${DOTFILES_MAS:-install}"
 CHECKER="$(mktemp)"
-trap 'rm -f "$BREWFILE" "$CHECKER"' EXIT
 cat > "$CHECKER" <<'PYEOF'
 import json, sys
 kind, tok, major, arch = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
@@ -120,7 +134,7 @@ for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (con
   rest="${entry#*|}"
   formulae="${rest%%|*}"
   casks="${rest#*|}"
-  if ! brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
+  if ! retry brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
     unsupported="$unsupported$tap "
     report="$report
   - tap $tap: cannot be cloned (repository gone or private)"
@@ -156,25 +170,29 @@ if brew_has_trust; then
   brew trust < /dev/null 2>&1 || true
 fi
 
-# A cask that is in the Brewfile but still not installed after the bundle: one failing cask (a tap that was not trusted, an
-# installer that stopped) must not take the others with it, and `brew bundle` can skip the rest of a batch. So every cask
-# that is missing is installed once more on its own, with its appdir. (`brew install --cask tap/repo/name` also trusts
-# exactly that cask by itself, docs.brew.sh/Tap-Trust.)
-retry_missing_casks() {
-  local full dir
-  while IFS='|' read -r full dir; do
+# A cask or formula that is in the Brewfile but still not installed after the bundle: one failing package (a download cut
+# off by the network, a tap that was not trusted, an installer that stopped) must not take the others with it, and
+# `brew bundle` can skip the rest of a batch. So every one that is missing is installed once more on its own (casks with
+# their appdir), retried on failure, and only reported if it still fails. (`brew install --cask tap/repo/name` also
+# trusts exactly that cask by itself, docs.brew.sh/Tap-Trust.)
+not_installed=""
+retry_missing() {
+  local kind full dir
+  while IFS='|' read -r kind full dir; do
     [ -n "$full" ] || continue
-    brew list --cask "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
+    if [ "$kind" = brew ]; then kind=formula; fi
+    brew list "--$kind" "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
     dir="${dir/#\~/$HOME}"
     info "$full is not installed after the bundle, installing it on its own${dir:+ (appdir $dir)}"
     if [ -n "$dir" ]; then
-      run brew install --cask "--appdir=$dir" "$full" || error "$full could not be installed."
+      retry run brew install "--$kind" "--appdir=$dir" "$full" < /dev/null || not_installed="$not_installed $full"
     else
-      run brew install --cask "$full" || error "$full could not be installed."
+      retry run brew install "--$kind" "$full" < /dev/null || not_installed="$not_installed $full"
     fi
-  done < <(awk '$1=="cask" { name=$2; gsub(/[",]/,"",name); dir=""
+  done < <(awk '$1=="cask" || $1=="brew" { name=$2; gsub(/[",]/,"",name); dir=""
                  if (match($0, /appdir: *"[^"]*"/)) { dir=substr($0, RSTART, RLENGTH); sub(/^appdir: *"/,"",dir); sub(/"$/,"",dir) }
-                 print name "|" dir }' "$BREWFILE")
+                 print $1 "|" name "|" dir }' "$BREWFILE")
+  [ -z "$not_installed" ] || error "Still NOT installed after retrying (skipped, the rest of the setup continues):$not_installed"
 }
 
 if command -v python3 > /dev/null 2>&1; then
@@ -234,17 +252,21 @@ fi
 {{ if $appleSilicon -}}
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_missing_casks
+retry_missing
 if [ "$bundle_status" -ne 0 ]; then
   # not fatal: one cask that fails must not stop chezmoi from running the scripts after this one (mise tools, gems,
   # Flutter, shell). Run `brew bundle` again, or install the cask by hand, once the cause is fixed.
-  error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+  if [ -z "$not_installed" ]; then
+    info "brew bundle exited with status $bundle_status, but every cask and formula is installed after retrying (App Store apps: see above)."
+  else
+    error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+  fi
 fi
 {{- else -}}
 # Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_missing_casks
+retry_missing
 
 # Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
@@ -279,60 +301,96 @@ installed=""
 built=""
 skipped=""
 failed=""
-# MacPorts is the fallback for a formula Homebrew has no bottle for (a `port` in packages.yml), so nothing is compiled.
-#   DOTFILES_MACPORTS=install (default) | skip
+# Without a usable bottle a formula goes down the fallbacks, in this order (packages.yml):
+#   1. MacPorts binary archive (`port`; DOTFILES_MACPORTS=install (default) | skip)
+#   2. mise (`mise_fallback`)
+#   3. build from source, only for mise_intel: false tools (nothing else provides them)
+#   4. otherwise: reported and skipped, nothing is compiled
+# A formula whose bottle install fails goes down the same list. Every step that fails is reported; none stops the run.
 macports_mode="${DOTFILES_MACPORTS:-install}"
+macports_ready=""
 ported=""
 port_failed=""
-port_wanted=""
-for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s" .name .prebuilt .source .port | quote }} {{ end }}; do
-  IFS='|' read -r formula prebuilt source_ok port <<< "$entry"   # herestring, not a pipe: the loop's variables must survive
-  if brew list --formula "$formula" > /dev/null 2>&1; then continue; fi   # installed: leave it alone
+mise_wanted=""
+mise_for=""
+fallbacks=""
+for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s|%s" .name .prebuilt .source .port .mise_fallback | quote }} {{ end }}; do
+  IFS='|' read -r formula prebuilt source_ok port mise_id <<< "$entry"   # herestring, not a pipe: the loop's variables must survive
+  if brew list --formula "$formula" > /dev/null 2>&1 < /dev/null; then continue; fi   # installed: leave it alone
   if [ -n "$port" ] && [ -x /opt/local/bin/port ]; then
-    port_state="$(/opt/local/bin/port installed "$port" 2> /dev/null || true)"
+    port_state="$(/opt/local/bin/port installed "$port" 2> /dev/null < /dev/null || true)"
     if [[ "$port_state" == *"(active)"* ]]; then continue; fi   # installed from MacPorts on an earlier run
   fi
 
-  # source_ok: mise has no Intel build of this tool (mise_intel: false), so Homebrew is the only way to get
-  # it and it is installed even when that means compiling (slow, 2 jobs); everything else is bottle-only.
-  missing="$(unbottled "$formula" "$prebuilt")"
-  if [ -n "${missing# }" ] && [ -n "$port" ] && [ "$macports_mode" = install ]; then
-    # no usable Homebrew bottle (also for tools that would otherwise compile from source): a MacPorts binary instead
-    info "$formula has no Intel bottle (missing:$missing): using MacPorts port $port"
-    port_wanted="$port_wanted $port"
+  missing="$(unbottled "$formula" "$prebuilt" < /dev/null)"
+  if [ -z "${missing# }" ]; then
+    if [ "$prebuilt" = true ]; then
+      if retry run brew install --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
+    else
+      if retry run brew install --force-bottle --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
+    fi
+    why="brew install failed"
+  else
+    why="no Intel bottle:$missing"
+  fi
+  fallbacks="$fallbacks
+$formula|$source_ok|$port|$mise_id|$why"
+done
+
+while IFS='|' read -r formula source_ok port mise_id why <&3; do
+  [ -n "$formula" ] || continue
+  if [ -n "$port" ] && [ "$macports_mode" = install ]; then
+    if [ -z "$macports_ready" ]; then
+      if ensure_macports < /dev/null; then macports_ready=yes; else macports_ready=no; fi
+    fi
+    if [ "$macports_ready" = yes ]; then
+      # binary archives only (-b): a port without one fails here instead of compiling
+      info "$formula: $why, trying MacPorts port $port"
+      if retry run sudo /opt/local/bin/port -N -b install "$port" < /dev/null; then ported="$ported $port"; continue; fi
+      port_failed="$port_failed $port"
+      why="$why; MacPorts port $port failed"
+    else
+      why="$why; MacPorts could not be installed"
+    fi
+  fi
+  if [ -n "$mise_id" ]; then
+    info "$formula: $why, using mise ($mise_id) instead"
+    mise_wanted="$mise_wanted $mise_id"
+    mise_for="$mise_for $formula"
     continue
   fi
   if [ "$source_ok" = true ]; then
-    if [ -n "${missing# }" ]; then
-      info "$formula has no Intel bottle (missing:$missing): building from source, this takes a while"
-      built="$built $formula"
-    fi
-    if run brew install --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
+    # mise has no Intel build of this tool (mise_intel: false): Homebrew is the only way left, even if it compiles
+    info "$formula: $why, building from source with Homebrew, this takes a while"
+    if run brew install --formula "$formula" < /dev/null; then built="$built $formula"; else failed="$failed $formula"; fi
     continue
   fi
-  if [ -n "${missing# }" ]; then
-    skipped="$skipped
-  - $formula  (no Intel bottle:$missing)"
-    continue
-  fi
+  skipped="$skipped
+  - $formula  ($why)"
+done 3<<< "$fallbacks"
 
-  if [ "$prebuilt" = true ]; then
-    if run brew install --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
-  else
-    if run brew install --force-bottle --formula "$formula"; then installed="$installed $formula"; else failed="$failed $formula"; fi
-  fi
-done
-
-# MacPorts: binary archives only (-b), one port at a time so one that has none does not stop the others
-if [ -n "${port_wanted# }" ]; then
-  if ensure_macports; then
-    for port in $port_wanted; do
-      if run sudo /opt/local/bin/port -N -b install "$port"; then ported="$ported $port"; else port_failed="$port_failed $port"; fi
+# mise fallbacks go into a config file of their own (mise reads every ~/.config/mise/conf.d/*.toml), so the managed
+# config.toml stays as chezmoi renders it. Rewritten on every run: a tool that gets a bottle or a port later
+# drops out of it again, so it is never installed by two managers.
+MISE_FALLBACK_CONF="$HOME/.config/mise/conf.d/intel-fallback.toml"
+if [ -n "${mise_wanted# }" ]; then
+  mkdir -p "$(dirname "$MISE_FALLBACK_CONF")"
+  {
+    echo "# Generated by run_onchange_11-install-packages: Intel Mac tools Homebrew and MacPorts could not install."
+    echo "# Edit mise_fallback in .chezmoidata/packages.yml, not this file."
+    echo "[tools]"
+    for id in $mise_wanted; do printf '"%s" = "latest"\n' "$id"; done
+  } > "$MISE_FALLBACK_CONF"
+  if command -v mise > /dev/null 2>&1; then
+    for id in $mise_wanted; do
+      retry run mise install "$id" < /dev/null || error "mise install $id failed; the mise tools step tries again (mise install)."
     done
   else
-    skipped="$skipped
-  - $port_wanted  (MacPorts could not be installed, see above)"
+    info "mise is not installed yet: the mise tools step installs$mise_for from $MISE_FALLBACK_CONF"
   fi
+  info "From mise instead of Homebrew:$mise_for"
+else
+  rm -f "$MISE_FALLBACK_CONF"
 fi
 
 [ -z "$ported" ] || info "Installed from MacPorts:$ported"
@@ -344,17 +402,21 @@ fi
 [ -z "$installed" ] || info "Installed:$installed"
 [ -z "$built" ] || info "Built from source (no Intel bottle):$built"
 if [ -n "$skipped" ]; then
-  error "Skipped - Homebrew has no Intel bottle for these (or for one of their dependencies):$skipped"
-  info "Nothing was compiled. Use the tool macOS already ships, or build one on purpose:"
+  error "Skipped - neither Homebrew (no Intel bottle), MacPorts nor mise could install these:$skipped"
+  info "Nothing was compiled. Use the tool macOS already ships, add a port / mise_fallback in packages.yml, or build one on purpose:"
   info "  brew install --build-from-source <formula>   (slow; Intel is Tier 3)"
 fi
 [ -z "$failed" ] || error "brew install failed for:$failed"
 
 if [ "$bundle_status" -ne 0 ]; then
-  error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
+  if [ -z "$not_installed" ]; then
+    info "brew bundle exited with status $bundle_status, but every cask is installed after retrying (App Store apps: see above)."
+  else
+    error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
+  fi
 fi
 {{- end }}
 
 info "Brew cleanup"
-run brew cleanup
+run brew cleanup || error "brew cleanup failed (harmless)."
 {{ end -}}

@@ -7,6 +7,8 @@ set -euo pipefail
 DEST_DIR="{{ .chezmoi.destDir }}"
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+continue_on_failure "apt packages"
+
 command -v apt-get > /dev/null 2>&1 || bail "apt-get not found - system packages are only handled for Debian/Ubuntu (incl. WSL2)."
 
 sudo_cmd=()
@@ -14,7 +16,7 @@ if [ "$(id -u)" -ne 0 ]; then sudo_cmd=(sudo); fi
 export DEBIAN_FRONTEND=noninteractive
 
 info "apt: refreshing package lists"
-run "${sudo_cmd[@]}" apt-get update
+retry run "${sudo_cmd[@]}" apt-get update || error "apt-get update failed; using the package lists already there."
 
 # One package missing on this release must not abort the rest.
 install=()
@@ -25,5 +27,13 @@ done
 [ -z "$missing" ] || error "Not available on this release, skipped:$missing"
 
 info "apt: installing ${#install[@]} packages"
-run "${sudo_cmd[@]}" apt-get install -y "${install[@]}"
+if ! retry run "${sudo_cmd[@]}" apt-get install -y "${install[@]}"; then
+  # one package that cannot be fetched (network, a broken mirror) must not keep the others out: one at a time
+  info "apt: installing the packages one at a time"
+  failed=""
+  for pkg in "${install[@]}"; do
+    retry run "${sudo_cmd[@]}" apt-get install -y "$pkg" || failed="$failed $pkg"
+  done
+  [ -z "$failed" ] || error "apt could not install (see above):$failed"
+fi
 {{ end -}}

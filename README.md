@@ -111,8 +111,10 @@ installed into mise's Ruby, and the Flutter SDK is installed with fvm (`settings
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its
 Rust (a few minutes), btop comes from Homebrew. Some Homebrew formulae (ffmpeg, nmap, ansible and others)
 have no Intel bottle; where MacPorts has a prebuilt Intel package for them they come from there (MacPorts is
-installed on demand, only when something needs it, and its tools are last on PATH so Homebrew and mise win),
-the rest is skipped with a message instead of being compiled. `--no-macports` turns the fallback off. Ruby has no prebuilt Intel
+installed on demand, only when something needs it, and its tools are last on PATH so Homebrew and mise win);
+if the port fails too, a tool with a `mise_fallback` (ansible, ios-deploy) comes from mise, and the rest is skipped
+with a message instead of being compiled. Nothing in the install scripts stops the setup: a failed download or
+install is retried (`DOTFILES_RETRIES`, 3 tries by default), then reported and skipped, and the remaining steps still run. `--no-macports` turns the fallback off. Ruby has no prebuilt Intel
 build either and is compiled once.
 
 ## Secrets from Bitwarden

@@ -114,6 +114,28 @@ function use_terminal_stdin {
 	if [ ! -t 0 ] && ( : < /dev/tty ) 2> /dev/null; then exec < /dev/tty; fi
 }
 
+# Run a command again when it fails, for network hiccups (a download cut off, a mirror that timed out).
+# DOTFILES_RETRIES tries in all (default 3), waiting 5s, then 15s, 45s, ... in between. Returns the last exit status.
+function retry {
+	local attempt=1 max="${DOTFILES_RETRIES:-3}" delay=5 status
+	while :; do
+		"$@" && return 0
+		status=$?
+		[ "$attempt" -lt "$max" ] || return "$status"
+		error "Failed (exit status $status), trying again in ${delay}s (attempt $((attempt + 1)) of $max): $*"
+		sleep "$delay"
+		attempt=$((attempt + 1))
+		delay=$((delay * 3))
+	done
+}
+
+# A failing script stops `chezmoi apply` and every script after it. Call this at the top of a script whose failure
+# must not do that: on exit with an error it reports it and exits 0, so the rest of the setup still runs.
+function continue_on_failure { # continue_on_failure "<what this script does>"
+	CONTINUE_STEP="$1"
+	trap 'continue_status=$?; if [ "$continue_status" -ne 0 ]; then error "$CONTINUE_STEP did not finish (exit status $continue_status, see above). The rest of the setup continues; run  chezmoi apply  again later."; fi; exit 0' EXIT
+}
+
 function bail {
 	error "$*"
 	exit 99
