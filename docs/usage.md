@@ -1,0 +1,125 @@
+# Using it
+
+The short version: the repo lives in `~/.dotfiles` on every machine, `dot` applies it, `dot save` sends your changes
+to GitHub, `dot sync` brings them to another machine.
+
+## A new machine
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook
+```
+
+`--host` is the machine's name in `ansible/inventory/hosts.yml`. A machine that isn't there yet:
+`--host new-mac --group mac_work` (or `mac_personal`, `servers`, `wsl`), and add it to `hosts.yml` afterwards so it
+keeps its group. Everything `bootstrap.sh` asks and does is in the [README](../README.md#install).
+
+From then on the machine has `~/.dotfiles` (the repo) and the `dot` command.
+
+## Every day: `dot`
+
+| Command | Does |
+|---|---|
+| `dot` or `dot apply` | set this machine up from `~/.dotfiles` as it is now |
+| `dot apply --tags dotfiles` | only one part: `dotfiles`, `packages`, `shell`, `mise`, `dev`, `macos`, `xcode` |
+| `dot check` | show what `dot apply` would change, change nothing |
+| `dot sync` | `git pull`, then apply: picks up what you changed on another machine |
+| `dot save "message"` | commit everything you changed in `~/.dotfiles` and push it |
+| `dot status` | which machine and group this is, what is changed or not pushed yet |
+| `dot audit` | check that everything this machine should have is there, from the right manager, and starts |
+| `cd "$(dot cd)"` | go to the repo |
+
+Extra options after the command go to `ansible-playbook`, e.g. `dot apply -e install_casks=false`.
+
+## Changing a dotfile
+
+Plain files in `home/` are **linked**: `~/.zshrc` *is* `~/.dotfiles/home/.zshrc`. Edit it where you like, it takes
+effect in the next shell, then `dot save "zsh: new alias"`.
+
+Templates (`home/**/*.j2`: `.gitconfig`, `.zshenv`, `.zprofile`, wezterm fonts and domains, alacritty, the secrets
+file) are written, not linked, because they need your name, a setting or the OS. Edit the `.j2` in `~/.dotfiles`,
+then `dot apply --tags dotfiles`, then `dot save`. Editing `~/.gitconfig` directly works until the next apply, which
+writes the template again (the old file is kept next to it as a timestamped `~/.gitconfig.<...>~` backup).
+
+A **new** dotfile: put it in `~/.dotfiles/home/` at the same path it has in your home directory
+(`home/.config/foo/config.toml`), `dot apply --tags dotfiles` links it (a file already in its place is moved to
+`~/.dotfiles-backup/<time>/` first), `dot save`. To keep one off some machines: `dotfiles_skip_extra: [.config/foo]`
+in that group's or host's vars.
+
+Settings the templates use (git signing, fonts, theme, Dock, extra environment variables and PATH entries) are in
+`ansible/inventory/group_vars/all/settings.yml`; change them for one machine with `settings_override` in
+`host_vars/<host>.yml`. See [configuration.md](configuration.md#settings).
+
+## Adding and removing packages
+
+All in `ansible/inventory/`, then `dot apply --tags packages` (and `mise` for mise tools), then `dot save`:
+
+| You want | Put it in |
+|---|---|
+| a tool on every machine | a line in `group_vars/all/packages.yml` under `tools:` (`{name: jq, kind: cli, mise: jq, brew: jq, apt: jq}`) |
+| an app on every Mac | `darwin.casks` (`{name: slack, appdir: true}`) or `darwin.mas` (`{id: 803453959, name: Slack}`) in the same file |
+| something on one kind of machine only | `tools_extra` / `casks_extra` / `mas_extra` in `group_vars/<group>.yml` |
+| something on one machine only | the same keys in `host_vars/<host>.yml` |
+| leave something out on some machines | `tools_skip` / `casks_skip` / `mas_skip` there |
+| **uninstall** something | `remove:` in `group_vars/all/main.yml` (every machine) or a group / host file |
+
+**Commenting out or deleting a package does not uninstall it.** It only stops installing it: machines that already
+have it keep it, new machines don't get it. To take it off machines, list it under `remove:`:
+
+```yaml
+remove:
+  brew: [thefuck]
+  cask: [kodi]
+  mas: [1451685025]
+  apt: [telnet]
+  mise: [zig]          # also dropped from the mise config
+  port: [ffmpeg]       # MacPorts, Intel Macs
+```
+
+Exactly those are uninstalled on every run, nothing else. `dot check` first shows what would go. Once it is gone
+everywhere you can delete the line from `remove:` again (or leave it, it's harmless).
+
+Which manager installs a tool on which machine (Homebrew, apt, mise, MacPorts on Intel) is decided for you from the
+keys of its entry, see [configuration.md](configuration.md#packagesyml).
+
+### mise tools are global
+
+Runtimes (node, python, ruby, java, go, rust, uv) and the mise-installed tools go into mise's **global** config,
+`~/.config/mise/config.toml` (written from `packages.yml`, don't edit it by hand). They work in every directory, in
+every shell, and in IDEs and scripts that never run `mise activate`: `~/.local/share/mise/shims` is on PATH in
+`.zshenv`, `.zprofile` and `.bashrc`. A run lists any tool from that config that is still not installed. A project
+that needs another version puts a `mise.toml` in its own directory; that wins there only.
+
+## Syncing machines
+
+```
+machine A:  edit ~/.zshrc, or packages.yml  ->  dot save "msg"      (commit + push)
+machine B:                                     dot sync             (pull + apply)
+```
+
+`dot sync` refuses to pull over uncommitted changes on that machine that conflict with incoming ones: `dot status`
+shows them; `dot save` them (or `git -C ~/.dotfiles stash`) and sync again. If two machines changed the same file,
+`dot save` on the second one says the push failed: `dot sync`, resolve, `dot save` again.
+
+From your laptop you can also update a machine you reach over SSH without logging in to it:
+`cd ~/.dotfiles/ansible && ansible-playbook site.yml -l homeserver -K` (it pulls the repo there first).
+
+## When something did not install
+
+Every run ends with a report of what could not be installed; the rest of the setup still ran. Fix the cause (network,
+App Store not signed in, a package that was renamed) and `dot apply` again: only what's missing is installed.
+`dot audit` checks the whole machine.
+
+## Troubleshooting
+
+**Tab prints `command not found: _autocomplete__should_insert_unambiguous`** (or `_autocomplete__unambiguous`,
+`_autocomplete__should_add_space`). zsh-autocomplete keeps those helpers in its `Completions/` folder and only puts
+that on zsh's function path when the plugin loads, after Oh My Zsh has already built the completion cache, so they
+were never registered. `home/.zsh/omz.zsh` now adds the folder before Oh My Zsh starts and rebuilds the cache when a
+plugin brings new completion files. On a machine that still has the old setup: `rm -f ~/.zcompdump* && exec zsh`
+fixes it until the next plugin update; `dot sync` fixes it for good.
+
+**`dot: <host> is not in ansible/inventory/hosts.yml`**: add the machine to `hosts.yml` under its group (and
+`dot save`), or run once with `DOTFILES_GROUP=mac_work dot`.
+
+**sudo password asked during `dot`**: macOS keeps sudo's unlock per terminal, so Ansible asks once for the steps that
+need root (MacPorts, `/etc/shells`, Touch ID, Rosetta).

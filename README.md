@@ -4,6 +4,9 @@ My machines, set up with [Ansible](https://docs.ansible.com): packages, apps, ru
 dotfiles themselves. It runs on macOS (Apple Silicon and Intel) and on Debian-based Linux, including WSL2.
 Windows only gets a winget list (`windows/install.ps1`), and I don't test it.
 
+**How to use it day to day** (the `dot` command, adding and removing packages and dotfiles, syncing machines):
+[docs/usage.md](docs/usage.md).
+
 You are welcome to take what is useful. Most things you'd want to change (name, email, fonts, theme, which apps
 a machine gets) are variables, not code, see [docs/configuration.md](docs/configuration.md).
 
@@ -49,6 +52,9 @@ Mac: turn on Remote Login and install the Command Line Tools first; `bootstrap.s
 5. if Xcode needs your Apple ID's two-factor code, runs that last, on your terminal
 
 Every option is in `bootstrap.sh --help`; every variable, by scenario, in [docs/environment.md](docs/environment.md).
+
+Afterwards the machine has the repo in `~/.dotfiles` and a `dot` command: `dot` applies it, `dot sync` pulls and
+applies, `dot save` commits and pushes, `dot check` shows what would change. See [docs/usage.md](docs/usage.md).
 
 ## Machines
 

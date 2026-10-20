@@ -28,6 +28,11 @@ if chrome_path=$(locate_chrome); then
 fi
 {% endif %}
 
+{% if dotfiles_os == 'linux' %}
+# Ubuntu's /etc/zsh/zshrc runs compinit itself; zsh-autocomplete (and Oh My Zsh) want to be the only ones that do
+skip_global_compinit=1
+
+{% endif %}
 export PATH="$HOME/fvm/default/bin:$PATH"
 # mise itself, and its shims: IDEs and non-interactive shells (Xcode build phases, Android Studio,
 # cron) never run `mise activate`, but they do read this file, so they still find every runtime.

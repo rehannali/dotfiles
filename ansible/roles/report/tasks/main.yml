@@ -22,6 +22,23 @@
   when: not ansible_check_mode
   failed_when: false
 
+- name: Report | ~/.config/dotfiles
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.config/dotfiles"
+    state: directory
+    mode: "0700"
+  when: not ansible_check_mode
+
+# `dot` (home/.local/bin/dot) reads this to know which machine it runs on
+- name: Report | which machine this is (for dot)
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts.env.HOME }}/.config/dotfiles/machine"
+    mode: "0644"
+    content: |
+      DOTFILES_HOST={{ inventory_hostname }}
+      DOTFILES_GROUP={{ (group_names | intersect(['mac_personal', 'mac_work', 'servers', 'wsl']) | first) | default('') }}
+  when: not ansible_check_mode
+
 - name: Report | everything was done
   ansible.builtin.debug:
     msg: "{{ inventory_hostname }}: everything was installed."

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# dot: everyday use of the dotfiles on this machine (linked from ~/.dotfiles/home/.local/bin/dot).
+#
+#   dot                 same as dot apply
+#   dot apply [ARGS]    set this machine up from ~/.dotfiles as it is (ARGS go to ansible-playbook,
+#                       e.g. --tags dotfiles, --tags packages, -e install_casks=false)
+#   dot sync [ARGS]     pull the latest from GitHub, then apply: how another machine's changes arrive here
+#   dot check [ARGS]    what apply would change, without changing anything (--check --diff)
+#   dot save [MESSAGE]  commit everything changed in ~/.dotfiles and push it, for the other machines to sync
+#   dot status          this machine's host and group, and what is changed / not pushed in ~/.dotfiles
+#   dot audit           check what is installed against what this machine should have
+#   dot cd              print the repo path:  cd "$(dot cd)"
+#
+# Which machine this is (host and group in ansible/inventory/hosts.yml) comes from ~/.config/dotfiles/machine,
+# written by every run. Override for one command with DOTFILES_HOST / DOTFILES_GROUP.
+set -euo pipefail
+
+REPO="${DOTFILES_DIR:-$HOME/.dotfiles}"
+MACHINE_FILE="$HOME/.config/dotfiles/machine"
+export PATH="$HOME/.local/bin:$PATH"
+
+die() { printf '\033[1;31mdot:\033[0m %s\n' "$*" >&2; exit 1; }
+say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+
+case "${1:-}" in -h | --help | help) sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;; esac
+[ -d "$REPO/ansible" ] || die "no checkout at $REPO (set DOTFILES_DIR, or run bootstrap.sh first)"
+host="${DOTFILES_HOST:-}"
+group="${DOTFILES_GROUP:-}"
+if [ -f "$MACHINE_FILE" ]; then   # written by the report role: DOTFILES_HOST=... and DOTFILES_GROUP=... lines
+  [ -n "$host" ] || host="$(sed -n 's/^DOTFILES_HOST=//p' "$MACHINE_FILE")"
+  [ -n "$group" ] || group="$(sed -n 's/^DOTFILES_GROUP=//p' "$MACHINE_FILE")"
+fi
+[ -n "$host" ] || host="$(hostname -s 2> /dev/null || hostname)"
+
+playbook() {
+  command -v ansible-playbook > /dev/null 2>&1 || die "Ansible is not installed: run bootstrap.sh (or: uv tool install --python 3.13 ansible-core)"
+  local args=(-i inventory/hosts.yml -c local -e "dotfiles_dir=$REPO")
+  local tmp=""
+  if ! (cd "$REPO/ansible" && ansible-inventory -i inventory/hosts.yml --host "$host" > /dev/null 2>&1); then
+    [ -n "$group" ] || die "$host is not in ansible/inventory/hosts.yml; add it there, or say which group: DOTFILES_GROUP=mac_work dot $*"
+    tmp="$(mktemp -d)"   # Ansible only reads a YAML inventory whose name ends in .yml
+    printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$group" "$host" > "$tmp/host.yml"
+    args+=(-i "$tmp/host.yml")
+  fi
+  # sudo for the steps that need it: Ansible asks once if it can't use an already unlocked sudo
+  if [ "$(id -u)" -ne 0 ] && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
+    args+=(--ask-become-pass)
+  fi
+  say "ansible-playbook site.yml for $host${group:+ ($group)} $*"
+  local rc=0
+  (cd "$REPO/ansible" && ANSIBLE_CONFIG="$REPO/ansible/ansible.cfg" ansible-playbook "${args[@]}" -l "$host" "$@" site.yml) || rc=$?
+  if [ -n "$tmp" ]; then rm -f "$tmp/host.yml"; rmdir "$tmp"; fi
+  return "$rc"
+}
+
+cmd="${1:-apply}"
+[ $# -eq 0 ] || shift
+case "$cmd" in
+  apply) playbook "$@" ;;
+  sync)
+    say "git pull in $REPO"
+    git -C "$REPO" pull --ff-only || die "could not fast-forward $REPO: commit or stash your changes (dot status), then dot sync again"
+    playbook "$@"
+    ;;
+  check) playbook --check --diff "$@" ;;
+  save)
+    msg="${*:-Update from $host}"
+    if [ -z "$(git -C "$REPO" status --porcelain)" ]; then
+      say "nothing changed in $REPO"
+    else
+      git -C "$REPO" add -A
+      git -C "$REPO" commit -q -m "$msg"
+      say "committed: $msg"
+    fi
+    git -C "$REPO" push --quiet || die "push failed: dot sync first if another machine pushed, then dot save again"
+    say "pushed; on the other machines: dot sync"
+    ;;
+  status)
+    printf 'machine: %s%s\nrepo:    %s (%s)\n\n' "$host" "${group:+ (group $group)}" "$REPO" "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+    git -C "$REPO" status --short --branch
+    ;;
+  audit) python3 "$REPO/scripts/check-install.py" "$@" ;;
+  cd) printf '%s\n' "$REPO" ;;
+  *) die "unknown command: $cmd (dot help)" ;;
+esac

@@ -77,7 +77,7 @@ jobs:
         working-directory: ansible
         run: ansible-playbook -i localhost, -c local tests/render.yml
       - name: shellcheck
-        run: shellcheck bootstrap.sh ansible/roles/packages/files/*.sh
+        run: shellcheck bootstrap.sh home/.local/bin/dot ansible/roles/packages/files/*.sh
 
   # Picks the machines: everything on PR/push, one or all on a manual run.
   plan:
