@@ -1,5 +1,11 @@
 ---
 # Runtimes (node, python, ruby, ...) and, on Intel Macs and Linux, the command-line tools, from packages.yml.
+- name: Mise | config directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.config/mise"
+    state: directory
+    mode: "0755"
+
 - name: Mise | config
   ansible.builtin.template:
     src: config.toml.j2
