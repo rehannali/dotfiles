@@ -1,7 +1,8 @@
 # Using it
 
 The short version: the repo lives in `~/.dotfiles` on every machine, `dot` applies it, `dot save` sends your changes
-to GitHub, `dot sync` brings them to another machine.
+to GitHub, `dot sync` brings them to another machine. How the setup is put together, and how to describe your
+machines, is in [setup-guide.md](setup-guide.md).
 
 ## A new machine
 

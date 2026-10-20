@@ -4,6 +4,9 @@ My machines, set up with [Ansible](https://docs.ansible.com): packages, apps, ru
 dotfiles themselves. It runs on macOS (Apple Silicon and Intel) and on Debian-based Linux, including WSL2.
 Windows only gets a winget list (`windows/install.ps1`), and I don't test it.
 
+**Setting it up** (how it fits together, describing your machines, local and over SSH, name and email, Bitwarden,
+everything you can change): [docs/setup-guide.md](docs/setup-guide.md).
+
 **How to use it day to day** (the `dot` command, adding and removing packages and dotfiles, syncing machines):
 [docs/usage.md](docs/usage.md).
 
