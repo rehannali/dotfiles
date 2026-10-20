@@ -337,7 +337,9 @@ if ! command -v uv > /dev/null 2>&1; then
   UV_NO_MODIFY_PATH=1 sh -c "$installer" || die "The uv installer failed"
 fi
 say "Installing Ansible"
-uv tool install --quiet --upgrade ansible-core || die "Could not install Ansible"
+# A Python ansible-core supports: uv would otherwise take the newest one it finds (3.15 broke ansible-core's imports).
+# uv downloads it if the machine has none.
+uv tool install --quiet --upgrade --python 3.13 ansible-core || die "Could not install Ansible"
 ansible-galaxy collection install --upgrade -r "$REPO_DIR/ansible/requirements.yml" > /dev/null \
   || die "Could not install the Ansible collections"
 
