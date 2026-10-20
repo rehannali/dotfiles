@@ -5,6 +5,8 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 [[ -f "$DEST_DIR/.local/lib/chezmoi-utils.sh" ]] && . "$DEST_DIR/.local/lib/chezmoi-utils.sh"
 
+continue_on_failure "login shell change"
+
 if [ "${DOTFILES_CHSH:-install}" = skip ]; then
     info "DOTFILES_CHSH=skip: leaving the login shell alone."
     exit 0

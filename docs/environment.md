@@ -90,6 +90,7 @@ A variable that is set wins over the stored answer when `chezmoi init` is run ag
 | `DOTFILES_MAS` | `install` (default), `skip` | package script | no App Store apps |
 | `DOTFILES_SKIP_CASKS` | space separated cask names | package script | leave these casks out of this run |
 | `DOTFILES_MACPORTS` | `install` (default), `skip` | package script, Intel Macs | `skip`: no MacPorts fallback for tools without a Homebrew bottle |
+| `DOTFILES_RETRIES` | number, default `3` | every install step | how often a failed install or download is tried in all (waits 5s, 15s, 45s, ... in between); what still fails is reported and skipped, the setup continues |
 | `DOTFILES_REPO` | `owner/name` | `bootstrap.sh` | repo to apply, default `rehannali/dotfiles` |
 | `DOTFILES_SOURCE` | path | `bootstrap.sh` | local checkout instead of GitHub |
 | `DOTFILES_CHEZMOI_ARGS` | e.g. `--verbose` | `bootstrap.sh` | extra flags for `chezmoi init` |

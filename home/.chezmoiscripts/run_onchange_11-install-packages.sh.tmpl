@@ -58,7 +58,7 @@ mkdir -p "{{ $appdir | replace "~" "$HOME" }}"
 
 {{ end -}}
 # Refresh the formula index on purpose. Never `brew upgrade`: on Intel (Tier 3) it can compile from source.
-run brew update || error "brew update failed; continuing with the cached formula index."
+retry run brew update || error "brew update failed; continuing with the cached formula index."
 
 BREWFILE="$(mktemp)"
 cat > "$BREWFILE" <<'BrewfileEOF'
@@ -134,7 +134,7 @@ for entry in {{ range .packages.taps }}{{ printf "%s|%s|%s" .name (join " " (con
   rest="${entry#*|}"
   formulae="${rest%%|*}"
   casks="${rest#*|}"
-  if ! brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
+  if ! retry brew tap "$tap" > /dev/null 2>&1 < /dev/null; then
     unsupported="$unsupported$tap "
     report="$report
   - tap $tap: cannot be cloned (repository gone or private)"
@@ -170,25 +170,29 @@ if brew_has_trust; then
   brew trust < /dev/null 2>&1 || true
 fi
 
-# A cask that is in the Brewfile but still not installed after the bundle: one failing cask (a tap that was not trusted, an
-# installer that stopped) must not take the others with it, and `brew bundle` can skip the rest of a batch. So every cask
-# that is missing is installed once more on its own, with its appdir. (`brew install --cask tap/repo/name` also trusts
-# exactly that cask by itself, docs.brew.sh/Tap-Trust.)
-retry_missing_casks() {
-  local full dir
-  while IFS='|' read -r full dir; do
+# A cask or formula that is in the Brewfile but still not installed after the bundle: one failing package (a download cut
+# off by the network, a tap that was not trusted, an installer that stopped) must not take the others with it, and
+# `brew bundle` can skip the rest of a batch. So every one that is missing is installed once more on its own (casks with
+# their appdir), retried on failure, and only reported if it still fails. (`brew install --cask tap/repo/name` also
+# trusts exactly that cask by itself, docs.brew.sh/Tap-Trust.)
+not_installed=""
+retry_missing() {
+  local kind full dir
+  while IFS='|' read -r kind full dir; do
     [ -n "$full" ] || continue
-    brew list --cask "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
+    if [ "$kind" = brew ]; then kind=formula; fi
+    brew list "--$kind" "${full##*/}" > /dev/null 2>&1 < /dev/null && continue
     dir="${dir/#\~/$HOME}"
     info "$full is not installed after the bundle, installing it on its own${dir:+ (appdir $dir)}"
     if [ -n "$dir" ]; then
-      run brew install --cask "--appdir=$dir" "$full" || error "$full could not be installed."
+      retry run brew install "--$kind" "--appdir=$dir" "$full" < /dev/null || not_installed="$not_installed $full"
     else
-      run brew install --cask "$full" || error "$full could not be installed."
+      retry run brew install "--$kind" "$full" < /dev/null || not_installed="$not_installed $full"
     fi
-  done < <(awk '$1=="cask" { name=$2; gsub(/[",]/,"",name); dir=""
+  done < <(awk '$1=="cask" || $1=="brew" { name=$2; gsub(/[",]/,"",name); dir=""
                  if (match($0, /appdir: *"[^"]*"/)) { dir=substr($0, RSTART, RLENGTH); sub(/^appdir: *"/,"",dir); sub(/"$/,"",dir) }
-                 print name "|" dir }' "$BREWFILE")
+                 print $1 "|" name "|" dir }' "$BREWFILE")
+  [ -z "$not_installed" ] || error "Still NOT installed after retrying (skipped, the rest of the setup continues):$not_installed"
 }
 
 if command -v python3 > /dev/null 2>&1; then
@@ -248,17 +252,21 @@ fi
 {{ if $appleSilicon -}}
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_missing_casks
+retry_missing
 if [ "$bundle_status" -ne 0 ]; then
   # not fatal: one cask that fails must not stop chezmoi from running the scripts after this one (mise tools, gems,
   # Flutter, shell). Run `brew bundle` again, or install the cask by hand, once the cause is fixed.
-  error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+  if [ -z "$not_installed" ]; then
+    info "brew bundle exited with status $bundle_status, but every cask and formula is installed after retrying (App Store apps: see above)."
+  else
+    error "brew bundle exited with status $bundle_status: some casks / apps / formulae were NOT installed (see above). The rest of the setup continues."
+  fi
 fi
 {{- else -}}
 # Intel: casks and App Store apps through the bundle
 bundle_status=0
 run brew bundle -v --no-upgrade --file="$BREWFILE" || bundle_status=$?
-retry_missing_casks
+retry_missing
 
 # Intel: formulae, bottle-only
 # Homebrew builds no new Intel bottles (Tier 3). `brew install --force-bottle` refuses to compile the
@@ -317,9 +325,9 @@ for entry in {{ range $plan.brew }}{{ printf "%s|%t|%t|%s|%s" .name .prebuilt .s
   missing="$(unbottled "$formula" "$prebuilt" < /dev/null)"
   if [ -z "${missing# }" ]; then
     if [ "$prebuilt" = true ]; then
-      if run brew install --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
+      if retry run brew install --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
     else
-      if run brew install --force-bottle --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
+      if retry run brew install --force-bottle --formula "$formula" < /dev/null; then installed="$installed $formula"; continue; fi
     fi
     why="brew install failed"
   else
@@ -338,7 +346,7 @@ while IFS='|' read -r formula source_ok port mise_id why <&3; do
     if [ "$macports_ready" = yes ]; then
       # binary archives only (-b): a port without one fails here instead of compiling
       info "$formula: $why, trying MacPorts port $port"
-      if run sudo /opt/local/bin/port -N -b install "$port" < /dev/null; then ported="$ported $port"; continue; fi
+      if retry run sudo /opt/local/bin/port -N -b install "$port" < /dev/null; then ported="$ported $port"; continue; fi
       port_failed="$port_failed $port"
       why="$why; MacPorts port $port failed"
     else
@@ -375,7 +383,7 @@ if [ -n "${mise_wanted# }" ]; then
   } > "$MISE_FALLBACK_CONF"
   if command -v mise > /dev/null 2>&1; then
     for id in $mise_wanted; do
-      run mise install "$id" < /dev/null || error "mise install $id failed; the mise tools step tries again (mise install)."
+      retry run mise install "$id" < /dev/null || error "mise install $id failed; the mise tools step tries again (mise install)."
     done
   else
     info "mise is not installed yet: the mise tools step installs$mise_for from $MISE_FALLBACK_CONF"
@@ -401,7 +409,11 @@ fi
 [ -z "$failed" ] || error "brew install failed for:$failed"
 
 if [ "$bundle_status" -ne 0 ]; then
-  error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
+  if [ -z "$not_installed" ]; then
+    info "brew bundle exited with status $bundle_status, but every cask is installed after retrying (App Store apps: see above)."
+  else
+    error "brew bundle (casks / App Store) exited with status $bundle_status: some were NOT installed (see above). The rest of the setup continues."
+  fi
 fi
 {{- end }}
 

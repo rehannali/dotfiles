@@ -15,13 +15,14 @@ fi
 
 if ! command -v fvm > /dev/null 2>&1; then
   error "fvm is not installed, so Flutter is skipped."
-  exit 1
+  exit 0
 fi
 
 info "Flutter $VERSION with fvm"
-run fvm install "$VERSION" || exit 1
-run fvm global "$VERSION" || exit 1
+# not fatal: Flutter is the last of the setup, and `fvm install` can be run again by hand
+retry run fvm install "$VERSION" || { error "fvm install $VERSION failed (see above). Run  fvm install $VERSION && fvm global $VERSION  later."; exit 0; }
+run fvm global "$VERSION" || { error "fvm global $VERSION failed (see above)."; exit 0; }
 
 # fvm says "setup" even when it could not unpack the Dart SDK (no unzip), so run Flutter itself
-run "$DEST_DIR/fvm/default/bin/flutter" --version || { error "flutter does not run after the install"; exit 1; }
+run "$DEST_DIR/fvm/default/bin/flutter" --version || { error "flutter does not run after the install"; exit 0; }
 {{ end -}}

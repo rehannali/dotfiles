@@ -8,7 +8,11 @@ DEST_DIR="{{ .chezmoi.destDir }}"
 
 if ! command -v mise > /dev/null 2>&1; then
   info "Installing mise (official installer, prebuilt binary)"
-  run sh -c "$(curl -fsSL https://mise.run)"
+  retry run sh -c "$(curl -fsSL --retry 3 https://mise.run)" || error "The mise installer failed (see above)."
+fi
+if ! command -v mise > /dev/null 2>&1; then
+  error "mise is not installed, so its tools are skipped. Run  chezmoi apply  again once the network is back."
+  exit 0
 fi
 
 install_status=0
@@ -17,10 +21,10 @@ install_status=0
 info "Intel Mac: Ruby is compiled from source (several minutes; 2 jobs, low priority)"
 export MISE_JOBS=2 MAKE_OPTS=-j2 RUBY_MAKE_OPTS=-j2
 info "Installing tools from ~/.config/mise/config.toml (and conf.d/)"
-run nice -n 10 mise install || install_status=$?
+retry run nice -n 10 mise install || install_status=$?
 {{- else -}}
 info "Installing tools from ~/.config/mise/config.toml (and conf.d/)"
-run mise install || install_status=$?
+retry run mise install || install_status=$?
 {{- end }}
 
 run mise reshim || true
