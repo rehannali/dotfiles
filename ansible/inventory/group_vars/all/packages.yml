@@ -138,7 +138,7 @@ packages:
         - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
         - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
         - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
-        - {name: subversion, kind: system, brew: subversion, port: subversion, apt: subversion, bin: svn}
+        - {name: subversion, kind: system, brew: subversion, port: subversion, mise_fallback: 'conda:subversion', apt: subversion, bin: svn}
         - {name: zlib, kind: system, brew: zlib, port: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
         # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
         # - {name: xz-utils, kind: system, apt: xz-utils}   # comes with build-essential (through dpkg-dev)
