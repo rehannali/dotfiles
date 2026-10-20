@@ -22,6 +22,8 @@
 #   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
 #               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
 #               packages.macports.org. If the port cannot be installed either, mise_fallback is tried next.
+#   port_build  true = MacPorts may compile this port itself when it has no binary archive (nmap: licence), as long as
+#               every dependency comes as one. A few minutes, never a chain of builds. Default: binary archives only.
 #   mise_fallback  Intel Macs only, the last resort for a brew tool: a mise tool id used when Homebrew has no bottle
 #               and MacPorts (no `port`, or its install failed) cannot provide it either. It goes into the mise
 #               config, so mise installs it like any other tool. A tool with none of the three is reported and
@@ -89,7 +91,7 @@ packages:
         - {name: git, kind: system, brew: git, port: git, apt: git, bin: git}
         - {name: htop, kind: system, brew: htop, port: htop, apt: htop, bin: htop}
         - {name: pwgen, kind: system, brew: pwgen, port: pwgen, apt: pwgen, bin: pwgen}
-        - {name: rsync, kind: system, brew: rsync, port: rsync, apt: rsync, bin: rsync}
+        - {name: rsync, kind: system, brew: rsync, port: rsync, mise_fallback: 'conda:rsync', apt: rsync, bin: rsync}
         - {name: stow, kind: system, brew: stow, apt: stow, bin: stow}
         - {name: thefuck, kind: system, brew: thefuck, bin: thefuck}
         - {name: unzip, kind: system, apt: unzip, bin: unzip}
@@ -144,17 +146,17 @@ packages:
     # Images, video and documents on the command line.
     media:
       tools:
-        - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, apt: ffmpeg, bin: ffmpeg}
-        - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, apt: ghostscript, bin: gs}
-        - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, apt: graphicsmagick, bin: gm}
-        - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, apt: imagemagick, bin: convert}
+        - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, mise_fallback: 'conda:ffmpeg', apt: ffmpeg, bin: ffmpeg}
+        - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, mise_fallback: 'conda:ghostscript', apt: ghostscript, bin: gs}
+        - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, mise_fallback: 'conda:graphicsmagick', apt: graphicsmagick, bin: gm}
+        - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, mise_fallback: 'conda:imagemagick', apt: imagemagick, bin: convert}
         - {name: libheif, kind: system, apt: libheif-dev}   # brew: comes with imagemagick and graphicsmagick
 
     # Network tools.
     network:
       tools:
         - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}
-        - {name: nmap, kind: system, brew: nmap, port: nmap, apt: nmap, bin: nmap}
+        - {name: nmap, kind: system, brew: nmap, port: nmap, port_build: true, apt: nmap, bin: nmap}
         - {name: openconnect, kind: system, brew: openconnect, port: openconnect, apt: openconnect, bin: openconnect}
         - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
         - {name: telnet, kind: system, brew: telnet, apt: telnet, bin: telnet}
@@ -164,7 +166,7 @@ packages:
     # A local web stack.
     web:
       tools:
-        - {name: nginx, kind: system, brew: nginx, port: nginx, apt: nginx}
+        - {name: nginx, kind: system, brew: nginx, port: nginx, mise_fallback: 'conda:nginx', apt: nginx}
         - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
 
     # Apple development (macOS, with gui_apps): command-line tools, gems, Xcode extensions. Xcode itself is the xcode

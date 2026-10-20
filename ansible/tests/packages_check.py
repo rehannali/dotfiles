@@ -37,6 +37,8 @@ for t in all_tools:
     for key in ("port", "mise_fallback"):
         if t.get(key) and not t.get("brew"):
             bad.append(f"{t['name']}: {key} is only a fallback for a brew formula")
+    if "port_build" in t and (t["port_build"] is not True or not t.get("port")):
+        bad.append(f"{t['name']}: port_build is true or absent, and needs a port")
 for a in all_apps:
     if not any(k in a for k in ("cask", "mas", "flatpak")):
         bad.append(f"app {a['name']}: needs a cask, mas or flatpak id")

@@ -12,7 +12,8 @@ package list yet, e.g. Fedora): system tools are left out and reported.
 
 On an Intel Mac a brew entry carries its `port` and `mise_fallback`: the packages role tries them, in that order, when
 there is no bottle. With `system: port` the port is used directly, else the mise_fallback, else the tool is reported in
-`unplanned`. `mise_intel` picks another mise id on Intel Macs (or `false`: mise has no Intel build at all).
+`unplanned`. `port_build` lets MacPorts compile the port itself (its dependencies still come as binary archives); such
+ports are also listed in `port_build`, and `port_fallback` maps a port to its mise_fallback. `mise_intel` picks another mise id on Intel Macs (or `false`: mise has no Intel build at all).
 Exactly one manager per tool, so nothing is ever installed twice.
 """
 
@@ -29,7 +30,7 @@ def tool_plan(tools, platform, managers, gui_apps=True):
     if cli not in ("brew", "mise") or system not in ("brew", "apt", "port", "none"):
         raise AnsibleFilterError("platform_managers[%s]: cli must be brew or mise, system brew, apt, port or none (got %r)"
                                  % (platform, managers))
-    plan = {"apt": [], "brew": [], "mise": [], "port": [], "expect": [], "unplanned": []}
+    plan = {"apt": [], "brew": [], "mise": [], "port": [], "port_build": [], "port_fallback": {}, "expect": [], "unplanned": []}
     for t in tools:
         kind = t.get("kind")
         if kind not in KINDS:
@@ -61,10 +62,15 @@ def tool_plan(tools, platform, managers, gui_apps=True):
                 "prebuilt": t.get("prebuilt") is True,
                 "source": mise_intel is False,
                 "port": str(t.get("port", "")) if intel_mac else "",
+                "port_build": intel_mac and t.get("port_build") is True,
                 "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac else "",
             })
         elif via:
             plan[via].append(ident)
+            if via == "port" and t.get("port_build") is True:
+                plan["port_build"].append(ident)
+            if via == "port" and t.get("mise_fallback"):
+                plan["port_fallback"][ident] = str(t["mise_fallback"])
         elif system == "none" or any(k in t for k in (("brew", "port", "mise", "mise_fallback") if is_mac else ("apt", "mise"))):
             plan["unplanned"].append(t["name"])   # meant for this kind of OS, but no manager here has it
 
@@ -73,7 +79,8 @@ def tool_plan(tools, platform, managers, gui_apps=True):
             on_intel_brew = intel_mac and via == "brew"
             plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_, "source": mise_intel is False,
                                    "port": str(t.get("port", "")) if on_intel_brew else "",
-                                   "mise_fallback": str(t.get("mise_fallback", "")) if on_intel_brew else ""})
+                                   "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac and via in ("brew", "port")
+                                   else ""})
     return plan
 
 

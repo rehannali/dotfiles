@@ -256,7 +256,8 @@ manager uses. Leave a key out where the tool isn't available from that manager.
 | `mise`, `brew`, `apt` | the package name for that manager |
 | `bin` | the command the tool provides, when it differs from `name` (the CI check looks for it) |
 | `port` | MacPorts port, used on Intel Macs only, when Homebrew has no bottle for the tool (also instead of compiling a `mise_intel: false` tool). Set it only if `packages.macports.org/<port>/` has a `darwin_25.x86_64` archive |
-| `mise_fallback` | mise tool id, used on Intel Macs only, when Homebrew has no bottle and MacPorts (no `port`, or its install failed) cannot install the tool either. It goes into the mise config |
+| `port_build` | `true`: MacPorts may compile the port itself when it has no binary archive (nmap has none, for its licence), but only once every dependency came from an archive, so it is minutes, never a chain of builds |
+| `mise_fallback` | mise tool id, used on Intel Macs only, when Homebrew has no bottle and MacPorts (no `port`, or its install failed) cannot install the tool either. It goes into the mise config. `conda:<package>` installs conda-forge's prebuilt build (ffmpeg, imagemagick, ghostscript: MacPorts would compile their libpng and everything above it) |
 | `mise_intel` | tool has no Intel Mac build in mise. A mise id (`"cargo:atuin"`) means Intel installs that instead, `false` means Intel uses Homebrew |
 | `prebuilt` | a tap formula that downloads a ready-made binary (so there is no bottle to look for) |
 

@@ -119,9 +119,11 @@ A tool is never installed by two managers. Which manager is used per platform is
 tool with the name each manager knows it by.
 
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its Rust (a
-few minutes), btop comes from Homebrew. Homebrew formulae with no Intel bottle (ffmpeg, nmap and others) come from
-MacPorts where it has a prebuilt Intel package (installed on demand; its tools are last on PATH), then from mise
-where an entry has a `mise_fallback` (ansible, ios-deploy); the rest is reported and skipped, never compiled. Ruby
+few minutes), btop comes from Homebrew. Homebrew formulae with no Intel bottle come from
+MacPorts where it has a prebuilt Intel package (installed on demand; its tools are last on PATH; nmap is compiled
+by MacPorts, its dependencies are prebuilt), then from mise where an entry has a `mise_fallback` (ffmpeg, imagemagick,
+ghostscript, graphicsmagick, rsync and nginx from conda-forge; ansible, ios-deploy); the rest is reported and
+skipped, never compiled. Ruby
 has no prebuilt Intel build either and is compiled once.
 
 ## Secrets from Bitwarden

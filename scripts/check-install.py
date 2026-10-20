@@ -231,10 +231,10 @@ def check_expected(plan):
             continue
         real = os.path.realpath(path)
         mgr = manager_of(path) if manager_of(path) != "other" else manager_of(real)
-        want = {"mise": "mise", "brew": "brew", "apt": "system"}[e["via"]]
+        want = {"mise": "mise", "brew": "brew", "apt": "system", "port": "macports"}[e["via"]]
         if e["via"] == "brew" and e.get("port") and mgr == "macports":
             want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
-        if e["via"] == "brew" and e.get("mise_fallback") and mgr == "mise":
+        if e["via"] in ("brew", "port") and e.get("mise_fallback") and mgr == "mise":
             want = "mise"   # Intel: neither a bottle nor MacPorts, mise_fallback is the last planned fallback
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))

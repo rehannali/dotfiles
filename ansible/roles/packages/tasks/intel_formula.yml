@@ -1,7 +1,8 @@
 ---
 # One formula on an Intel Mac, down the fallbacks in order:
 #   1. Homebrew bottle (formula and every missing dependency have one)
-#   2. MacPorts binary archive (`port` in packages.yml; macports_fallback)
+#   2. MacPorts binary archive (`port` in packages.yml; macports_fallback). port_build: the port itself may be compiled,
+#      its dependencies still only from archives
 #   3. mise (`mise_fallback`), written to conf.d/intel-fallback.toml and installed by the mise role
 #   4. build from source, only for mise_intel: false tools (nothing else provides them)
 #   5. otherwise reported and skipped; nothing is compiled
@@ -61,8 +62,8 @@
       ansible.builtin.include_tasks: macports.yml
       when: macports_ready is not defined
 
-    - name: "{{ formula.name }} | MacPorts port {{ formula.port }} (binary archive only)"
-      ansible.builtin.command: /opt/local/bin/port -N -b install {{ formula.port }}
+    - name: "{{ formula.name }} | MacPorts port {{ formula.port }} ({{ 'built, dependencies prebuilt' if formula.port_build else 'prebuilt only' }})"
+      ansible.builtin.script: port-install.sh {{ formula.port | quote }} {{ formula.port_build | lower }}
       become: true
       register: formula_port
       changed_when: true
