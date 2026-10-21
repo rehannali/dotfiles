@@ -1,0 +1,37 @@
+# Written by tools/mycask/manifests.py from ansible/inventory/group_vars/all/packages.yml: every Mac group,
+# as an Intel Mac. Edit packages.yml and run the script again, not this file.
+ansible
+aria2
+autoconf
+automake
+btop
+carthage
+coreutils
+ffmpeg
+gcc
+ghostscript
+git
+git-flow
+graphicsmagick
+htop
+ideviceinstaller
+imagemagick
+ios-deploy
+libksba
+mas
+nginx
+nmap
+openconnect
+openssl@3
+php
+pkgconf
+pwgen
+rsync
+stow
+subversion
+telnet
+thefuck
+unbound
+wireguard-tools
+zlib
+zsh

@@ -41,6 +41,9 @@ for t in all_tools:
         bad.append(f"{t['name']}: brew_service is true or absent, and needs a brew formula")
     if "port_build" in t and (t["port_build"] is not True or not t.get("port")):
         bad.append(f"{t['name']}: port_build is true or absent, and needs a port")
+    if "intel_prefer" in t and (t["intel_prefer"] is not True or not (t.get("port") and not t.get("port_build"))
+                                and not t.get("mise_fallback")):
+        bad.append(f"{t['name']}: intel_prefer is true or absent, and needs a prebuilt port or a mise_fallback")
 for a in all_apps:
     if not any(k in a for k in ("cask", "mas", "flatpak", "github")):
         bad.append(f"app {a['name']}: needs a cask, mas, flatpak or github id")
@@ -102,6 +105,12 @@ for tap, t in taps.items():
     bad += [f"cask {c} is trusted for {tap} but no app uses it" for c in t.get("casks", [])
             if c not in casks and f"{tap}/{c}" not in casks]
 print(f"  taps: {len(taps)}, bundles: {len(bundles)}, tools: {len(all_tools)}, apps: {len(all_apps)}")
+
+# the Intel Mac lists for mycask that CI builds bottles from must match packages.yml
+sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "tools", "mycask"))
+import manifests  # noqa: E402
+if manifests.main(check=True) != 0:
+    bad.append("tools/mycask/intel/ does not match packages.yml (run python3 tools/mycask/manifests.py)")
 
 for b in bad:
     print("FAIL:", b)
