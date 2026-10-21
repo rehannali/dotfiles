@@ -1,0 +1,78 @@
+{
+ "_comment": "formula -> fallback when an Intel Mac has no usable bottle (prefer: even when it has one). Written by tools/mycask/manifests.py from packages.yml; edit that, not this file.",
+ "ansible": {
+  "mise": "pipx:ansible-core"
+ },
+ "aria2": {
+  "port": "aria2"
+ },
+ "automake": {
+  "port": "automake"
+ },
+ "btop": {
+  "port": "btop"
+ },
+ "coreutils": {
+  "port": "coreutils"
+ },
+ "ffmpeg": {
+  "port": "ffmpeg"
+ },
+ "gcc": {
+  "port": "gcc14"
+ },
+ "ghostscript": {
+  "port": "ghostscript"
+ },
+ "git": {
+  "port": "git"
+ },
+ "graphicsmagick": {
+  "port": "GraphicsMagick"
+ },
+ "htop": {
+  "port": "htop"
+ },
+ "imagemagick": {
+  "port": "ImageMagick"
+ },
+ "ios-deploy": {
+  "mise": "npm:ios-deploy"
+ },
+ "libksba": {
+  "port": "libksba"
+ },
+ "nginx": {
+  "port": "nginx"
+ },
+ "openconnect": {
+  "port": "openconnect"
+ },
+ "openssl@3": {
+  "port": "openssl3"
+ },
+ "pkgconf": {
+  "port": "pkgconf"
+ },
+ "pwgen": {
+  "port": "pwgen"
+ },
+ "rsync": {
+  "port": "rsync"
+ },
+ "subversion": {
+  "port": "subversion"
+ },
+ "unbound": {
+  "port": "unbound"
+ },
+ "wireguard-tools": {
+  "port": "wireguard-tools"
+ },
+ "zlib": {
+  "port": "zlib"
+ },
+ "zsh": {
+  "port": "zsh"
+ }
+}

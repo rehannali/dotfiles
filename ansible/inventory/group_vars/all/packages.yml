@@ -28,6 +28,8 @@
 #               and MacPorts (no `port`, or its install failed) cannot provide it either. It goes into the mise
 #               config, so mise installs it like any other tool. A tool with none of the three is reported and
 #               skipped, never compiled (unless mise_intel: false).
+#   intel_prefer  true = Intel Macs take the `port` (or else the `mise_fallback`) even when Homebrew still has a bottle;
+#               the way to move a tool off bottles before Homebrew drops Intel (tools/mycask/README.md, phase 2)
 #   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
 #               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
 #               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,

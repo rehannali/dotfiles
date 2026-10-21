@@ -14,6 +14,7 @@ On an Intel Mac a brew entry carries its `port` and `mise_fallback`: the package
 there is no bottle. With `system: port` the port is used directly, else the mise_fallback, else the tool is reported in
 `unplanned`. `port_build` lets MacPorts compile the port itself (its dependencies still come as binary archives); such
 ports are also listed in `port_build`, and `port_fallback` maps a port to its mise_fallback. `mise_intel` picks another mise id on Intel Macs (or `false`: mise has no Intel build at all).
+`intel_prefer` (Intel Macs) sets `prefer` on the brew entry: mycask uses the port / mise_fallback even when a bottle exists.
 Exactly one manager per tool, so nothing is ever installed twice.
 """
 
@@ -65,6 +66,7 @@ def tool_plan(tools, platform, managers, gui_apps=True):
                 "port": str(t.get("port", "")) if intel_mac else "",
                 "port_build": intel_mac and t.get("port_build") is True,
                 "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac else "",
+                "prefer": intel_mac and t.get("intel_prefer") is True,
             })
         elif via:
             plan[via].append(ident)
