@@ -9,7 +9,8 @@ installer, pkgutil, launchctl, osascript).
 
 Commands:
   install <token>...     install casks (--adopt takes over apps already in place,
-                         --force replaces them)
+                         --force replaces them, --appdir DIR puts the app in another folder;
+                         upgrades and uninstalls remember that folder)
   reinstall <token>...   download and install again
   upgrade [<token>...]   upgrade outdated casks, all of them if none given
                          (--greedy also upgrades auto-updating and "latest" casks)
@@ -23,7 +24,8 @@ Commands:
   update [--force]       refresh the local indexes (otherwise done at most once a day)
   formula ...            command-line tools: setup, install, upgrade, uninstall, bundle,
                          autoremove, outdated, list, pin, unpin, info, search, plan, ci-index
-  bundle <file>          install every token in a file (one per line, # for comments)
+  bundle <file>          install every token in a file (one per line, # for comments;
+                         a line may add --appdir=DIR)
 
 Environment:
   MYCASK_TTL        seconds between automatic index refreshes (default 86400 = 1 day)
@@ -98,6 +100,7 @@ MOVE_DIRS = {
     "vst3_plugin": HOME / "Library/Audio/Plug-Ins/VST3",
     "screen_saver": HOME / "Library/Screen Savers",
 }
+DEFAULT_APPDIR = MOVE_DIRS["app"]  # cask.json targets apps here; --appdir moves them elsewhere
 LINK_DIRS = {
     "binary": PREFIX / "bin",
     "command_wrapper": PREFIX / "bin",
@@ -131,7 +134,7 @@ PROTECTED |= {HOME, HOME / "Library", HOME / "Library/Application Support",
               HOME / "Library/Caches", HOME / "Library/Preferences", HOME / "Library/Containers",
               HOME / "Library/Group Containers", HOME / "Library/LaunchAgents",
               HOME / "Library/Logs", HOME / "Library/Saved Application State",
-              HOME / "Desktop", HOME / "Documents", HOME / "Downloads", HOME / ".Trash",
+              HOME / "Desktop", HOME / "Documents", HOME / "Downloads", HOME / ".Trash", HOME / "Applications",
               PREFIX, PREFIX / "bin", PREFIX / "share", CASKROOM, ROOT}
 PROTECTED |= set(MOVE_DIRS.values()) | set(LINK_DIRS.values())
 
@@ -733,6 +736,11 @@ def do_move(kind, src, target, staged, opts, items):
         raise CaskError("'artifact' stanza has no target")
     else:
         dest = MOVE_DIRS[kind] / srcp.name
+    if kind in ("app", "suite") and MOVE_DIRS[kind] != DEFAULT_APPDIR:
+        try:  # cask.json gives absolute /Applications/... targets
+            dest = MOVE_DIRS[kind] / dest.relative_to(DEFAULT_APPDIR)
+        except ValueError:
+            pass
     if exists(dest):
         if opts.adopt:
             log(f"Adopting existing {dest}")
@@ -1220,6 +1228,8 @@ def save_receipt(meta, staged, items, keep=None):
     for k in ("pinned",):
         if keep and keep.get(k):
             rec[k] = keep[k]
+    if MOVE_DIRS["app"] != DEFAULT_APPDIR:
+        rec["appdir"] = str(MOVE_DIRS["app"])
     f = receipt_file(meta["token"])
     tmp = f.with_suffix(".tmp")
     tmp.write_text(json.dumps(rec, indent=1))
@@ -1242,8 +1252,24 @@ def installed_tokens():
     return sorted(p.stem for p in RECEIPTS.glob("*.json")) if RECEIPTS.exists() else []
 
 
+def with_appdir(fn):
+    """Run a cask operation with the app folder it asked for (--appdir), else the one its receipt remembers."""
+    @functools.wraps(fn)
+    def wrapper(token, opts, *args, **kwargs):
+        chosen = getattr(opts, "appdir", None) or (load_receipt(token) or {}).get("appdir")
+        saved = MOVE_DIRS["app"], MOVE_DIRS["suite"]
+        if chosen:
+            MOVE_DIRS["app"] = MOVE_DIRS["suite"] = Path(chosen).expanduser().absolute()
+        try:
+            return fn(token, opts, *args, **kwargs)
+        finally:
+            MOVE_DIRS["app"], MOVE_DIRS["suite"] = saved
+    return wrapper
+
+
 # ---------------------------------------------------------------- operations
 
+@with_appdir
 def install(token, opts, seen):
     token = resolve_token(token, opts.offline)
     if token in seen:
@@ -1275,6 +1301,7 @@ def install(token, opts, seen):
     log(f"{token} {meta['version']} installed")
 
 
+@with_appdir
 def upgrade(token, opts, force=False):
     rec = load_receipt(token)
     if not rec:
@@ -1364,6 +1391,7 @@ def upgrade(token, opts, force=False):
     return "upgraded"
 
 
+@with_appdir
 def uninstall(token, opts):
     rec = load_receipt(token)
     if not rec:
@@ -1393,6 +1421,7 @@ def uninstall(token, opts):
     log(f"{token} uninstalled")
 
 
+@with_appdir
 def zap(token, opts):
     if load_receipt(token):
         o = copy.copy(opts)
@@ -2278,6 +2307,21 @@ def read_bundle(path):
     return tokens
 
 
+def bundle_entry(line, opts):
+    """A cask bundle line, 'token' or 'token --appdir=DIR', -> (token, options for it)."""
+    words = shlex.split(line)
+    o, rest = copy.copy(opts), words[1:]
+    while rest:
+        w = rest.pop(0)
+        if w.startswith("--appdir="):
+            o.appdir = w.split("=", 1)[1]
+        elif w == "--appdir" and rest:
+            o.appdir = rest.pop(0)
+        else:
+            raise CaskError(f"unknown option {w!r} in bundle line {line!r}")
+    return words[0], o
+
+
 def main(argv=None):
     if os.geteuid() == 0:
         sys.exit("Don't run mycask as root; it asks for sudo when it needs it")
@@ -2291,6 +2335,8 @@ def main(argv=None):
                       help="don't check the app's own macOS/architecture requirements")
     inst.add_argument("--no-quarantine", dest="quarantine", action="store_false",
                       help="don't mark apps as downloaded from the internet")
+    inst.add_argument("--appdir", help=f"folder for the app itself (default {DEFAULT_APPDIR}); "
+                                       "upgrades and uninstalls remember it")
 
     p = argparse.ArgumentParser(prog="mycask", description="Homebrew-cask-compatible app manager")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -2307,6 +2353,7 @@ def main(argv=None):
     s.add_argument("--zap", action="store_true", help="also remove settings, caches and support files")
     s.add_argument("tokens", nargs="+")
     s = sub.add_parser("zap", parents=[common])
+    s.add_argument("--appdir", help="folder the app was in, for casks mycask didn't install")
     s.add_argument("tokens", nargs="+")
     s = sub.add_parser("update", parents=[common])
     s.add_argument("--force", action="store_true", help="refresh even if the index is under a day old")
@@ -2359,7 +2406,7 @@ def main(argv=None):
     if sys.platform != "darwin" and args.cmd != "formula":
         sys.exit("mycask only runs on macOS (except `mycask formula plan/info/search/ci-index`)")
     for name, default in (("force", False), ("adopt", False), ("quarantine", True),
-                          ("greedy", False), ("zap", False), ("skip_compat", False)):
+                          ("greedy", False), ("zap", False), ("skip_compat", False), ("appdir", None)):
         if not hasattr(args, name):
             setattr(args, name, default)
 
@@ -2369,7 +2416,7 @@ def main(argv=None):
         failed = for_each(args.tokens, lambda t: install(t, args, seen))
     elif args.cmd == "bundle":
         seen = set()
-        failed = for_each(read_bundle(args.file), lambda t: install(t, args, seen))
+        failed = for_each(read_bundle(args.file), lambda line: install(*bundle_entry(line, args), seen))
     elif args.cmd == "reinstall":
         failed = for_each(args.tokens, lambda t: upgrade(t, args, force=True))
     elif args.cmd == "upgrade":
