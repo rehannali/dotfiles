@@ -192,7 +192,8 @@ the file when it saves. Left off machines without `gui_apps`: alacritty, wezterm
 hyper also off Linux. One machine can leave more out with `dotfiles_skip_extra: [.config/btop]`.
 
 Not parameterised: the hyper config, the Sourcetree diff/merge tool entries in the gitconfig, the tmux, neovim,
-atuin, btop and karabiner settings, the Spaceship prompt (`home/.config/spaceship`) and the trackpad and Finder
+atuin, btop and karabiner settings, Claude Code's instructions and settings for every project (`home/.claude`:
+work as you in git and on GitHub, no Claude signature in commits or PRs), the Spaceship prompt (`home/.config/spaceship`) and the trackpad and Finder
 preferences (`macos_defaults_list` in `roles/macos/defaults/main.yml`). They are plain files you edit. (The neovim
 Lua modules are called `totu`, the author's handle; renaming the folder `lua/totu` and the five `require` / `import`
 lines in `init.lua`, `lua/totu/lazy.lua` and `lua/totu/core/init.lua` is all it takes.)

@@ -13,7 +13,7 @@ dotfiles_update: true
 dotfiles_copy: [.config/karabiner]
 
 # Directories only you may read
-dotfiles_private_dirs: [.config/atuin, .config/karabiner, .config/dotfiles]
+dotfiles_private_dirs: [.claude, .config/atuin, .config/karabiner, .config/dotfiles]
 
 # More paths (relative to home/) a machine leaves out, on top of the ones decided by OS and gui_apps
 dotfiles_skip_extra: []
