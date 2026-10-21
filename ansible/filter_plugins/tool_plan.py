@@ -11,7 +11,9 @@ package list yet, e.g. Fedora): system tools are left out and reported.
     kind apple                                macOS with gui_apps only
 
 On an Intel Mac a brew entry carries its `port` and `mise_fallback`: the packages role tries them, in that order, when
-there is no bottle. With `system: port` the port is used directly, else the mise_fallback, else the tool is reported in
+there is no bottle. `managers.fallbacks: false` (platforms.yml) leaves them out: the bottle is then the only source,
+Homebrew's or the one this repo's CI builds, until the fallbacks are switched on again (August 2027). A cli tool whose
+brew entry is a tap formula (owner/tap/name) stays with mise on an Intel Mac: mycask reads no taps. With `system: port` the port is used directly, else the mise_fallback, else the tool is reported in
 `unplanned`. `port_build` lets MacPorts compile the port itself (its dependencies still come as binary archives); such
 ports are also listed in `port_build`, and `port_fallback` maps a port to its mise_fallback. `mise_intel` picks another mise id on Intel Macs (or `false`: mise has no Intel build at all).
 `intel_prefer` (Intel Macs) sets `prefer` on the brew entry: mycask uses the port / mise_fallback even when a bottle exists.
@@ -28,6 +30,7 @@ def tool_plan(tools, platform, managers, gui_apps=True):
     is_mac = str(platform).startswith("macos")
     intel_mac = platform == "macos_x86_64"
     cli, system = managers.get("cli"), managers.get("system")
+    fallbacks = managers.get("fallbacks", True) is not False
     if cli not in ("brew", "mise") or system not in ("brew", "apt", "port", "none"):
         raise AnsibleFilterError("platform_managers[%s]: cli must be brew or mise, system brew, apt, port or none (got %r)"
                                  % (platform, managers))
@@ -51,6 +54,8 @@ def tool_plan(tools, platform, managers, gui_apps=True):
         via, ident = "", None
         for mgr in dict.fromkeys(order):
             ident = mise_id() if mgr == "mise" else t.get(mgr)
+            if mgr == "brew" and intel_mac and "/" in str(ident or "") and mise_id():
+                continue   # a tap formula: mycask can't read it, mise can
             if ident:
                 via = mgr
                 break
@@ -63,10 +68,10 @@ def tool_plan(tools, platform, managers, gui_apps=True):
                 "prebuilt": t.get("prebuilt") is True,
                 "service": t.get("brew_service") is True,
                 "source": mise_intel is False,
-                "port": str(t.get("port", "")) if intel_mac else "",
-                "port_build": intel_mac and t.get("port_build") is True,
-                "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac else "",
-                "prefer": intel_mac and t.get("intel_prefer") is True,
+                "port": str(t.get("port", "")) if intel_mac and fallbacks else "",
+                "port_build": intel_mac and fallbacks and t.get("port_build") is True,
+                "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac and fallbacks else "",
+                "prefer": intel_mac and fallbacks and t.get("intel_prefer") is True,
             })
         elif via:
             plan[via].append(ident)
@@ -81,9 +86,9 @@ def tool_plan(tools, platform, managers, gui_apps=True):
             bin_ = t.get("bin", "" if kind == "system" else t["name"])
             on_intel_brew = intel_mac and via == "brew"
             plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_, "source": mise_intel is False,
-                                   "port": str(t.get("port", "")) if on_intel_brew else "",
-                                   "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac and via in ("brew", "port")
-                                   else ""})
+                                   "port": str(t.get("port", "")) if on_intel_brew and fallbacks else "",
+                                   "mise_fallback": str(t.get("mise_fallback", ""))
+                                   if intel_mac and fallbacks and via in ("brew", "port") else ""})
     return plan
 
 

@@ -19,6 +19,8 @@
 #   mise        mise tool id: registry short name, or backend:owner/repo
 #   brew        Homebrew formula (tap formulae fully qualified)
 #   apt         Debian/Ubuntu package
+#   (port, mise_fallback, intel_prefer and mise_intel below only count on an Intel Mac, and port, mise_fallback and
+#   intel_prefer only while platforms.yml has `fallbacks: true` for it; until August 2027 it is false: bottles only)
 #   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
 #               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
 #               packages.macports.org. If the port cannot be installed either, mise_fallback is tried next.
@@ -30,7 +32,8 @@
 #               skipped, never compiled (unless mise_intel: false).
 #   intel_prefer  true = Intel Macs take the `port` (or else the `mise_fallback`) even when Homebrew still has a bottle;
 #               the way to move a tool off bottles before Homebrew drops Intel (tools/mycask/README.md, phase 2)
-#   mise_intel  mise has no macOS x86_64 build of this tool. "cargo:<crate>" = Intel Macs build the crate with
+#   mise_intel  mise has no macOS x86_64 build of this tool (used when platforms.yml has `cli: mise` for Intel Macs, as
+#               it will from August 2027; until then Intel Macs take the Homebrew formula, except tap formulae). "cargo:<crate>" = Intel Macs build the crate with
 #               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
 #               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,
 #               otherwise built from source. (Do not use false for Rust tools: Homebrew's rust has no Intel
@@ -142,7 +145,10 @@ packages:
         - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
         - {name: build-essential, kind: system, apt: build-essential}
         - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
-        - {name: git-flow, kind: system, brew: git-flow, apt: git-flow, bin: git-flow}
+        # Macs: git-flow-next (the maintained rewrite); Homebrew declares it in conflict with git-flow, so git-flow is
+        # uninstalled by remove.brew (main.yml). Debian has no git-flow-next package: it keeps the old git-flow.
+        - {name: git-flow, kind: system, apt: git-flow, bin: git-flow}
+        - {name: git-flow-next, kind: system, brew: git-flow-next, bin: git-flow}
         # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
         - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
         - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}
@@ -221,6 +227,8 @@ packages:
         - {name: android-platform-tools, cask: android-platform-tools, appdir: true}
         - {name: balenaetcher, cask: balenaetcher, appdir: true}
         - {name: bruno, cask: bruno, appdir: true, flatpak: com.usebruno.Bruno}
+        - {name: claude-code, cask: claude-code}   # command line only (no .app); mycask on Intel Macs
+        - {name: codex, cask: codex}   # command line only (no .app); mycask on Intel Macs
         - {name: figma, cask: figma, appdir: true}
         - {name: ghostty, cask: ghostty}
         - {name: gitkraken, cask: gitkraken, appdir: true, flatpak: com.axosoft.GitKraken}

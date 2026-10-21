@@ -35,7 +35,7 @@ apps_skip: []                    # app names (the `name` key)
 # above only stops installing it; to take it off machines that have it, put it here. Run with --check first to see
 # what would go.
 remove:
-  brew: []                       # Homebrew formulae
+  brew: [git-flow]               # Homebrew formulae (git-flow-next replaces git-flow, they conflict)
   cask: []                       # Homebrew casks
   mas: []                        # App Store ids
   apt: []                        # Debian packages

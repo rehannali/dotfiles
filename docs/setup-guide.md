@@ -30,7 +30,7 @@ Two separate questions decide what a machine ends up with:
 | Platform | CLI tools | System packages | GUI apps |
 |---|---|---|---|
 | Apple Silicon Mac | Homebrew | Homebrew | casks, App Store |
-| Intel Mac | mise | mycask: Homebrew or CI bottle, else MacPorts, else mise (nothing is compiled) | casks (mycask), App Store |
+| Intel Mac | mycask: Homebrew or CI bottle (mise only for tap tools) | mycask: Homebrew or CI bottle, dependencies first (nothing is compiled on the Mac) | casks (mycask), App Store |
 | Debian, Ubuntu, Raspberry Pi OS, WSL | mise | apt | Flathub (desktops) |
 | Other Linux (Fedora, ...) | mise | not yet: reported and skipped | |
 

@@ -11,15 +11,19 @@ The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have 
 
 ## Intel bottles
 
-`.github/workflows/intel-bottles.yml` runs daily, by hand, and when `tools/mycask/intel/formulae.txt`,
-`tools/mycask/intel/cli-map.json` or `mycask.py` change on `main`. An Ubuntu job asks `mycask formula plan` which
-formulae (and dependencies) the Intel Macs need that have no usable Homebrew Intel bottle for the current version and
-no MacPorts or mise fallback. Only then a `macos-15-intel` job builds them with `brew install --build-bottle` and
-publishes them, with `index.json`, in the rolling release `intel-bottles` (assets nothing points at any more are
-deleted). The repository is public, so mycask downloads them without a token. From 2027-08-01 the workflow stops
-itself: the Intel runner is gone after August 2027.
+`.github/workflows/intel-bottles.yml` runs on Mondays, by hand, and when `tools/mycask/intel/formulae.txt`,
+`tools/mycask/intel/cli-map.json` or `mycask.py` change on `main`. An Ubuntu job asks `mycask formula plan
+--build-deps` which formulae the Intel Macs need that have no usable Homebrew Intel bottle for the current version,
+with their dependencies and the build tools (rust, go, llvm, ...) that have none either. Nothing is built unless
+Homebrew bumped a version or the list grew. Only then a `macos-15-intel` job builds them in dependency order with
+`brew install --build-bottle`, and publishes each bottle as soon as it is built, with `index.json`, in the rolling
+release `intel-bottles` (assets nothing points at any more are deleted). Dependencies built in an earlier run are put
+back on the runner first, not compiled again. A job stops after 6 hours: no new build starts after 5h20m, and the run
+starts the next one itself while there is progress, so the first fill of the release (about 140 formulae, llvm and
+rust among them) takes several runs. The repository is public, so mycask downloads the bottles without a token. From
+2027-08-01 the workflow stops itself: the Intel runner is gone after August 2027.
 
-    gh workflow run intel-bottles.yml          # now, instead of waiting for the daily run
+    gh workflow run intel-bottles.yml          # now, instead of waiting for Monday
     gh release view intel-bottles              # what is published
 
 ## Manual runs

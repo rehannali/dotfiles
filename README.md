@@ -114,21 +114,20 @@ pulled in LLVM and ran for hours). So the package manager depends on the machine
 | | CLI tools | System packages | Apps | Languages |
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
-| Intel Mac (no Homebrew) | mise | mycask: Homebrew or CI bottle, else MacPorts, else mise | casks (mycask) | mise |
+| Intel Mac (no Homebrew) | mycask: Homebrew or CI bottle (mise only for tap tools) | mycask: Homebrew or CI bottle | casks (mycask) | mise |
 | Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak (desktops) | mise |
 | Another Linux (Fedora, ...) | mise | not yet: reported and skipped | | mise |
 
 A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`,
 and `packages.yml` lists every tool with the name each manager knows it by.
 
-On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its Rust (a
-few minutes), btop comes from a bottle. Intel Macs have no Homebrew at all: mycask installs the casks, and each
-formula from a Homebrew bottle where one still fits, else from a bottle this repo's CI builds on GitHub's Intel
-runner (`.github/workflows/intel-bottles.yml`: nmap, php, thefuck, ideviceinstaller), else from MacPorts where it
-has a prebuilt Intel package (installed on demand; its tools are last on PATH), else from mise where an entry has a
-`mise_fallback` (ansible, ios-deploy); the rest is reported and skipped, never compiled. Tap formulae and casks
-(speedtest, netbird-ui) are skipped on Intel. Ruby has no prebuilt Intel build either and is compiled once by mise.
-What happens up to and after September 2027: [tools/mycask/README.md](tools/mycask/README.md#timeline).
+Intel Macs have no Homebrew at all: mycask installs the casks, and each formula, dependencies first (what is already
+installed is skipped), from a Homebrew bottle where one still fits, else from a bottle this repo's CI builds on
+GitHub's Intel runner (`.github/workflows/intel-bottles.yml`, weekly, only what changed). Until August 2027 there is
+no MacPorts or mise stand-in (`fallbacks: false` in `platforms.yml`); nothing is compiled on the Mac, and a formula
+without a bottle is reported until the CI has built it. Tap tools (fvm, graphite, xcodes) stay with mise, tap formulae
+and casks (speedtest, netbird-ui) are skipped on Intel. Ruby has no prebuilt Intel build either and is compiled once by
+mise. What happens up to and after September 2027: [tools/mycask/README.md](tools/mycask/README.md#timeline).
 
 ## Secrets from Bitwarden
 

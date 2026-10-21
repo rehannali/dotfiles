@@ -41,7 +41,8 @@ Definitions come from Homebrew's `formula.json`. For each formula mycask picks t
    `/usr/local/Cellar` with Homebrew's layout; placeholders and Mach-O load paths are relocated
 2. a bottle built by this repo's CI (`.github/workflows/intel-bottles.yml`) and published in the `intel-bottles`
    release, for the current version
-3. the formula's entry in the CLI map: mise or MacPorts, prebuilt binaries only (`port -b`)
+3. the formula's entry in the CLI map: mise or MacPorts, prebuilt binaries only (`port -b`). The dotfiles leave the
+   map empty until August 2027 (`fallbacks: false` in `platforms.yml`)
 4. otherwise it reports `needs-build`. It never compiles anything on the Mac.
 
 A map entry with `"prefer": true` is used even when a bottle exists.
@@ -80,10 +81,16 @@ writes, from the machine's bundles:
 - `~/.config/mycask/casks.txt`: its casks, with `--appdir` for the ones marked `appdir: true`
 - `~/.config/mycask/formulae.txt`: its `brew` formulae
 - `~/.config/mycask/cli-map.json`: each formula's `port` (unless MacPorts would have to compile it, `port_build`) or
-  else its `mise_fallback`; `intel_prefer: true` in `packages.yml` becomes `"prefer": true`
+  else its `mise_fallback`; `intel_prefer: true` in `packages.yml` becomes `"prefer": true`. Empty while
+  `fallbacks: false` is set in `platforms.yml` (until August 2027), so every formula comes from a bottle
 
 The same lists for every Intel Mac in the inventory are committed in `intel/` for CI. `tests/packages_check.py` fails
 when they no longer match `packages.yml`; `python3 tools/mycask/manifests.py` writes them again.
+
+Installing a formula installs its runtime dependencies first, in order, and skips the ones already installed at the
+current version (`brew install`'s behaviour); `formula uninstall` refuses while something depends on it and
+`formula autoremove` removes dependencies nothing needs. `plan --build-deps` (CI) also lists the build-only tools
+(rust, go, ...) a formula needs when they have no bottle either.
 
 Ansible runs `mycask formula plan` first and acts on each answer: bottles through mycask, MacPorts ports with the
 role's own `port-install.sh` (Ansible's sudo), and mise tools into `~/.config/mise/config.toml` (the mise role
@@ -104,17 +111,18 @@ installs them). So mycask never runs `mise use -g`, which would edit a file Ansi
 
 ## Timeline
 
-**Phase 1, now to July 2027.** Formulae come from Homebrew's Intel bottles where they still exist, from the bottles
-this repo's CI builds (`intel-bottles` release) and from MacPorts or mise. When Homebrew updates a formula that CI
-builds, the next daily run rebuilds it, and `mycask formula upgrade` (`dot apply --tags upgrade`) picks the new
-bottle up.
+**Phase 1, now to July 2027.** Formulae come from Homebrew's Intel bottles where they still exist and from the
+bottles this repo's CI builds (`intel-bottles` release); MacPorts and mise stand-ins are off (`fallbacks: false`). When
+Homebrew updates a formula that CI builds, the next weekly run rebuilds it (until then a fresh install of that
+formula is reported as needing a build; an installed one keeps working), and `mycask formula upgrade`
+(`dot apply --tags upgrade`) picks the new bottle up.
 
-**Phase 2, by July 2027.** Move every formula to MacPorts or mise while the Intel runner can still build what is
-missing:
+**Phase 2, by July 2027.** Switch to MacPorts and mise while the Intel runner can still build what is missing. Set
+`fallbacks: true` and `cli: mise` for `macos_x86_64` in `platforms.yml`, then for each formula:
 
 1. `mycask formula plan --no-map --file ~/.config/mycask/formulae.txt` lists what still depends on bottles (the
    `bottle` and `needs-build` lines).
-2. For each one, make sure its `packages.yml` entry has a prebuilt `port` or a `mise_fallback`, add
+2. Make sure its `packages.yml` entry has a prebuilt `port` or a `mise_fallback`, add
    `intel_prefer: true`, run `python3 tools/mycask/manifests.py` and commit.
 3. Uninstall the bottle first, `mycask formula uninstall <name>` (then `mycask formula autoremove` for dependencies
    nothing needs), and only then `dot apply --tags packages,mise`, which installs it from MacPorts or mise.

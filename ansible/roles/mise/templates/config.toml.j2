@@ -8,7 +8,7 @@
 {% endfor %}
 {% if tool_plan.mise %}
 
-# CLI tools: only where Homebrew is not the source (Intel Macs and Linux).
+# CLI tools: only where Homebrew is not the source (Linux; Intel Macs only for tap tools until August 2027, then all).
 {% for id in tool_plan.mise | reject('in', remove.mise | default([])) %}
 {{ id | to_json }} = "latest"
 {% endfor %}
