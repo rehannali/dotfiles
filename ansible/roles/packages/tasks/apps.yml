@@ -48,7 +48,7 @@
   loop_control:
     label: "{{ item.item.name }}"
 
-- name: GitHub apps | is this Mac a MacBook (apps with macbook: true need one)
+- name: "GitHub apps | is this Mac a MacBook (apps with macbook: true need one)"
   ansible.builtin.command: system_profiler SPHardwareDataType
   register: mac_hardware
   changed_when: false
