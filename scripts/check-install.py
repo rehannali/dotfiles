@@ -8,7 +8,8 @@ Nothing here trusts the package lists. It asks the machine:
   1. expected tools  What does the plan say should exist HERE (~/.cache/dotfiles/plan.json, written by the run from
                      the tool_plan filter for this OS/arch and machine kind)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
-                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel) and not from a shadowing copy,
+                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel; on an Intel Mac
+                     "brew" means mycask's bottles in /usr/local) and not from a shadowing copy,
                      and does it actually start?
   2. architecture    Every executable and native library under mise, Homebrew, ~/.local/bin, installed Mac
                      apps and gem extensions is classified with `file`: an ELF on macOS, a Mach-O on Linux, or
@@ -147,8 +148,16 @@ def brew_prefix():
     return None
 
 
+def mycask_prefix():
+    """Intel Macs without Homebrew: mycask's bottles live in /usr/local, laid out like Homebrew's, and count as brew."""
+    receipts = os.path.join(MYCASK_ROOT, "formula-receipts")
+    return "/usr/local" if INTEL_MAC and os.path.isdir("/usr/local/Cellar") and os.path.isdir(receipts) else None
+
+
 MISE = shutil.which("mise") or os.path.join(HOME, ".local", "bin", "mise")
-BREW = brew_prefix() if SYSTEM == "Darwin" else None
+MYCASK_ROOT = os.path.expanduser(os.environ.get("MYCASK_ROOT", "~/.local/share/mycask"))
+BREW = (brew_prefix() or mycask_prefix()) if SYSTEM == "Darwin" else None
+MYCASK = INTEL_MAC and not shutil.which("brew") and not os.path.exists("/usr/local/bin/brew")
 MISE_DIR = os.path.join(HOME, ".local", "share", "mise")
 
 
@@ -348,11 +357,67 @@ def bare_app_name(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+def mycask_receipts():
+    """{token: receipt} of the casks mycask installed (Intel Macs), also under each receipt's old tokens."""
+    out = {}
+    folder = os.path.join(MYCASK_ROOT, "receipts")
+    for f in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(folder, f)) as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        out[rec.get("token") or f[:-5]] = rec
+        for old in (rec.get("meta") or {}).get("old_tokens") or []:
+            out.setdefault(old, rec)
+    return out
+
+
+def check_casks_mycask(plan, wanted):
+    """Intel Macs: the casks from mycask's receipts, and each app in the folder it was meant for."""
+    cask_appdir = os.path.expanduser(plan.get("cask_appdir") or "~/Applications")
+    receipts = mycask_receipts()
+    rows, installed = [], 0
+    for c in wanted:
+        name = c.get("cask") or c["name"]
+        if "/" in name:
+            add(WARN, "casks", name, "from a tap, which mycask can't install")
+            rows.append((WARN, name, "-", "tap cask, skipped on Intel"))
+            continue
+        rec = receipts.get(name)
+        if not rec:
+            add(WARN, "casks", name, "not installed by mycask (unsupported or disabled for this Mac, see the run's report)")
+            rows.append((WARN, name, "-", "not installed"))
+            continue
+        installed += 1
+        appdir = cask_appdir if c.get("appdir") else "/Applications"
+        apps = [i["path"] for i in rec.get("items") or [] if i.get("kind") in ("app", "suite")]
+        if not apps:
+            rows.append((OK, name, "-", "installed (no .app: font, pkg or binary)"))
+            continue
+        for path in apps:
+            app = os.path.basename(path)
+            if not os.path.exists(path):
+                add(FAIL, "casks", name, "mycask installed %s but it is gone" % path)
+                rows.append((FAIL, name, "-", "%s missing" % app))
+            elif os.path.realpath(os.path.dirname(path)) != os.path.realpath(appdir):
+                add(WARN, "casks", name, "%s is in %s, not in %s" % (app, os.path.dirname(path), appdir))
+                rows.append((WARN, name, os.path.dirname(path), "%s not in the appdir" % app))
+            else:
+                rows.append((OK, name, appdir.replace(HOME, "~"), app))
+    add(OK, "casks", "summary", "%d of %d casks installed (mycask)" % (installed, len(wanted)))
+    return rows
+
+
 def check_casks(plan):
     """Casks this machine should have: installed, and the .app really sits where the cask was told to put it."""
     wanted = (plan or {}).get("casks") or []
     if SYSTEM != "Darwin" or not wanted:
         return []
+    if MYCASK:
+        return check_casks_mycask(plan, wanted)
     brew = os.path.join(BREW, "bin", "brew") if BREW else shutil.which("brew")
     if not brew:
         add(WARN, "casks", "check", "needs brew: skipped")
