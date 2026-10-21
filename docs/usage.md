@@ -79,7 +79,7 @@ All in `ansible/inventory/`, then `dot apply --tags packages` (and `mise` for mi
 | You want | Put it in |
 |---|---|
 | a tool for every machine that has a bundle | a line under that bundle's `tools:` in `group_vars/all/packages.yml` (`{name: jq, kind: cli, mise: jq, brew: jq, apt: jq}`; `core` is on every machine) |
-| an app | a line under an `apps_*` bundle's `apps:` (`{name: slack, cask: slack, appdir: true, flatpak: com.slack.Slack}`) |
+| an app | a line under an `apps_*` bundle's `apps:` (`{name: slack, cask: slack, appdir: true, flatpak: com.slack.Slack}`); an app only on GitHub: `github`, `asset`, `app` (see configuration.md) |
 | a whole bundle on a kind of machine | its name in `bundles:` in `group_vars/<group>.yml` |
 | something on one kind of machine only | `tools_extra` / `apps_extra` in `group_vars/<group>.yml` |
 | something on one machine only | the same keys (or its own `bundles:`) in `host_vars/<host>.yml` |

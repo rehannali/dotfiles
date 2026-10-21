@@ -73,10 +73,12 @@ jobs:
       - name: Package list checks
         working-directory: ansible
         run: "$(pipx environment --value PIPX_LOCAL_VENVS)/ansible-lint/bin/python tests/packages_check.py"
-      # Every cask, App Store id, Flathub id, Homebrew formula and apt name asked for in its store: a wrong or
+      # Every cask, App Store id, Flathub id, GitHub release, Homebrew formula and apt name asked for in its store: a wrong or
       # withdrawn id fails here instead of on a machine. A store that can't be reached only warns.
       - name: Package ids exist in their stores
         working-directory: ansible
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # GitHub release apps: the API's limit is 60 requests an hour without it
         run: |
           rc=0
           "$(pipx environment --value PIPX_LOCAL_VENVS)/ansible-lint/bin/python" tests/apps_check.py --markdown "$GITHUB_STEP_SUMMARY" || rc=$?

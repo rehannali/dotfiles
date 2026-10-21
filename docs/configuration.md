@@ -314,6 +314,7 @@ PATH. The CI check is what actually tells.
 ```yaml
 - {name: firefox, cask: firefox, appdir: true, flatpak: org.mozilla.firefox}
 - {name: wireguard, mas: 1451685025}
+- {name: mactap, github: jaskirat1616/mactap-app, asset: 'MacTap-.*\.zip$', app: MacTap.app, arch: arm64, macbook: true}
 ```
 
 | Key | Meaning |
@@ -322,10 +323,12 @@ PATH. The CI check is what actually tells.
 | `cask` | Homebrew cask (macOS). `appdir: true` installs it into `settings.macos.cask_appdir` instead of `/Applications` |
 | `mas` | Mac App Store id (needs an App Store that is signed in); used when there is no cask |
 | `flatpak` | Flathub id (Linux desktops) |
+| `github`, `asset`, `app` | an app with no cask that ships only in GitHub releases (macOS): the latest release's zip matching `asset` is unpacked with `ditto`, its signature checked (intact, Developer ID, accepted by Gatekeeper) and `app` copied into `/Applications`. Installed again when a newer release is out; skipped with casks (`install_casks: false`) |
 | `arch` | `arm64`: Apple Silicon only |
+| `macbook` | `true`: MacBooks only (apps that need the laptop's hardware) |
 
 `ansible/tests/apps_check.py` looks every id up in its store (Homebrew's API for casks and formulae, Apple's lookup
-for App Store ids, Flathub's API for flatpak ids, `apt-cache` for apt names) and prints the name each one resolves to;
+for App Store ids, Flathub's API for flatpak ids, GitHub's API for release apps, `apt-cache` for apt names) and prints the name each one resolves to;
 CI runs it on every change, so a typo or a withdrawn app fails there instead of on a machine. Run it yourself after
 adding an app: `python ansible/tests/apps_check.py`.
 

@@ -6,6 +6,7 @@
   brew      https://formulae.brew.sh/api/formula/<name>.json      (homebrew/core; tap formulae likewise)
   mas       https://itunes.apple.com/lookup?id=<id>               (the App Store, any country's store)
   flatpak   https://flathub.org/api/v2/appstream/<id>             (Flathub)
+  github    https://api.github.com/repos/<repo>/releases/latest   (an asset matching `asset`; GITHUB_TOKEN if set)
   apt       apt-cache show <name>                                 (where apt-cache exists, e.g. the Ubuntu runner; only
                                                                   tools without a mise key, the others come from mise)
 
@@ -13,6 +14,7 @@ Exit status 1 if any id was not found. A store that can't be reached at all is r
 network outage is not mistaken for a wrong id.
 """
 import argparse
+import re
 import json
 import os
 import shutil
@@ -35,11 +37,14 @@ DOWN = {}   # host -> consecutive network failures; after 3 the host is treated 
 def fetch(url):
     """(status, json or None). Retries a few times on network errors and 5xx; 404 is an answer."""
     host = url.split("/")[2]
+    headers = dict(UA)
+    if host == "api.github.com" and os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
     if DOWN.get(host, 0) >= 3:
         return None, None
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
                 body = r.read()
                 DOWN[host] = 0
                 try:
@@ -93,6 +98,16 @@ def check_mas(app_id):
     return (None, "store not reachable") if status is None else (False, f"HTTP {status}")
 
 
+def check_github(repo, asset):
+    status, data = fetch(f"https://api.github.com/repos/{repo}/releases/latest")
+    if status == 200 and data:
+        names = [a["name"] for a in data.get("assets", []) if re.search(asset, a["name"])]
+        if not names:
+            return False, f"release {data.get('tag_name')} has no asset matching {asset}"
+        return True, f"{data.get('tag_name')} {names[0]}"
+    return (None, "GitHub not reachable") if status is None else (False, f"no release (HTTP {status})")
+
+
 def check_flatpak(app_id):
     status, data = fetch(f"https://flathub.org/api/v2/appstream/{app_id}")
     if status == 200 and data:
@@ -120,6 +135,8 @@ for bundle, b in pk["bundles"].items():
             rows.append((*check_mas(a["mas"]), "mas", a["name"], a["mas"]))
         if "flatpak" in a:
             rows.append((*check_flatpak(a["flatpak"]), "flatpak", a["name"], a["flatpak"]))
+        if "github" in a:
+            rows.append((*check_github(a["github"], a["asset"]), "github", a["name"], a["github"]))
     for t in b.get("tools") or []:
         if t.get("brew") and t["brew"].count("/") != 2:
             rows.append((*check_formula(t["brew"]), "brew", t["name"], t["brew"]))

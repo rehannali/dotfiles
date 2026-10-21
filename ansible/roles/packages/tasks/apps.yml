@@ -19,6 +19,12 @@
     mas_wanted: >-
       {{ apps_wanted | selectattr('mas', 'defined') | rejectattr('cask', 'defined') | list
          if 'mas' in pkg_managers.apps else [] }}
+    github_apps_wanted: >-
+      {{ apps_wanted | selectattr('github', 'defined')
+         | rejectattr('arch', 'defined') | list
+         + (apps_wanted | selectattr('github', 'defined') | selectattr('arch', 'defined')
+            | selectattr('arch', 'equalto', dotfiles_arch) | list)
+         if 'cask' in pkg_managers.apps else [] }}
 
 - name: Casks | install
   community.general.homebrew_cask:
@@ -41,6 +47,24 @@
   loop: "{{ casks_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
   loop_control:
     label: "{{ item.item.name }}"
+
+- name: GitHub apps | is this Mac a MacBook (apps with macbook: true need one)
+  ansible.builtin.command: system_profiler SPHardwareDataType
+  register: mac_hardware
+  changed_when: false
+  check_mode: false
+  when: install_casks | bool and github_apps_wanted | selectattr('macbook', 'defined') | list | length > 0
+
+- name: GitHub apps | apps from GitHub releases, where there is no cask
+  ansible.builtin.include_tasks: github_app.yml
+  loop: >-
+    {{ github_apps_wanted | rejectattr('macbook', 'defined') | list
+       + (github_apps_wanted | selectattr('macbook', 'defined') | list
+          if 'Model Name: MacBook' in (mac_hardware.stdout | default('')) else []) }}
+  loop_control:
+    loop_var: gh_app
+    label: "{{ gh_app.name }}"
+  when: install_casks | bool
 
 - name: App Store
   when: install_app_store | bool and mas_wanted | length > 0

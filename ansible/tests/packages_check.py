@@ -6,8 +6,8 @@
 - each tool is installed by one manager at most; every cli tool by something; nothing a machine is meant to have is
   left without a manager on today's platforms (Apple Silicon, Intel Mac, Debian on x86_64 and arm64)
 - port / mise_fallback only come with a brew formula
-- every app has a cask, an App Store id or a flatpak id; flatpak ids look like ids
-- the tap trust lists match what is used from taps (Homebrew 6 loads nothing from an untrusted tap)
+- every app has a cask, an App Store id, a flatpak id or a GitHub release; flatpak ids look like ids
+- every tap formula or cask in use is listed under its tap, and every listed one is used
 """
 import os
 import re
@@ -42,8 +42,12 @@ for t in all_tools:
     if "port_build" in t and (t["port_build"] is not True or not t.get("port")):
         bad.append(f"{t['name']}: port_build is true or absent, and needs a port")
 for a in all_apps:
-    if not any(k in a for k in ("cask", "mas", "flatpak")):
-        bad.append(f"app {a['name']}: needs a cask, mas or flatpak id")
+    if not any(k in a for k in ("cask", "mas", "flatpak", "github")):
+        bad.append(f"app {a['name']}: needs a cask, mas, flatpak or github id")
+    if "github" in a and (not a.get("asset") or not str(a.get("app", "")).endswith(".app") or "cask" in a):
+        bad.append(f"app {a['name']}: a github app needs asset and app (Name.app), and no cask")
+    if "macbook" in a and (a["macbook"] is not True or "github" not in a):
+        bad.append(f"app {a['name']}: macbook is true or absent, and only for github apps")
     if "flatpak" in a and not re.match(r"^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,}$", a["flatpak"]):
         bad.append(f"app {a['name']}: flatpak id {a['flatpak']!r} does not look like one (org.example.App)")
 names = [x["name"] for x in all_tools + all_apps]
