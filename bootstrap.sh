@@ -9,8 +9,9 @@
 #
 # What it does, in order:
 #   1. unlocks sudo once and keeps it unlocked, so nothing later asks for the password again
-#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew (on Intel by hand: the
-#      official installer refuses Intel Macs). Linux: makes sure git and curl exist (apt).
+#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew on Apple Silicon. Intel
+#      Macs get no Homebrew: mycask (tools/mycask, in the repo) installs their apps and tools. Linux: makes sure git
+#      and curl exist (apt).
 #      Done here, with the real terminal and visible output, so a failure stops with its reason.
 #   3. with --bitwarden: logs in to Bitwarden and unlocks the vault (the playbook reads secrets from it)
 #   4. clones the repo to ~/.dotfiles (or updates it), installs Ansible (with uv, into its own Python), and runs
@@ -33,8 +34,8 @@
 #   --xcode VERSION     this Xcode instead of the newest one this Mac can run     (DOTFILES_XCODE_VERSION)
 #   --ios-runtime V     this iOS simulator runtime instead of the one for that Xcode (DOTFILES_IOS_RUNTIME)
 #   --no-flutter        no Flutter SDK                                            (DOTFILES_FLUTTER=skip)
-#   --no-casks          macOS: no GUI apps from Homebrew casks                    (DOTFILES_CASKS=skip)
-#   --no-macports       Intel Mac: no MacPorts fallback for tools without a Homebrew bottle (DOTFILES_MACPORTS=skip)
+#   --no-casks          macOS: no GUI apps from casks (Homebrew, mycask on Intel) (DOTFILES_CASKS=skip)
+#   --no-macports       Intel Mac: no MacPorts fallback for tools without a bottle (DOTFILES_MACPORTS=skip)
 #   --no-appstore       macOS: no Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
 #   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone (DOTFILES_DEFAULTS=skip)
 #   --no-chsh           do not make zsh the login shell                           (DOTFILES_CHSH=skip)
@@ -94,59 +95,6 @@ done
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
 
-# Homebrew's installer (install.sh) and its .pkg refuse every Intel Mac now ("only supported on Apple Silicon
-# processors"), but brew itself still runs there (Tier 3, supported until September 2027). Intel gets what the old
-# installer did: a checkout of Homebrew/brew in /usr/local/Homebrew, linked as /usr/local/bin/brew, then
-# `brew update` fetches the formula index (it comes from the API, nothing else is cloned).
-# BREW_PREFIX (default /usr/local) and BREW_GROUP (default admin) are only changed by a test.
-
-# Homebrew's own installer prepares /usr/local like this, and the manual install has to end up the same: every
-# directory brew writes into exists, belongs to you and the admin group, and is group-writable (the directories zsh
-# reads completions from stay 755: group-writable ones make compinit complain about insecure directories). On a Mac
-# that had /usr/local before Homebrew, some of these (lib/pkgconfig, share/man/man8, ...) belong to root and brew then
-# warns "directories not writable by your user". The list is install.sh's plus brew's own
-# (Keg.must_be_writable_directories and must_exist_subdirectories). Runs every time, also when brew is already installed.
-dir_group() { stat -f %Sg "$1" 2> /dev/null || stat -c %G "$1"; }   # macOS, then GNU stat
-
-brew_fix_intel_dirs() {
-  local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir target
-  me="$(id -un)"
-  for dir in bin etc etc/bash_completion.d include lib lib/cps lib/pkgconfig sbin opt Cellar Caskroom Frameworks \
-      share share/aclocal share/doc share/info share/locale share/man share/man/man1 share/man/man2 share/man/man3 \
-      share/man/man4 share/man/man5 share/man/man6 share/man/man7 share/man/man8 share/cps share/zsh \
-      share/zsh/site-functions share/fish share/fish/vendor_completions.d share/fish/vendor_functions.d share/pwsh \
-      share/pwsh/completions var var/log var/homebrew var/homebrew/linked var/homebrew/locks; do
-    target="$prefix/$dir"
-    [ -d "$target" ] || as_root mkdir -p "$target"
-    [ -O "$target" ] || as_root chown "$me" "$target"
-    [ "$(dir_group "$target")" = "$group" ] || as_root chgrp "$group" "$target"
-    case "$dir" in
-      share/zsh | share/zsh/site-functions) as_root chmod 755 "$target" ;;
-      *) as_root chmod u+rwx,g+rwx "$target" ;;
-    esac
-  done
-  # the checkout of Homebrew/brew itself, and the Python packages brew installs (lib/pythonX.Y/site-packages)
-  for target in "$prefix/Homebrew" "$prefix"/lib/python*/site-packages; do
-    [ -d "$target" ] || continue
-    { [ -O "$target" ] && [ "$(dir_group "$target")" = "$group" ]; } || as_root chown -R "$me:$group" "$target"
-  done
-}
-
-brew_install_intel() {
-  local prefix="${BREW_PREFIX:-/usr/local}"
-  command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
-  brew_fix_intel_dirs
-  if [ ! -d "$prefix/Homebrew/.git" ]; then
-    # /usr/local belongs to root: the checkout's directory is made (and handed over) with sudo, like the installer does
-    as_root mkdir -p "$prefix/Homebrew"
-    as_root chown -R "$(id -un):${BREW_GROUP:-admin}" "$prefix/Homebrew"
-    git clone --quiet https://github.com/Homebrew/brew "$prefix/Homebrew" \
-      || die "Could not download Homebrew from github.com/Homebrew/brew"
-  fi
-  ln -sf "$prefix/Homebrew/bin/brew" "$prefix/bin/brew"
-  "$prefix/bin/brew" update --force --quiet || die "brew update failed (its output is above)"
-}
-
 # 1. sudo, once
 SUDO_KEEPALIVE_PID=""
 if [ "$(id -u)" -ne 0 ]; then
@@ -201,28 +149,32 @@ if [ "$OS" = Darwin ]; then
   fi
   say "Command Line Tools: $(xcode-select -p)"
 
-  # Homebrew. Apple Silicon: /opt/homebrew, Intel: /usr/local.
-  if [ "$(uname -m)" = arm64 ]; then brew_bin=/opt/homebrew/bin/brew; else brew_bin=/usr/local/bin/brew; fi
-  if [ ! -x "$brew_bin" ]; then
-    [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
-    if [ "$(uname -m)" = arm64 ]; then
+  # Homebrew, Apple Silicon only (/opt/homebrew). Intel Macs have none: Homebrew made them Tier 3 and drops them on
+  # 1 September 2027, so mycask (tools/mycask, run by the playbook) installs their apps and tools. It needs only the
+  # python3 that came with the Command Line Tools.
+  if [ "$(uname -m)" = arm64 ]; then
+    brew_bin=/opt/homebrew/bin/brew
+    if [ ! -x "$brew_bin" ]; then
+      [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
       say "Installing Homebrew"
       brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
         || die "Could not download the Homebrew installer (no network?)"
       # NONINTERACTIVE: the installer would wait for RETURN. sudo is already unlocked above, so it asks nothing.
       NONINTERACTIVE=1 /bin/bash -c "$brew_installer" \
         || die "The Homebrew installer failed (its output is above). Fix that, then run this again."
+    fi
+    [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
+    # PATH for everything started from here on: Ansible and what it runs
+    eval "$("$brew_bin" shellenv)"
+    say "Homebrew: $(brew --version | sed -n 1p) ($brew_bin)"
+  else
+    /usr/bin/python3 --version > /dev/null 2>&1 || die "/usr/bin/python3 does not run (mycask needs it; it comes with the Command Line Tools)"
+    if [ -x /usr/local/bin/brew ] || [ -d /usr/local/Homebrew ]; then
+      say "Intel Mac: Homebrew is still in /usr/local; the playbook will stop at the packages and say how to remove it"
     else
-      say "Installing Homebrew for an Intel Mac (its own installer no longer supports Intel, so: git checkout)"
-      brew_install_intel
+      say "Intel Mac: no Homebrew; mycask installs the apps and tools"
     fi
   fi
-  # a Homebrew from an earlier run may sit in directories that root owns
-  [ "$(uname -m)" = arm64 ] || brew_fix_intel_dirs
-  [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
-  # PATH for everything started from here on: Ansible and what it runs
-  eval "$("$brew_bin" shellenv)"
-  say "Homebrew: $(brew --version | sed -n 1p) ($brew_bin)"
 else
   if ! command -v git > /dev/null 2>&1 || ! command -v curl > /dev/null 2>&1; then
     command -v apt-get > /dev/null 2>&1 || die "git and curl are missing and this is not a Debian-based system"
