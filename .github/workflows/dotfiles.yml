@@ -164,9 +164,26 @@ jobs:
             exit 1
           fi
 
-      # The entry point you run on a real machine, against this checkout instead of GitHub.
+      # Intel Macs have no Homebrew (mycask installs their apps and tools), but the runner image comes with one in
+      # /usr/local, which mycask refuses to share. Remove it as on the real Mac, with the links it leaves dangling,
+      # so this run installs every tool and cask the way the Mac does.
+      - name: Remove Homebrew (Intel runner)
+        if: matrix.id == 'mac-intel'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/uninstall.sh" https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh
+          NONINTERACTIVE=1 /bin/bash "$RUNNER_TEMP/uninstall.sh" --force
+          sudo rm -rf /usr/local/Homebrew /usr/local/Caskroom /usr/local/Cellar /usr/local/var/homebrew
+          for d in bin sbin opt lib include share etc; do
+            [ -d "/usr/local/$d" ] && sudo find -L "/usr/local/$d" -maxdepth 4 -type l -exec rm -f {} + || true
+          done
+          if [ -e /usr/local/bin/brew ]; then echo "::error::brew is still there"; exit 1; fi
+
+      # The entry point you run on a real machine, against this checkout instead of GitHub. The Intel runner's apps
+      # (Chrome, Firefox, ...) are already in /Applications: mycask takes them over, as on a Mac coming from Homebrew.
       - name: bootstrap.sh --host ci --group ${{ matrix.group }}
         id: apply
+        env:
+          DOTFILES_ANSIBLE_ARGS: ${{ matrix.id == 'mac-intel' && '-e mycask_adopt=true' || '' }}
         run: |
           set -o pipefail
           bash bootstrap.sh --host ci --group ${{ matrix.group }} 2>&1 | tee "$RUNNER_TEMP/ansible.log"
