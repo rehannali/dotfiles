@@ -4,7 +4,8 @@
 {% if dotfiles_arch == 'arm64' %}
 [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
 {% else %}
-[ -x /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+# Intel: mycask's bottles, in Homebrew's old prefix
+export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
 {% endif %}
 
 # Added by Toolbox App
