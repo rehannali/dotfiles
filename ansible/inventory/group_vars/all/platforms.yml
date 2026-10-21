@@ -8,11 +8,17 @@
 #   system  libraries, daemons, big tools (kind system / apple):           brew | apt | port
 #   apps    GUI apps, in order of preference:                              cask, mas | flatpak
 #
-# On an Intel Mac there is no Homebrew: `system: brew` names the Homebrew formula, and mycask (tools/mycask) installs
-# it from a Homebrew bottle, a bottle this repo's CI built, the tool's MacPorts `port`, or its `mise_fallback`, else
-# reports it (nothing is compiled). `cask` apps come from mycask too. This stays as it is after Homebrew drops Intel
-# (1 September 2027); tools/mycask/README.md has the timeline.
+# On an Intel Mac there is no Homebrew: `brew` names the Homebrew formula, and mycask (tools/mycask) installs it, with
+# its dependencies first, from a Homebrew bottle or a bottle this repo's CI built (.github/workflows/intel-bottles.yml),
+# else reports it (nothing is compiled on the Mac). `cask` apps come from mycask too. Only a tool that is a tap formula
+# (fvm, graphite, xcodes) stays with mise: mycask reads no taps.
+#
+# `fallbacks: false` = no MacPorts port and no mise stand-in for a formula without a bottle, so everything comes from
+# bottles. Until August 2027 that is the plan (Homebrew still ships Intel bottles for what it built before September
+# 2026, the CI builds the rest). Set it to true in August 2027, when the Intel runner is gone: then `port` and
+# `mise_fallback` in packages.yml are used again, and `cli: mise` is the other half of that move (tools/mycask/README.md
+# has the timeline).
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}
+  macos_x86_64: {cli: brew, system: brew, apps: [cask, mas], fallbacks: false}
   debian: {cli: mise, system: apt, apps: [flatpak]}

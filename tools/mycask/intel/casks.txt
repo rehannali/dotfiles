@@ -10,7 +10,9 @@ brave-origin --appdir=~/Applications
 bruno --appdir=~/Applications
 chatgpt --appdir=~/Applications
 claude --appdir=~/Applications
+claude-code
 clop
+codex
 discord --appdir=~/Applications
 easyfind --appdir=~/Applications
 ente-auth --appdir=~/Applications

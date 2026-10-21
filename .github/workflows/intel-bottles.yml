@@ -1,17 +1,22 @@
 name: intel-bottles
 
 # Homebrew no longer builds bottles for Intel Macs (Tier 3 since September 2026). This builds the ones the Intel Mac
-# needs on GitHub's Intel runner: only formulae (and their dependencies) with no usable Homebrew Intel bottle for the
-# current version, and no MacPorts or mise fallback in the CLI map. They go into one rolling release, intel-bottles,
-# with an index.json that mycask (tools/mycask) reads on the Mac. The plan compares each formula's pkg_version with
-# index.json, so when Homebrew updates a formula it is rebuilt on the next run.
+# needs on GitHub's Intel runner: only formulae (and their dependencies, build tools like rust and go included) with no
+# usable Homebrew Intel bottle for the current version. Until August 2027 there is no MacPorts or mise stand-in (platforms.yml, `fallbacks: false`),
+# so every command-line tool in tools/mycask/intel/formulae.txt is either a Homebrew bottle or built here. They go into
+# one rolling release, intel-bottles, with an index.json that mycask (tools/mycask) reads on the Mac, which installs a
+# formula's dependencies first and skips the ones it already has.
+#
+# Once a week the plan (cheap, no Mac runner) compares each formula's pkg_version with index.json; only what Homebrew
+# updated since, or what is new in the list, is built. Each bottle is published as soon as it is built, so a run that
+# runs out of time (6 hours per job) loses nothing and starts the next run itself, which carries on.
 #
 # macos-15-intel is the last Intel runner and is gone after August 2027: from 2027-08-01 the workflow stops itself,
 # and the bottles already in the release stay there, frozen.
 
 on:
   schedule:
-    - cron: "23 4 * * *"   # daily
+    - cron: "23 4 * * 1"   # Mondays; builds only what changed
   workflow_dispatch:
   push:
     branches: [main]
@@ -71,7 +76,7 @@ jobs:
           MYCASK_CLI_MAP: ${{ github.workspace }}/tools/mycask/intel/cli-map.json
         run: |
           mkdir -p "$HOME"
-          python3 tools/mycask/mycask.py formula plan --tag "$PLAN_TAG" --file tools/mycask/intel/formulae.txt --json > plan.json
+          python3 tools/mycask/mycask.py formula plan --tag "$PLAN_TAG" --file tools/mycask/intel/formulae.txt --build-deps --json > plan.json
           build="$(jq -c '[.build[].name]' plan.json)"   # already in dependency order
           echo "build=$build" >> "$GITHUB_OUTPUT"
           {
@@ -90,12 +95,17 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build != '' && needs.plan.outputs.build != '[]'
     runs-on: macos-15-intel
-    # GitHub-hosted jobs stop after 6 hours. Very large formulae (llvm, gcc, rust) can hit that on their own; such a
-    # formula is better given a MacPorts or mise entry in packages.yml than a CI build.
+    # GitHub-hosted jobs stop after 6 hours. No new build starts after 5h20m (BUDGET), and what is left goes to the
+    # next run. A single formula that needs more than 6 hours (llvm, rust and what builds them) never finishes: such a
+    # tool is better left out of packages.yml, or given a `port` / `mise_fallback` once `fallbacks` is switched on.
     timeout-minutes: 360
+    permissions:
+      contents: write
+      actions: write   # to start the next run when time ran out
     env:
       GH_TOKEN: ${{ github.token }}
       BUILD: ${{ needs.plan.outputs.build }}
+      BUDGET: 19200
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
@@ -121,17 +131,53 @@ jobs:
           } >> "$GITHUB_ENV"
           HOMEBREW_NO_INSTALL_FROM_API=1 brew tap --force homebrew/core
 
-      # In the plan's order (dependencies first). A preinstalled copy on the runner image is removed first, so the
-      # formula is really built with --build-bottle. One that fails is reported; the rest still build and upload.
-      - name: Build and bottle
+      # In the plan's order (dependencies first), one formula at a time: build, bottle, add it to index.json, upload. A
+      # preinstalled copy on the runner image is removed first, so the formula is really built with --build-bottle.
+      # Dependencies (runtime and build tools like rust and go) that this repo's CI built in an earlier run are poured into
+      # the runner's Cellar first (restore_deps), so they are not compiled again; if that fails for one, Homebrew builds it, as it would have done anyway.
+      # One that fails is reported; the rest still build and upload.
+      - name: Build, bottle and publish
         run: |
-          mkdir -p out
-          failed=""
+          start="$(date +%s)"
+          mkdir -p prev
+          gh release view "$RELEASE" > /dev/null 2>&1 \
+            || gh release create "$RELEASE" --title "Intel bottles" --latest=false \
+                 --notes "Homebrew bottles for Intel Macs, built by .github/workflows/intel-bottles.yml. Read by tools/mycask (index.json)."
+          gh release download "$RELEASE" --pattern index.json --dir prev 2> /dev/null || echo "no index.json yet"
+          if [ -f prev/index.json ]; then cp prev/index.json index.json; else echo '{"formulae": {}}' > index.json; fi
+
+          restore_deps() {
+            local dep url ver file
+            for dep in $(brew deps --formula --include-build "$1" 2> /dev/null); do
+              brew list --formula "$dep" > /dev/null 2>&1 && continue
+              url="$(jq -r --arg d "$dep" --arg t "$PLAN_TAG" '.formulae[$d].files[$t].url // empty' index.json)"
+              ver="$(jq -r --arg d "$dep" '.formulae[$d].pkg_version // empty' index.json)"
+              [ -n "$url" ] && [ -n "$ver" ] || continue
+              file="$RUNNER_TEMP/dep.tar.gz"
+              if curl -fsSL "$url" -o "$file" && tar -xzf "$file" -C "$(brew --cellar)" \
+                  && ln -sfn "../Cellar/$dep/$ver" "$(brew --prefix)/opt/$dep"; then
+                brew link --overwrite "$dep" > /dev/null 2>&1 || true   # keg-only formulae stay unlinked
+                echo "restored $dep $ver from the release"
+              else
+                echo "::warning::could not restore $dep from the release; Homebrew builds it"
+              fi
+            done
+          }
+
+          built="" failed="" left=""
           for name in $(jq -r '.[]' <<< "$BUILD"); do
+            if [ $(( $(date +%s) - start )) -gt "$BUDGET" ]; then left="$left $name"; continue; fi
             echo "::group::$name"
+            restore_deps "$name"
             brew uninstall --ignore-dependencies "$name" > /dev/null 2>&1 || true
+            rm -rf out && mkdir out
             if brew install --build-bottle "$name" \
-                && (cd out && brew bottle --json --root-url="$BASE_URL" "$name"); then
+                && (cd out && brew bottle --json --root-url="$BASE_URL" "$name") \
+                && /usr/bin/python3 -I tools/mycask/mycask.py formula ci-index --bottle-dir out --base-url "$BASE_URL" \
+                     --existing index.json --out index.json.new \
+                && mv index.json.new index.json \
+                && gh release upload "$RELEASE" out/*.tar.gz index.json --clobber; then
+              built="$built $name"
               echo "::endgroup::"
             else
               echo "::endgroup::"
@@ -139,27 +185,11 @@ jobs:
               failed="$failed $name"
             fi
           done
-          echo "failed=${failed# }" >> "$GITHUB_ENV"
-          ls -l out
-
-      # The release's index.json (absent on the very first run), merged with the new bottles. ci-index also renames
-      # the bottles to names a release asset can have (openssl@3 -> openssl-3).
-      - name: Index (mycask formula ci-index)
-        run: |
-          mkdir -p prev
-          gh release download "$RELEASE" --pattern index.json --dir prev 2> /dev/null || echo "no index.json yet"
-          /usr/bin/python3 -I tools/mycask/mycask.py formula ci-index --bottle-dir out --base-url "$BASE_URL" \
-            --existing prev/index.json --out index.json
-
-      # One rolling release; never marked as the repo's latest release
-      - name: Release
-        run: |
-          gh release view "$RELEASE" > /dev/null 2>&1 \
-            || gh release create "$RELEASE" --title "Intel bottles" --latest=false \
-                 --notes "Homebrew bottles for Intel Macs, built by .github/workflows/intel-bottles.yml. Read by tools/mycask (index.json)."
-          shopt -s nullglob
-          bottles=(out/*.tar.gz)
-          gh release upload "$RELEASE" "${bottles[@]}" index.json --clobber
+          {
+            echo "built=${built# }"
+            echo "failed=${failed# }"
+            echo "left=${left# }"
+          } >> "$GITHUB_ENV"
 
       # Assets index.json no longer points at (older versions) are deleted
       - name: Remove old assets
@@ -172,8 +202,21 @@ jobs:
             fi
           done
 
-      # A formula that did not build fails the run, after everything that did build was published
+      # Time ran out with formulae left: the next run plans again and carries on. Only after progress, so a formula
+      # that can never finish does not start runs forever (the Monday run tries again).
+      - name: Next run
+        if: env.left != '' && env.built != ''
+        run: |
+          echo "::notice::not built yet: $left; starting the next run"
+          gh workflow run intel-bottles.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+
       - name: Result
         run: |
+          {
+            echo "### Built"
+            echo "published: ${built:-nothing}"
+            echo "failed: ${failed:-none}"
+            echo "left for the next run: ${left:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$failed" ]; then echo "::error::did not build: $failed"; exit 1; fi
-          echo "built and published: $(jq -r 'join(" ")' <<< "$BUILD")"
+          echo "built and published: ${built:-nothing}${left:+; left for the next run: $left}"

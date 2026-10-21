@@ -102,7 +102,7 @@ which manager is used:
 ```yaml
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}   # mycask: bottle (Homebrew or CI), port, mise_fallback
+  macos_x86_64: {cli: brew, system: brew, apps: [cask, mas], fallbacks: false}   # mycask: bottle (Homebrew or CI); fallbacks: port, mise_fallback
   debian: {cli: mise, system: apt, apps: [flatpak]}            # Debian, Ubuntu, Raspberry Pi OS, WSL
 ```
 
