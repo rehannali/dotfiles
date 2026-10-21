@@ -13,13 +13,11 @@ export HOMEBREW_NO_ANALYTICS=1
 # Apple Silicon (Tier 1): Homebrew lives in /opt/homebrew
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 {% else %}
-# Intel (Tier 3): Homebrew lives in /usr/local. Never update, upgrade or compile implicitly.
+# Intel: no Homebrew. mycask (~/.local/bin/mycask) puts bottles in /usr/local, Homebrew's Intel prefix, and also
+# uses the ones this repo's CI builds, listed here
 export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_INSTALL_UPGRADE=1
-export HOMEBREW_NO_INSTALL_CLEANUP=1
-export HOMEBREW_MAKE_JOBS=2
-# MacPorts, the fallback for what Homebrew has no Intel bottle for: last, so Homebrew and mise win
+export MYCASK_BOTTLES_URL={{ mycask_bottles_url | to_json }}
+# MacPorts, for what has no bottle: last, so the bottles and mise win
 export PATH="$PATH:/opt/local/bin:/opt/local/sbin"
 {% endif %}
 
