@@ -31,6 +31,17 @@
   loop_control:
     label: "{{ item.path }}"
 
+- name: Coding agent instructions
+  ansible.builtin.template:
+    src: ../roles/dotfiles/templates/agent-instructions.md.j2
+    dest: "{{ render_out }}/{{ item.name }}.md"
+    mode: "0644"
+  loop: "{{ dotfiles_agents }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    agent: "{{ item }}"
+
 - name: Mise config
   ansible.builtin.template:
     src: ../roles/mise/templates/config.toml.j2

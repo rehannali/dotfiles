@@ -5,6 +5,8 @@
 	signingKey = {{ git.signing_key }}
 [core]
 	excludesfile = {{ ansible_facts.env.HOME }}/.gitignore_global
+	# commit-msg drops AI co-author trailers; every hook also runs the repository's own one (see the hooks)
+	hooksPath = {{ ansible_facts.env.HOME }}/.config/git/hooks
 [difftool "sourcetree"]
 	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
 	path =

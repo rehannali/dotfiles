@@ -17,7 +17,7 @@ settings_defaults:
     signing_key: ""            # a GPG key id, or the path of an SSH public key when signing_format is ssh
     signing_format: openpgp    # openpgp | ssh
     gpg_program: gpg
-    commit_template: "~/.stCommitMsg"   # commit message template (Sourcetree writes it); empty for none
+    commit_template: "~/.gitmessage"    # commit message template (home/.gitmessage, Conventional Commits); empty for none
 
   locale: en_US.UTF-8
 

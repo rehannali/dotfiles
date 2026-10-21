@@ -1,0 +1,26 @@
+#!/bin/sh
+# Global git hooks (core.hooksPath in ~/.gitconfig). With hooksPath set, git no longer looks in the repository's
+# .git/hooks, so every hook here does its own part (if any) and then runs the repository's hook of the same name
+# (git-lfs, pre-commit, ...). A repository that sets its own core.hooksPath (husky) skips these hooks entirely.
+#
+#   commit-msg   removes AI co-author trailers and "Generated with ..." lines: commits are mine alone
+
+name=$1
+shift
+
+if [ "$name" = commit-msg ] && [ -f "$1" ]; then
+    tmp="$1.tmp.$$"
+    grep -v -i -E \
+        -e '^co-authored-by:.*(claude|anthropic|codex|openai|chatgpt|copilot|cursor|gemini|aider|devin)' \
+        -e 'generated (with|by) .*(claude|codex|chatgpt|openai|copilot|cursor|gemini|aider|devin)' \
+        "$1" \
+    | awk '{ lines[NR] = $0 } /[^[:space:]]/ { last = NR } END { for (i = 1; i <= last; i++) print lines[i] }' \
+        > "$tmp" && mv "$tmp" "$1"
+    rm -f "$tmp"
+fi
+
+repo_hook="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/$name"
+if [ -x "$repo_hook" ]; then
+    exec "$repo_hook" "$@"
+fi
+exit 0

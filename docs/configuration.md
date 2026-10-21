@@ -158,7 +158,7 @@ settings_override:
 | `git.signing_key` | empty | `user.signingKey` (GPG key id, or an SSH public key path) |
 | `git.signing_format` | `openpgp` | `gpg.format`, `openpgp` or `ssh` |
 | `git.gpg_program` | `gpg` | `gpg.program` |
-| `git.commit_template` | `~/.stCommitMsg` | `commit.template`, a file path; empty for none |
+| `git.commit_template` | `~/.gitmessage` | `commit.template`, a file path; empty for none. `home/.gitmessage` is a Conventional Commits template |
 | `apple.bitwarden_item` | `Apple ID` | Bitwarden item with your Apple ID, used by `xcodes` when Bitwarden is on |
 | `locale` | `en_US.UTF-8` | `LANG` |
 | `macos.cask_appdir` | `~/Applications` | where casks with `appdir: true` install their app. `/Applications` puts every app in one place. Only applies to casks installed from now on |
@@ -191,9 +191,17 @@ first. Copied instead of linked (`dotfiles_copy` in the dotfiles role): karabine
 the file when it saves. Left off machines without `gui_apps`: alacritty, wezterm, karabiner, hyper; karabiner and
 hyper also off Linux. One machine can leave more out with `dotfiles_skip_extra: [.config/btop]`.
 
+Coding agents (`dotfiles_agents` in the dotfiles role): Claude Code (`~/.claude/CLAUDE.md`) and Codex
+(`~/.codex/AGENTS.md`) get the same instructions for every project, written from
+`roles/dotfiles/templates/agent-instructions.md.j2`: work as you in git, on GitHub (`gh`) and GitLab (`glab`), never
+sign or mention themselves in commits, PRs or MRs, Conventional Commits by default (simple, subsystem prefix, gitmoji
+and short styles when you ask for them). `home/.claude/settings.json` also turns off Claude Code's own attribution.
+Codex has no such setting (it follows your ChatGPT account), so the global git hooks in `home/.config/git/hooks`
+(`core.hooksPath`) drop AI co-author trailers and "Generated with ..." lines from every commit message; each hook
+then runs the repository's own hook of the same name. A repository with its own `core.hooksPath` (husky) skips them.
+
 Not parameterised: the hyper config, the Sourcetree diff/merge tool entries in the gitconfig, the tmux, neovim,
-atuin, btop and karabiner settings, Claude Code's instructions and settings for every project (`home/.claude`:
-work as you in git and on GitHub, no Claude signature in commits or PRs), the Spaceship prompt (`home/.config/spaceship`) and the trackpad and Finder
+atuin, btop and karabiner settings, the Spaceship prompt (`home/.config/spaceship`) and the trackpad and Finder
 preferences (`macos_defaults_list` in `roles/macos/defaults/main.yml`). They are plain files you edit. (The neovim
 Lua modules are called `totu`, the author's handle; renaming the folder `lua/totu` and the five `require` / `import`
 lines in `init.lua`, `lua/totu/lazy.lua` and `lua/totu/core/init.lua` is all it takes.)

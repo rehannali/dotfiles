@@ -80,6 +80,27 @@
     dotfiles_secret_values: "{{ dotfiles_secrets | default({}) }}"
   when: not item.path.startswith('.config/dotfiles/') or dotfiles_secrets is defined
 
+- name: Dotfiles | directories for the coding agents' instructions
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/{{ item.file | dirname }}"
+    state: directory
+    mode: "{{ '0700' if (item.file | dirname) in dotfiles_private_dirs else '0755' }}"
+  loop: "{{ dotfiles_agents }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Dotfiles | instructions for the coding agents
+  ansible.builtin.template:
+    src: agent-instructions.md.j2
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.file }}"
+    mode: "0644"
+    backup: true
+  loop: "{{ dotfiles_agents }}"
+  loop_control:
+    label: "{{ item.file }}"
+  vars:
+    agent: "{{ item }}"
+
 - name: Dotfiles | copies
   ansible.builtin.copy:
     src: "{{ item.src }}"

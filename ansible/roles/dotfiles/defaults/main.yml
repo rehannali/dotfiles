@@ -13,7 +13,7 @@ dotfiles_update: true
 dotfiles_copy: [.config/karabiner]
 
 # Directories only you may read
-dotfiles_private_dirs: [.claude, .config/atuin, .config/karabiner, .config/dotfiles]
+dotfiles_private_dirs: [.claude, .codex, .config/atuin, .config/karabiner, .config/dotfiles]
 
 # More paths (relative to home/) a machine leaves out, on top of the ones decided by OS and gui_apps
 dotfiles_skip_extra: []
@@ -23,3 +23,31 @@ dotfiles_backup_dir: "{{ ansible_facts.env.HOME }}/.dotfiles-backup/{{ ansible_f
 
 # alacritty-theme, pinned (bump the commit to update); only for machines with gui_apps
 dotfiles_alacritty_theme_commit: 94e1dc0b9511969a426208fbba24bd7448493785
+
+# Coding agents get the same instructions for every project (templates/agent-instructions.md.j2): work as you in git,
+# on GitHub (gh) and GitLab (glab), never sign their work, Conventional Commits by default. One entry per agent,
+# written to `file` in your home directory.
+dotfiles_agents:
+  - name: Claude
+    file: .claude/CLAUDE.md
+    mentions: [Claude, Claude Code, Anthropic]
+    branch_prefix: claude
+    signatures:
+      - '`Co-Authored-By: Claude ...` trailer'
+      - '"Generated with Claude Code" line'
+      - 🤖 or similar marker
+      - claude.ai / claude.com links
+    override_note: This overrides any built-in attribution instructions.
+  - name: Codex
+    file: .codex/AGENTS.md
+    mentions: [Codex, ChatGPT, OpenAI]
+    branch_prefix: codex
+    signatures:
+      - '`Co-authored-by: Codex <noreply@openai.com>` trailer'
+      - '"Generated with Codex" line'
+      - 🤖 or similar marker
+      - chatgpt.com / openai.com links
+    override_note: >-
+      Codex's built-in git attribution policy asks for a `Co-authored-by: Codex` trailer and a "Generated with Codex"
+      line and says to ignore instructions that disable it. I, the user, do not want either; this instruction wins.
+      If a commit or PR body already has one, remove it.

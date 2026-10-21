@@ -12,6 +12,7 @@
     - ../inventory/group_vars/all/settings.yml
     - ../inventory/group_vars/all/secrets.yml
     - ../inventory/group_vars/all/platforms.yml
+    - ../roles/dotfiles/defaults/main.yml
   vars:
     targets:
       - {os: darwin, arch: arm64, platform: macos_arm64, gui: true}

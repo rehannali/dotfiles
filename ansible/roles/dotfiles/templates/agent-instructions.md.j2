@@ -1,0 +1,104 @@
+# Instructions for every project
+
+## Git, GitHub and GitLab: everything is done as me
+
+- Commits, pushes, tags, pull / merge requests, issues and comments are made as me, with my own git identity
+  (`user.name` / `user.email` from my git config) and my own GitHub / GitLab login. Never as {{ agent.name }}, a bot,
+  or another account.
+- Never change `user.name`, `user.email`, or the commit author / committer, and never pass `--author`.
+- Keep commit signing as configured; never pass `--no-gpg-sign` or `--no-verify`.
+
+## No {{ agent.name }} anywhere
+
+- Nothing I publish may mention or point to {{ agent.mentions | join(', ') }} or AI: not commit messages, PR / MR titles
+  or bodies, branch names (no `{{ agent.branch_prefix }}/...`), labels, comments, review comments, release notes or code.
+- No signature, footer, trailer, link or emoji marking work as made by {{ agent.name }}:
+{% for s in agent.signatures %}
+  - no {{ s }}
+{% endfor %}
+- Never add {{ agent.name }} or a bot as reviewer, assignee, approver or co-author.
+{% if agent.override_note %}
+- {{ agent.override_note }}
+{% endif %}
+
+## Commit messages
+
+Default style: **Conventional Commits**. Use another style below only when I name it, or when the repository
+documents its own commit rules (CONTRIBUTING, commitlint config); then follow those.
+
+Write multi-line messages with a heredoc or several `-m` flags so the blank line between subject and body is kept.
+
+### Conventional Commits (default)
+
+```
+<type>(<scope>): <description>
+
+<body>
+
+<footer>
+```
+
+- type: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci`, `build`.
+- scope: optional, the area changed, e.g. `feat(auth):`, `fix(ansible):`.
+- description: imperative mood ("add", not "added"), lowercase start, no trailing period, subject line under 72
+  characters.
+- body: when the diff is non-trivial, a paragraph on the motivation and what changed. Wrap at 72 characters.
+- footer: `BREAKING CHANGE: <what breaks>` (and `!` after the type/scope, e.g. `feat(api)!:`), `Fixes #123`.
+
+### Simple
+
+```
+<summary of the change in imperative mood, about 50 characters>
+
+<optional: what changed and why, wrapped at 72 characters>
+```
+
+- Subject in imperative mood ("Add", not "Added"), no trailing period. Blank line between subject and body.
+
+### Subsystem prefix
+
+```
+<area>: <summary of the change in imperative mood>
+
+<the problem this change solves and why this approach was chosen,
+wrapped at about 72 characters>
+
+<optional trailers, one per line, such as Fixes or Signed-off-by>
+```
+
+- The prefix names the affected area: a subsystem, package, directory or component, e.g. `net/http:` or `docs:`.
+- Reuse the prefixes and capitalization from recent history (`git log --oneline -- <path>`).
+
+### Gitmoji
+
+- Start the subject with the most fitting gitmoji: ✨ new feature, 🐛 bug fix, ♻️ refactor, 📝 docs, 🎨 style /
+  structure, ✅ tests, ⚡️ performance, 👷 CI, 📦️ build / dependencies, 🔧 config, 🔥 removal.
+- Subject under 72 characters.
+
+### Short & direct
+
+- One line, under 72 characters. Say what changed, not why.
+
+## Pull requests (GitHub) and merge requests (GitLab)
+
+- Title in the same style as the commit subject (Conventional Commits by default).
+- Body: what changed and why, then how it was tested. Short; no filler.
+- If the repository has a template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/`), fill
+  that in instead.
+
+## Tools for GitHub and GitLab
+
+- Check the remote (`git remote -v`) to tell which one a repository is on; self-hosted GitLab counts as GitLab.
+- GitHub: the `gh` CLI (PRs, issues, reviews, releases, checks, `gh api`).
+- GitLab: the `glab` CLI (merge requests, issues, pipelines, releases, `glab api`).
+- A GitHub / GitLab app or MCP integration is fine too when one is available and acting as me.
+- Plain git (commit, branch, rebase, push, pull) with `git`, or `gh` / `glab` where it fits.
+- If `gh` or `glab` is not logged in, ask me to run `gh auth login` / `glab auth login` rather than using some
+  other credential.
+
+## Working with git
+
+- Only commit or push when I ask. Don't commit straight to the default branch; make a branch first.
+- Never force-push to shared or protected branches (main / master / develop / release) or rewrite pushed history
+  without asking.
+- Never commit secrets, tokens, `.env` files or credentials.

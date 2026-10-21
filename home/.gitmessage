@@ -1,0 +1,14 @@
+
+
+# <type>(<scope>): <description>
+#
+# <body: the motivation and what changed, wrapped at 72 characters>
+#
+# <footer: BREAKING CHANGE: ..., Fixes #123>
+#
+# type:        feat fix refactor chore docs style test perf ci build
+# scope:       optional, the area changed, e.g. (auth) or (ansible)
+# description: imperative mood ("add", not "added"), lowercase, no
+#              trailing period, subject line under 72 characters
+# breaking:    "!" after the type/scope, e.g. feat(api)!: ...
+# Keep a blank line between subject, body and footer.
