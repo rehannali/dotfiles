@@ -1571,8 +1571,11 @@ def load_cli_map():
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def make_plan(names, key, offline=False, use_map=True):
-    """Decide how each requested formula gets onto the Mac described by `key`."""
+def make_plan(names, key, offline=False, use_map=True, with_build=False):
+    """Decide how each requested formula gets onto the Mac described by `key`.
+
+    with_build (CI only): `build` also lists the build-only tools (rust, go, ...) of what must be built, when they have
+    no bottle either, each ahead of the formulae that need it."""
     ci = ci_bottles(offline)
     cli_map = load_cli_map() if use_map else {}
     memo, items, need_build = {}, [], {}
@@ -1636,6 +1639,26 @@ def make_plan(names, key, offline=False, use_map=True):
                     if m in missing:
                         need_build[m] = memo[m][3]
         items.append(item)
+    if with_build:
+        wanted, seen = {}, set()
+
+        def visit(n, meta):
+            if n in seen:
+                return
+            seen.add(n)
+            for dep in meta.get("build_dependencies") or []:
+                try:
+                    _, missing, order = closure(dep)
+                except CaskError:
+                    continue
+                for m in order:
+                    if m in missing and not memo[m][5]:
+                        visit(m, memo[m][3])
+            wanted[n] = meta
+
+        for n, meta in need_build.items():
+            visit(n, meta)
+        need_build = wanted
     build = [{"name": n, "pkg_version": pkg_version(m)} for n, m in need_build.items()]
     return {"platform": key, "items": items, "build": build}
 
@@ -2206,7 +2229,7 @@ def cmd_formula(args):
         global LOG_STREAM
         if args.json:
             LOG_STREAM = sys.stderr  # keep stdout pure JSON for CI
-        plan = make_plan(names, key, args.offline, use_map=not args.no_map)
+        plan = make_plan(names, key, args.offline, use_map=not args.no_map, with_build=args.build_deps)
         if args.json:
             print(json.dumps(plan, indent=1))
         else:
@@ -2395,6 +2418,8 @@ def main(argv=None):
     x.add_argument("--file", help="bundle file with one formula per line")
     x.add_argument("--json", action="store_true")
     x.add_argument("--no-map", action="store_true", help="ignore the CLI map (what would bottles alone cover?)")
+    x.add_argument("--build-deps", action="store_true",
+                   help="CI: also list the build-only tools (rust, go, ...) that have no bottle, ahead of what needs them")
     x.add_argument("names", nargs="*")
     x = fsub.add_parser("ci-index", help="merge `brew bottle --json` output into the CI bottle index")
     x.add_argument("--bottle-dir", required=True)
