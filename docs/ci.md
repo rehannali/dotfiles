@@ -18,12 +18,31 @@ with their dependencies and the build tools (rust, go, llvm, ...) that have none
 Homebrew bumped a version or the list grew. Only then a `macos-15-intel` job builds them in dependency order with
 `brew install --build-bottle`, and publishes each bottle as soon as it is built, with `index.json`, in the rolling
 release `intel-bottles` (assets nothing points at any more are deleted). Dependencies built in an earlier run are put
-back on the runner first, not compiled again. A job stops after 6 hours: no new build starts after 5h20m, and the run
-starts the next one itself while there is progress, so the first fill of the release (about 140 formulae, llvm and
-rust among them) takes several runs. The repository is public, so mycask downloads the bottles without a token. From
+back on the runner first, not compiled again. A job stops after 6 hours: no new build starts after 5h20m. The run has
+four build passes one after the other, each planning again and carrying on with what is left, so the first fill of the
+release (about 140 formulae, llvm and rust among them) can take most of a day; a formula that fails is not tried again
+in the same run. The repository is public, so mycask downloads the bottles without a token. From
 2027-08-01 the workflow stops itself: the Intel runner is gone after August 2027.
 
-    gh workflow run intel-bottles.yml          # now, instead of waiting for Monday
+It also runs on pushes to `feat/ansible` that touch the lists, `mycask.py`, the verify scripts or the workflow, so a
+branch is tried before it is merged.
+
+### Verification
+
+After the builds, two jobs on `macos-15-intel` (Homebrew removed, as on the Mac) install everything the Intel Macs ask
+for with mycask and check the result from mycask's receipts, not from its exit status
+(`tools/mycask/verify.py`, `verify-casks.sh`):
+
+- **command-line tools:** every formula in `formulae.txt` is installed with `mycask formula bundle`; then the same
+  install runs again and must change nothing (dependencies already there are skipped). The check wants a receipt, the
+  keg, every link, every dependency, and that each linked command starts (no missing library, right CPU).
+- **casks:** every cask in `casks.txt`, one at a time with `--adopt`: receipt, app or binary in place, commands start;
+  then it is uninstalled again to keep the runner's disk free. 25 minutes at most each.
+
+Each prints a table to the run's summary and fails the run when anything is missing. While the release is still being
+filled, the tool check fails for the formulae that have no bottle yet; that is what it is for.
+
+    gh workflow run intel-bottles.yml          # now, instead of waiting for Monday (the workflow must be on main)
     gh release view intel-bottles              # what is published
 
 ## Manual runs
