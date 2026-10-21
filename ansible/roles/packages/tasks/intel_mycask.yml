@@ -123,16 +123,28 @@
   register: intel_cellar
 
 - name: Intel | prepare /usr/local for bottles (mycask formula setup)
-  ansible.builtin.file:
-    path: "/usr/local/{{ item }}"
-    state: directory
-    owner: "{{ ansible_facts.user_id }}"
-    group: admin
-    mode: u+rwx
-    recurse: true
-  loop: [bin, sbin, include, lib, share, Frameworks, Cellar, opt, etc, var]
-  become: true
   when: not intel_cellar.stat.exists and intel_brew_msg is not defined
+  become: true
+  vars:
+    mycask_prefix_dirs: [bin, sbin, include, lib, share, Frameworks, Cellar, opt, etc, var]
+  block:
+    # like `chown -R you:admin`: what is already in them becomes yours too, modes stay as they are
+    - name: Intel | /usr/local directories, owned by you and admin
+      ansible.builtin.file:
+        path: "/usr/local/{{ item }}"
+        state: directory
+        owner: "{{ ansible_facts.user_id }}"
+        group: admin
+        recurse: true
+      loop: "{{ mycask_prefix_dirs }}"
+
+    # like `chmod u+rwx` on the directories themselves (not recursive: that would make every file executable)
+    - name: Intel | writable by you
+      ansible.builtin.file:
+        path: "/usr/local/{{ item }}"
+        state: directory
+        mode: u+rwx
+      loop: "{{ mycask_prefix_dirs }}"
 
 - name: Intel | apps (mycask bundle casks.txt)
   when: gui_apps | bool and install_casks | bool and (intel_brew_msg is not defined or ansible_check_mode)
