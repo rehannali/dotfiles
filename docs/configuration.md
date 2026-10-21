@@ -102,14 +102,14 @@ which manager is used:
 ```yaml
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}   # brew = bottles only, then port, then mise_fallback
+  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}   # mycask: bottle (Homebrew or CI), port, mise_fallback
   debian: {cli: mise, system: apt, apps: [flatpak]}            # Debian, Ubuntu, Raspberry Pi OS, WSL
 ```
 
-- **Intel Macs after Homebrew:** Homebrew supports Intel Macs as Tier 3 until September 2027. When that ends, set
-  `macos_x86_64: {cli: mise, system: port, apps: [mas]}`. Command-line tools already come from mise, system tools
-  then come from MacPorts (`port`) or their `mise_fallback`. `tests/packages_check.py` prints what would be left
-  without a source.
+- **Intel Macs after Homebrew:** Intel Macs already run without Homebrew: mycask installs their casks and formulae
+  (`system: brew` names the formula), so this line stays as it is. To move a tool off Homebrew's bottles before
+  September 2027, give it `intel_prefer: true` in `packages.yml`; [tools/mycask/README.md](../tools/mycask/README.md#timeline)
+  has the timeline. `tests/packages_check.py` prints what would have no source once the bottles are gone.
 - **Another Linux (Fedora, Arch, ...):** a machine whose platform is not in the table still gets the dotfiles, the
   shell and every mise tool and runtime; only the system packages are skipped, and the report says so. Supporting it
   fully means a `dnf:` / `pacman:` name on the system entries, a platform line here, and its install task in the

@@ -6,6 +6,22 @@ Intel runner and a macOS Apple Silicon runner (as personal Macs), and `scripts/c
 up installed. It runs for pull
 requests to `main`, pushes to `main`, and when started by hand.
 
+The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have none, and mycask
+([tools/mycask](../tools/mycask/README.md)) installs their tools and casks, taking over the runner's preinstalled apps.
+
+## Intel bottles
+
+`.github/workflows/intel-bottles.yml` runs daily, by hand, and when `tools/mycask/intel/formulae.txt`,
+`tools/mycask/intel/cli-map.json` or `mycask.py` change on `main`. An Ubuntu job asks `mycask formula plan` which
+formulae (and dependencies) the Intel Macs need that have no usable Homebrew Intel bottle for the current version and
+no MacPorts or mise fallback. Only then a `macos-15-intel` job builds them with `brew install --build-bottle` and
+publishes them, with `index.json`, in the rolling release `intel-bottles` (assets nothing points at any more are
+deleted). The repository is public, so mycask downloads them without a token. From 2027-08-01 the workflow stops
+itself: the Intel runner is gone after August 2027.
+
+    gh workflow run intel-bottles.yml          # now, instead of waiting for the daily run
+    gh release view intel-bottles              # what is published
+
 ## Manual runs
 
 Actions, dotfiles, Run workflow (or `gh workflow run dotfiles.yml -f key=value`). All inputs are optional.

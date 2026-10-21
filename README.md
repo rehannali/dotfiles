@@ -45,10 +45,9 @@ Mac: turn on Remote Login and install the Command Line Tools first; `bootstrap.s
 `bootstrap.sh` does what has to happen before Ansible can run, then runs it:
 
 1. asks for your sudo password once and keeps it unlocked for the rest of the run
-2. macOS: installs the Xcode Command Line Tools without the click-through dialog, then Homebrew. Homebrew's own
-   installer refuses Intel Macs, although `brew` still works there (Tier 3, until September 2027), so on Intel
-   it clones Homebrew/brew into `/usr/local/Homebrew` like the old installer did. Linux: makes sure `git` and
-   `curl` are there
+2. macOS: installs the Xcode Command Line Tools without the click-through dialog, then Homebrew on Apple Silicon.
+   Intel Macs get no Homebrew (Tier 3, dropped in September 2027): [mycask](tools/mycask/README.md), in the
+   repo, installs their apps and tools. Linux: makes sure `git` and `curl` are there
 3. with `--bitwarden`: logs in to Bitwarden and unlocks the vault
 4. clones this repo to `~/.dotfiles` (or updates it), installs Ansible with uv (its own Python, nothing in the
    system's), and runs `ansible/site.yml` for this machine
@@ -115,21 +114,21 @@ pulled in LLVM and ran for hours). So the package manager depends on the machine
 | | CLI tools | System packages | Apps | Languages |
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
-| Intel Mac | mise | Homebrew if there is a bottle, else MacPorts, else mise | casks | mise |
+| Intel Mac (no Homebrew) | mise | mycask: Homebrew or CI bottle, else MacPorts, else mise | casks (mycask) | mise |
 | Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak (desktops) | mise |
 | Another Linux (Fedora, ...) | mise | not yet: reported and skipped | | mise |
 
-A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`
-(when Homebrew stops supporting Intel Macs in 2027, that is a one-line change there), and `packages.yml` lists every
-tool with the name each manager knows it by.
+A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`,
+and `packages.yml` lists every tool with the name each manager knows it by.
 
 On Intel, a few tools have no Intel build in mise: atuin, eza and git-delta are compiled by mise with its Rust (a
-few minutes), btop comes from Homebrew. Homebrew formulae with no Intel bottle come from
-MacPorts where it has a prebuilt Intel package (installed on demand; its tools are last on PATH; nmap is compiled
-by MacPorts, its dependencies are prebuilt), then from mise where an entry has a `mise_fallback` (ffmpeg, imagemagick,
-ghostscript, graphicsmagick, rsync and nginx from conda-forge; ansible, ios-deploy); the rest is reported and
-skipped, never compiled. Ruby
-has no prebuilt Intel build either and is compiled once.
+few minutes), btop comes from a bottle. Intel Macs have no Homebrew at all: mycask installs the casks, and each
+formula from a Homebrew bottle where one still fits, else from a bottle this repo's CI builds on GitHub's Intel
+runner (`.github/workflows/intel-bottles.yml`: nmap, php, thefuck, ideviceinstaller), else from MacPorts where it
+has a prebuilt Intel package (installed on demand; its tools are last on PATH), else from mise where an entry has a
+`mise_fallback` (ansible, ios-deploy); the rest is reported and skipped, never compiled. Tap formulae and casks
+(speedtest, netbird-ui) are skipped on Intel. Ruby has no prebuilt Intel build either and is compiled once by mise.
+What happens up to and after September 2027: [tools/mycask/README.md](tools/mycask/README.md#timeline).
 
 ## Secrets from Bitwarden
 

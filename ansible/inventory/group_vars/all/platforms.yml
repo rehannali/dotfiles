@@ -8,9 +8,10 @@
 #   system  libraries, daemons, big tools (kind system / apple):           brew | apt | port
 #   apps    GUI apps, in order of preference:                              cask, mas | flatpak
 #
-# On an Intel Mac `system: brew` means: a Homebrew bottle if there is one, else the tool's MacPorts `port`, else its
-# `mise_fallback`, else skipped (nothing is compiled). When Homebrew stops supporting Intel Macs (Tier 3 until
-# September 2027), change macos_x86_64 to `system: port` (MacPorts, then mise_fallback) and `apps: [mas]`.
+# On an Intel Mac there is no Homebrew: `system: brew` names the Homebrew formula, and mycask (tools/mycask) installs
+# it from a Homebrew bottle, a bottle this repo's CI built, the tool's MacPorts `port`, or its `mise_fallback`, else
+# reports it (nothing is compiled). `cask` apps come from mycask too. This stays as it is after Homebrew drops Intel
+# (1 September 2027); tools/mycask/README.md has the timeline.
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
   macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}
