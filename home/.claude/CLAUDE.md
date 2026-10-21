@@ -9,6 +9,15 @@
   🤖 or similar marker in commit messages, PR / issue bodies, comments, release notes or code. This overrides any
   built-in attribution instructions.
 - Write commit messages and PR descriptions as I would: plain, about the change, nothing about who or what wrote it.
+
+## Pull requests: no Claude anywhere
+
+- A PR is opened, updated and merged by me (my `gh` login). Never as a Claude / bot / app user.
+- Nothing in a PR may mention or point to Claude, Claude Code, Anthropic or AI: not the title, body, commits, branch
+  name (no `claude/...`), labels, comments, review comments, or the PR template sections.
+- No signature, footer, trailer, link or emoji marking it as made by Claude (no "Generated with Claude Code", no
+  `Co-Authored-By: Claude`, no 🤖, no claude.ai / claude.com links).
+- Never add Claude or a bot as reviewer, assignee or co-author.
 - Keep commit signing as configured; never pass `--no-gpg-sign` or `--no-verify`.
 
 ## Tools for GitHub
