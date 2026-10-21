@@ -58,6 +58,17 @@ mycask formula ci-index --bottle-dir DIR --base-url URL --existing index.json --
 
 `--help` after any command lists all its options.
 
+## Checking an install
+
+`verify.py` reads mycask's receipts and reports anything missing or broken, with exit status 1: a formula needs its
+keg, links and dependencies, and every command it links must start (no `dyld` / `Library not loaded` / wrong CPU);
+a cask needs its apps and binaries in place. `verify-casks.sh` installs, checks and uninstalls each cask of a list.
+The `intel-bottles` workflow runs both on a clean Intel runner after every build (docs/ci.md).
+
+```sh
+python3 -I tools/mycask/verify.py --formulae ~/.config/mycask/formulae.txt --casks ~/.config/mycask/casks.txt
+```
+
 ## Environment
 
 | Variable | Default | |
