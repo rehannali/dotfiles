@@ -87,7 +87,7 @@ for the office Macs only, leaving one out, or uninstalling one everywhere is a l
 | part       | does                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | `dotfiles` | links the files in `home/` into your home directory, writes the templates (`*.j2`), fetches secrets      |
-| `packages` | apt on Linux; on macOS Homebrew taps (trusted item by item), formulae, casks, App Store apps; removals    |
+| `packages` | apt on Linux; on macOS Homebrew taps (trusted as a whole), formulae, casks, App Store apps; removals     |
 | `shell`    | Oh My Zsh with its plugins and theme, tmux plugins, iTerm2 integration, zsh as the login shell           |
 | `mise`     | the mise config from `packages.yml`, then runtimes (node, python, ruby, java, go, rust, uv) and tools     |
 | `dev`      | gems into mise's Ruby (fastlane, CocoaPods), global npm packages, Flutter with fvm                        |

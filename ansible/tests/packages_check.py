@@ -81,10 +81,8 @@ print(f"  (Intel Mac without Homebrew: port={len(intel_port['port'])}, no source
 
 trusted, taps = set(), {}
 for t in pk["taps"]:
-    if not set(t) <= {"name", "formulae", "casks", "needs"}:
-        bad.append(f"tap entry {t}: only name, formulae, casks and needs are known")
-    if t.get("needs") and not t.get("casks"):
-        bad.append(f"tap entry {t['name']}: needs are the dependencies of its casks, it has none")
+    if not set(t) <= {"name", "formulae", "casks"}:
+        bad.append(f"tap entry {t}: only name, formulae and casks are known")
     taps[t["name"]] = t
     trusted |= {t["name"] + "/" + f for f in t.get("formulae", [])}
 used = {x["brew"] for x in all_tools if x.get("brew") and x["brew"].count("/") == 2}

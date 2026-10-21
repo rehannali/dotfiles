@@ -285,19 +285,19 @@ copy there.
 ### Taps and trust
 
 Homebrew 6 and newer load nothing from a tap you have not trusted ([Tap Trust](https://docs.brew.sh/Tap-Trust)),
-because a tap's formulae and casks are Ruby code that runs as you. Each tap under `taps:` therefore lists what is
-used from it:
+because a tap's formulae and casks are Ruby code that runs as you. Each tap under `taps:` lists what is used from
+it:
 
 ```yaml
 taps:
   - {name: xcodesorg/made, formulae: [xcodes]}
-  - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}   # the app's cask is netbirdio/tap/netbird-ui
+  - {name: netbirdio/tap, casks: [netbird-ui]}   # the app's cask is netbirdio/tap/netbird-ui
 ```
 
-The packages role taps it and runs `brew trust --formula xcodesorg/made/xcodes` (or `--cask`) for exactly those
-items. `needs` lists formulae of the same tap that a cask depends on. The whole tap is never trusted. A tap that
-can't be cloned or trusted is reported and the run goes on; on a Homebrew without `brew trust` nothing is done. A
-formula or cask from a tap that is missing here makes `ansible/tests/packages_check.py` fail.
+The packages role taps it and trusts the whole tap right away (`brew trust --tap xcodesorg/made`), before anything
+is installed from it, so a cask that pulls in another formula of the same tap (netbird-ui needs netbird) works too.
+A tap that can't be cloned or trusted is reported and the run goes on; on a Homebrew without `brew trust` nothing is
+done. A formula or cask from a tap that is missing here makes `ansible/tests/packages_check.py` fail.
 
 Before adding a new `cli` tool on every platform, check what mise has:
 
@@ -337,6 +337,6 @@ adding an app: `python ansible/tests/apps_check.py`.
 | `npm` | global npm packages (with mise's node), installed when missing |
 | `gems` | Ruby gems installed into mise's Ruby on macOS (fastlane, cocoapods); they need the `runtimes` bundle too |
 
-`taps` (top level) are the Homebrew taps, each with the exact formulae and casks that are trusted.
+`taps` (top level) are the Homebrew taps (each trusted as a whole), with the formulae and casks used from them.
 
 Windows: `windows/install.ps1` has its own winget list.

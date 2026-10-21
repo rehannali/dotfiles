@@ -1,6 +1,7 @@
 ---
-# Homebrew 6 loads nothing from a tap that is not trusted (docs.brew.sh/Tap-Trust). Trust exactly the formulae and
-# casks used from it (packages.yml lists them), never the whole tap.
+# Homebrew 6 loads nothing from a tap that is not trusted (docs.brew.sh/Tap-Trust): installing from it, or a cask that
+# depends on another formula of the same tap, fails. So each tap is trusted as a whole right after it is tapped, before
+# anything is installed from it (the taps come before the formulae and casks).
 - name: "Tap | {{ tap.name }}"
   ansible.builtin.command: brew tap {{ tap.name }}
   register: tap_result
@@ -23,15 +24,24 @@
   failed_when: false
   when: tap_result is succeeded
 
-- name: "Tap | trust what is used from {{ tap.name }}"
-  ansible.builtin.command: brew trust {{ item.kind }} {{ tap.name }}/{{ item.name }}
-  loop: >-
-    {{ ((tap.formulae | default([])) + (tap.needs | default([]))) | map('community.general.dict_kv', 'name')
-       | map('combine', {'kind': '--formula'}) | list
-       + (tap.casks | default([])) | map('community.general.dict_kv', 'name') | map('combine', {'kind': '--cask'}) | list }}
-  loop_control:
-    label: "{{ tap.name }}/{{ item.name }}"
+- name: "Tap | what this Homebrew trusts already"
+  ansible.builtin.command: brew trust --json=v1
+  register: brew_trusted
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: tap_result is succeeded and brew_trust_help.rc == 0
+
+- name: "Tap | trust {{ tap.name }}"
+  ansible.builtin.command: brew trust --tap {{ tap.name }}
   register: trust_result
   changed_when: true
   ignore_errors: true
-  when: tap_result is succeeded and brew_trust_help.rc == 0
+  when: >-
+    tap_result is succeeded and brew_trust_help.rc == 0
+    and tap.name not in (brew_trusted.stdout | default('{}', true) | from_json).taps | default([])
+
+- name: "Tap | {{ tap.name }} could not be trusted"
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['tap ' ~ tap.name ~ ': cannot be trusted, nothing from it installs'] }}"
+  when: trust_result is failed

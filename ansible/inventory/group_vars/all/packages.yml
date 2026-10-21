@@ -59,10 +59,10 @@ packages:
     # list it: {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
     # - {name: colindean/fonts-nonfree, casks: [font-microsoft-office]}
     # - {name: ferdium/ferdium, casks: [ferdium]}   # only for the ferdium cask, which is commented out
+    # Each tap is trusted as a whole right after it is tapped (Homebrew loads nothing from an untrusted tap). formulae
+    # and casks list what is used from it; packages_check.py makes sure every tool or app from a tap is listed here.
     - {name: leoafarias/fvm, formulae: [fvm]}
-    # needs: formulae from the same tap that the cask pulls in as dependencies (netbird-ui depends on the netbird
-    # formula); they are trusted too, without them the cask fails with "Refusing to load formula ... from untrusted tap"
-    - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}
+    - {name: netbirdio/tap, casks: [netbird-ui]}   # the cask also pulls in the tap's netbird formula
     - {name: teamookla/speedtest, formulae: [speedtest]}
     - {name: withgraphite/tap, formulae: [graphite]}   # prebuilt binary
     - {name: xcodesorg/made, formulae: [xcodes]}
