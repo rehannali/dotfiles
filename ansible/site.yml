@@ -59,8 +59,9 @@
           ansible.builtin.set_fact:
             install_failures: "{{ install_failures + ['dotfiles: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
 
-    - name: Packages (apt / Homebrew / MacPorts, casks, App Store, removals)
-      tags: [packages]
+    # --tags upgrade: the packages part, and on Intel Macs also mycask's upgrades (normal runs leave versions alone)
+    - name: Packages (apt / Homebrew / mycask / MacPorts, casks, App Store, removals)
+      tags: [packages, upgrade]
       block:
         - name: Packages
           ansible.builtin.import_role:
