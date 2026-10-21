@@ -39,7 +39,7 @@
   delay: "{{ install_delay }}"
   until: casks_result is succeeded
   ignore_errors: true
-  when: install_casks | bool
+  when: install_casks | bool and not intel_mac   # Intel: mycask installs them (intel_mycask.yml)
 
 - name: Casks | record what did not install
   ansible.builtin.set_fact:
@@ -77,6 +77,13 @@
       retries: "{{ install_retries | int - 1 }}"
       delay: "{{ install_delay }}"
       until: mas_cli is succeeded
+      when: not intel_mac   # Intel: a bottle from mycask, in formulae.txt
+
+    - name: App Store | mas from mycask (Intel)
+      ansible.builtin.command: /usr/local/bin/mas version
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      when: intel_mac
 
     - name: App Store | apps (needs a signed-in App Store)
       community.general.mas:

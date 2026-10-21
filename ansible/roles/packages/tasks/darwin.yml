@@ -2,21 +2,39 @@
 - name: Homebrew | where is it
   ansible.builtin.set_fact:
     brew_prefix: "{{ '/opt/homebrew' if ansible_facts.architecture == 'arm64' else '/usr/local' }}"
-    intel_mac: "{{ ansible_facts.architecture != 'arm64' }}"
+    intel_mac: "{{ ansible_facts.system == 'Darwin' and ansible_facts.architecture == 'x86_64' }}"
+
+# Intel Macs have no Homebrew: mycask installs their casks and formulae (intel_mycask.yml)
+- name: Intel Mac (mycask, no Homebrew)
+  when: intel_mac
+  environment:
+    PATH: "/usr/local/bin:/usr/local/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+  block:
+    - name: Intel | casks and formulae
+      ansible.builtin.include_tasks: intel_mycask.yml
+
+    - name: Intel | App Store and GitHub apps
+      ansible.builtin.include_tasks: apps.yml
+      when: gui_apps | bool and intel_brew_msg is not defined
+
+    - name: Intel | remove (remove.brew / cask / mas / port)
+      ansible.builtin.include_tasks: darwin_remove.yml
+      when: intel_brew_msg is not defined
 
 - name: Homebrew | installed?
   ansible.builtin.stat:
     path: "{{ brew_prefix }}/bin/brew"
   register: brew_stat
+  when: not intel_mac
 
 - name: Homebrew | missing
   ansible.builtin.set_fact:
     install_failures: >-
       {{ install_failures | default([]) + ['homebrew: not installed at ' ~ brew_prefix ~ ' (bootstrap.sh installs it); no Homebrew packages'] }}
-  when: not brew_stat.stat.exists
+  when: not intel_mac and not brew_stat.stat.exists
 
 - name: Homebrew packages
-  when: brew_stat.stat.exists
+  when: not intel_mac and brew_stat.stat.exists
   environment:
     PATH: "{{ brew_prefix }}/bin:{{ brew_prefix }}/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
     HOMEBREW_NO_ANALYTICS: "1"
@@ -62,26 +80,6 @@
       loop_control:
         label: "{{ item.item.name }}"
       when: not intel_mac
-
-    - name: Homebrew | formulae (Intel - bottle, else MacPorts, else mise, else skipped)
-      when: intel_mac
-      block:
-        - name: Intel | start the mise fallback list
-          ansible.builtin.set_fact:
-            intel_mise_fallback: []
-
-        - name: Intel | one formula at a time
-          ansible.builtin.include_tasks: intel_formula.yml
-          loop: "{{ tool_plan.brew }}"
-          loop_control:
-            loop_var: formula
-            label: "{{ formula.name }}"
-
-        # an older version of these dotfiles wrote the fallbacks here; the mise role puts them in config.toml now
-        - name: Intel | old mise fallback config
-          ansible.builtin.file:
-            path: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
-            state: absent
 
     # brew_service in packages.yml; a tool that came from MacPorts or mise instead (Intel) has no Homebrew service
     - name: Homebrew | services

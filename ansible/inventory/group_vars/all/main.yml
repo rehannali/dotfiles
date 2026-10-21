@@ -11,10 +11,11 @@ git_email: ""
 
 # --- Which parts a machine gets
 gui_apps: true                   # false: command-line tools and terminal setup only (servers, WSL)
-install_casks: true              # macOS GUI apps (Homebrew casks); needs gui_apps
+install_casks: true              # macOS GUI apps (Homebrew casks; mycask on Intel Macs); needs gui_apps
 install_app_store: true          # Mac App Store apps (needs a signed-in App Store); needs gui_apps
 install_flatpaks: true           # Linux GUI apps from Flathub; needs gui_apps
-macports_fallback: true          # Intel Mac: MacPorts for formulae Homebrew has no bottle for
+macports_fallback: true          # Intel Mac: MacPorts for formulae with no bottle (from Homebrew or this repo's CI)
+mycask_adopt: false              # Intel Mac: true = mycask takes over apps already in place (first run after Homebrew)
 macos_defaults: true             # Dock, Finder and trackpad settings (settings.yml macos); needs gui_apps
 touch_id_sudo: true              # Touch ID for sudo on a Mac with a sensor, macOS 14+
 install_xcode: true              # Xcode with xcodes (needs your Apple ID, see docs/bitwarden.md); needs gui_apps
@@ -52,3 +53,6 @@ install_delay: 10
 dotfiles_repo: https://github.com/rehannali/dotfiles.git
 dotfiles_branch: main
 dotfiles_dir: "{{ ansible_facts.env.HOME }}/.dotfiles"
+
+# Intel Macs: the index of the bottles this repo's CI builds (.github/workflows/intel-bottles.yml), for mycask
+mycask_bottles_url: "{{ dotfiles_repo | regex_replace('\\.git$', '') }}/releases/download/intel-bottles/index.json"
