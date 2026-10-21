@@ -291,7 +291,11 @@ fi
 say "Installing Ansible"
 # A Python ansible-core supports: uv would otherwise take the newest one it finds (3.15 broke ansible-core's imports).
 # uv downloads it if the machine has none.
-uv tool install --quiet --upgrade --python 3.13 ansible-core || die "Could not install Ansible"
+# Intel Macs: cryptography (ansible-core needs it) has had no x86_64 macOS wheel since version 49, and building it needs
+# Rust, pkg-config and OpenSSL, which an Intel Mac without Homebrew does not have. 48.0.1 is the last with a universal2 wheel.
+ansible_with=()
+if [ "$OS" = Darwin ] && [ "$(uname -m)" = x86_64 ]; then ansible_with=(--with "cryptography<49"); fi
+uv tool install --quiet --upgrade --python 3.13 ${ansible_with[@]+"${ansible_with[@]}"} ansible-core || die "Could not install Ansible"
 ansible-galaxy collection install --upgrade -r "$REPO_DIR/ansible/requirements.yml" > /dev/null \
   || die "Could not install the Ansible collections"
 

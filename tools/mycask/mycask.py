@@ -237,7 +237,9 @@ def symlink(src, dest, force=False):
 
 
 def expand_text(s):
-    return (str(s).replace("$HOMEBREW_PREFIX", str(PREFIX))
+    # casks name their staged files as $HOMEBREW_PREFIX/Caskroom/<token>/<version>/...; mycask keeps the Caskroom in ROOT
+    return (str(s).replace("$HOMEBREW_PREFIX/Caskroom", str(CASKROOM))
+            .replace("$HOMEBREW_PREFIX", str(PREFIX))
             .replace("$APPDIR", str(MOVE_DIRS["app"]))
             .replace("$HOME", str(HOME)))
 
@@ -707,6 +709,7 @@ def find_source(staged, rel, single_suffix=None):
     if exists(p):
         return p
     name = Path(rel).name
+    name = glob.escape(name)   # a file name can hold glob characters: SourceCodePro-Italic[wght].ttf
     for pattern in (name, f"*/{name}", f"*/*/{name}"):
         hits = list(staged.glob(pattern))
         if len(hits) == 1:
