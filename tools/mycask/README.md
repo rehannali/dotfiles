@@ -88,3 +88,40 @@ when they no longer match `packages.yml`; `python3 tools/mycask/manifests.py` wr
 Ansible runs `mycask formula plan` first and acts on each answer: bottles through mycask, MacPorts ports with the
 role's own `port-install.sh` (Ansible's sudo), and mise tools into `~/.config/mise/config.toml` (the mise role
 installs them). So mycask never runs `mise use -g`, which would edit a file Ansible rewrites on every run.
+
+## Moving an Intel Mac off Homebrew
+
+1. `dot check` (or `ansible-playbook site.yml -l <mac> --check --diff`): the plan for every formula, the casks
+   mycask would install, and a note that Homebrew is still in the way. Nothing changes.
+2. Remove Homebrew: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"`,
+   then `sudo rm -rf /usr/local/Homebrew /usr/local/Caskroom` if it left them. The apps stay where they are; the
+   command-line tools Homebrew installed go away until the next step.
+3. `dot apply -e mycask_adopt=true`: mycask takes over the apps already in place (in `/Applications` or, for
+   `appdir: true`, `~/Applications`) and installs the rest. Casks whose installer is a `.pkg` run that installer
+   again, which needs sudo: if one fails with "a terminal is required", run
+   `mycask bundle --adopt ~/.config/mycask/casks.txt` in a terminal.
+4. Later runs: `dot apply` installs what is missing; `dot apply --tags upgrade` also upgrades.
+
+## Timeline
+
+**Phase 1, now to July 2027.** Formulae come from Homebrew's Intel bottles where they still exist, from the bottles
+this repo's CI builds (`intel-bottles` release) and from MacPorts or mise. When Homebrew updates a formula that CI
+builds, the next daily run rebuilds it, and `mycask formula upgrade` (`dot apply --tags upgrade`) picks the new
+bottle up.
+
+**Phase 2, by July 2027.** Move every formula to MacPorts or mise while the Intel runner can still build what is
+missing:
+
+1. `mycask formula plan --no-map --file ~/.config/mycask/formulae.txt` lists what still depends on bottles (the
+   `bottle` and `needs-build` lines).
+2. For each one, make sure its `packages.yml` entry has a prebuilt `port` or a `mise_fallback`, add
+   `intel_prefer: true`, run `python3 tools/mycask/manifests.py` and commit.
+3. Uninstall the bottle first, `mycask formula uninstall <name>` (then `mycask formula autoremove` for dependencies
+   nothing needs), and only then `dot apply --tags packages,mise`, which installs it from MacPorts or mise.
+
+**Phase 3, from August 2027.** `macos-15-intel` is retired after August 2027, and Homebrew drops Intel on
+1 September 2027. The workflow stops itself (date guard from 2027-08-01), the bottles already built stay frozen in
+the release, and command-line tools come only from MacPorts and mise. Casks keep working through mycask and
+`cask.json`. When a cask's newest version drops Intel, mycask sees it in the app's own `Info.plist` / `lipo` output,
+refuses the update and keeps the installed version. For an app that matters, `mycask pin <token>`, or put a
+definition that still points at an Intel download in `~/.config/mycask/casks/<token>.json`.

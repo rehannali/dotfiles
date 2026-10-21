@@ -30,7 +30,7 @@ Two separate questions decide what a machine ends up with:
 | Platform | CLI tools | System packages | GUI apps |
 |---|---|---|---|
 | Apple Silicon Mac | Homebrew | Homebrew | casks, App Store |
-| Intel Mac | mise | Homebrew bottle, else MacPorts, else mise (nothing is compiled) | casks, App Store |
+| Intel Mac | mise | mycask: Homebrew or CI bottle, else MacPorts, else mise (nothing is compiled) | casks (mycask), App Store |
 | Debian, Ubuntu, Raspberry Pi OS, WSL | mise | apt | Flathub (desktops) |
 | Other Linux (Fedora, ...) | mise | not yet: reported and skipped | |
 
@@ -200,8 +200,8 @@ curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.s
 In order, it:
 
 1. unlocks sudo once and keeps it unlocked for the run
-2. installs what Ansible can't install itself: on macOS, the Command Line Tools and Homebrew (on Intel by hand,
-   because Homebrew's installer refuses Intel Macs); on Linux, git and curl
+2. installs what Ansible can't install itself: on macOS, the Command Line Tools, and Homebrew on Apple Silicon
+   (Intel Macs get none: mycask, in the repo, needs only the Command Line Tools' python3); on Linux, git and curl
 3. with `--bitwarden`, logs in to Bitwarden and unlocks the vault
 4. clones the repo to `~/.dotfiles`, installs Ansible with uv (its own Python), keeps your options in
    `~/.config/dotfiles/local.yml`, and runs the playbook on this machine (`-c local`, no SSH)
@@ -531,8 +531,8 @@ platform_managers:
   debian: {cli: mise, system: apt, apps: [flatpak]}
 ```
 
-You change this file only when a platform changes. For example, when Homebrew drops Intel Macs (2027),
-`macos_x86_64` becomes `system: port` and `apps: [mas]`.
+You change this file only when a platform changes. Homebrew dropping Intel Macs (2027) is not one of those: they
+already use mycask for the `brew` and `cask` entries (tools/mycask/README.md).
 
 ### For one run
 
