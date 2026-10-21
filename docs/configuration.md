@@ -60,16 +60,16 @@ file; nothing else reaches it:
 
 | bundle | what |
 |---|---|
-| `core` | the shell and everyday command-line tools (zsh, git, tmux, neovim, bat, eza, zoxide, atuin, btop, gh, rclone, ...) |
+| `core` | the shell and everyday command-line tools (zsh, git, tmux, neovim, bat, eza, zoxide, atuin, btop, gh, glab, rclone, ...) |
 | `runtimes` | node, python, ruby, java, go, rust, uv from mise, and the global npm packages |
-| `dev` | building software: docker, cmake, act, mkcert, poetry, zig, fvm, ansible, compilers and headers |
+| `dev` | building software: docker, cmake, act, mkcert, poetry, zig, fvm, graphite (`gt`), ansible, compilers and headers |
 | `media` | ffmpeg, imagemagick, graphicsmagick, ghostscript |
 | `network` | nmap, aria2, wireguard-tools, openconnect, speedtest, unbound, telnet |
 | `web` | nginx, php |
 | `mac_dev` | Apple development: xcodes, swiftlint, carthage, ios-deploy, ideviceinstaller, fastlane / cocoapods, Xcode extensions |
 | `fonts` | the nerd fonts the terminal configs use (macOS) |
 | `apps_dev` | terminals, editors, git clients, API and device tools |
-| `apps_productivity` | browsers, office, notes, passwords, file sharing: what a work machine needs too |
+| `apps_productivity` | browsers, office, notes, passwords, file sharing, small Mac utilities (Clop, MacPacker, Mole, Handy, ...): what a work machine needs too |
 | `apps_network` | VPNs, firewalls, remote networks |
 | `apps_personal` | music, video, chat, the rest of a personal machine |
 

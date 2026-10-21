@@ -64,6 +64,7 @@ packages:
     # formula); they are trusted too, without them the cask fails with "Refusing to load formula ... from untrusted tap"
     - {name: netbirdio/tap, casks: [netbird-ui], needs: [netbird]}
     - {name: teamookla/speedtest, formulae: [speedtest]}
+    - {name: withgraphite/tap, formulae: [graphite]}   # prebuilt binary
     - {name: xcodesorg/made, formulae: [xcodes]}
 
 
@@ -122,6 +123,7 @@ packages:
         - {name: docker, kind: cli, mise: docker-cli, brew: docker}
         - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose}
         - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
+        - {name: graphite, kind: cli, mise: graphite, brew: withgraphite/tap/graphite, bin: gt}   # stacked PRs
         - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, apt: mkcert}
         - {name: payload-dumper-go, kind: cli, mise: github:ssut/payload-dumper-go, brew: payload-dumper-go}
         - {name: pipx, kind: cli, mise: pipx, brew: pipx, apt: pipx}
@@ -240,22 +242,33 @@ packages:
         - {name: brave, cask: brave-origin, appdir: true, flatpak: com.brave.Browser}
         - {name: chatgpt, cask: chatgpt, appdir: true}
         - {name: claude, cask: claude, appdir: true}
+        - {name: clop, cask: clop}   # image / video / PDF optimiser on the clipboard
         - {name: easyfind, cask: easyfind, appdir: true}
         - {name: ente-auth, cask: ente-auth, appdir: true, flatpak: io.ente.auth}
         - {name: firefox, cask: firefox, appdir: true, flatpak: org.mozilla.firefox}
+        - {name: forel, cask: forel}
         - {name: google-chrome, cask: google-chrome, appdir: true, flatpak: com.google.Chrome}
         - {name: google-drive, cask: google-drive}
+        - {name: handy, cask: handy}   # offline speech to text
+        - {name: headjust, mas: 6759303637}   # App Store only; macOS 15.6 or newer
         - {name: itsycal, cask: itsycal, appdir: true}
         - {name: localsend, cask: localsend, appdir: true, flatpak: org.localsend.localsend_app}
         - {name: macfuse, cask: macfuse}
+        - {name: macpacker, cask: macpacker}   # archive manager; macOS 14 or newer
+        # - {name: mactap, ...}   # no cask and not in the App Store: DMG from github.com/jaskirat1616/mactap-app/releases
+        - {name: macusb, cask: macusb}   # macOS USB installer maker; macOS 14 or newer
         - {name: microsoft-auto-update, cask: microsoft-auto-update}
         - {name: microsoft-office, cask: microsoft-office}
         - {name: microsoft-teams, cask: microsoft-teams}
+        - {name: mole, cask: mole-app}   # Mac cleaner and optimiser; macOS 14 or newer
         - {name: notion, cask: notion}
+        - {name: prefab, mas: 6758208322}   # App Store only
         - {name: readdle-spark, cask: readdle-spark}
         - {name: rustdesk, cask: rustdesk, flatpak: com.rustdesk.RustDesk}
         - {name: simpholders, cask: simpholders}
         - {name: text-toolset, mas: 1157225201}
+        - {name: textream, cask: textream}   # teleprompter; macOS 15 or newer
+        - {name: vorssaint, cask: vorssaint, arch: arm64}   # Apple Silicon only
         - {name: wordcraft, cask: wordcraft}
         - {name: zoom, cask: zoom, flatpak: us.zoom.Zoom}
         # - {name: 1password, cask: 1password}   # not used
