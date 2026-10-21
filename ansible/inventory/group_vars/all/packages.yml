@@ -60,7 +60,7 @@
 # List what you want, not what it needs. A package that another listed package already installs as a runtime
 # dependency, with the same manager on the same machine, is left out (glib, libimobiledevice, ...), and the
 # entry says where it comes from. Keep an entry when the package that brings it may be in a bundle a machine
-# doesn't have (git is listed in core although git-flow in dev brings it on Debian). Build-only dependencies do
+# doesn't have (git is listed in core although another package in dev may bring it). Build-only dependencies do
 # not count: a bottle or a prebuilt binary never installs them.
 packages:
   taps:
@@ -145,10 +145,9 @@ packages:
         - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
         - {name: build-essential, kind: system, apt: build-essential}
         - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
-        # Macs: git-flow-next (the maintained rewrite); Homebrew declares it in conflict with git-flow, so git-flow is
-        # uninstalled by remove.brew (main.yml). Debian has no git-flow-next package: it keeps the old git-flow.
-        - {name: git-flow, kind: system, apt: git-flow, bin: git-flow}
-        - {name: git-flow-next, kind: system, brew: git-flow-next, bin: git-flow}
+        # git-flow-next, the maintained rewrite, replaces git-flow: Homebrew declares them in conflict (both provide the
+        # `git-flow` command). remove: in main.yml uninstalls the old one. Macs: Homebrew (mycask on Intel); Linux: mise.
+        - {name: git-flow-next, kind: cli, mise: "github:gittower/git-flow-next", brew: git-flow-next, bin: git-flow}
         # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
         - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
         - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}

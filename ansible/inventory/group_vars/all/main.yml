@@ -35,10 +35,10 @@ apps_skip: []                    # app names (the `name` key)
 # above only stops installing it; to take it off machines that have it, put it here. Run with --check first to see
 # what would go.
 remove:
-  brew: [git-flow]               # Homebrew formulae (git-flow-next replaces git-flow, they conflict)
+  brew: [git-flow]               # Homebrew formulae (git-flow-next replaces it; they conflict)
   cask: []                       # Homebrew casks
   mas: []                        # App Store ids
-  apt: []                        # Debian packages
+  apt: [git-flow]                # Debian packages (git-flow-next comes from mise there)
   mise: []                       # mise tool ids (also dropped from the mise config)
   port: []                       # MacPorts ports (Intel Macs)
   flatpak: []                    # Flathub ids (Linux desktops)
