@@ -38,8 +38,13 @@ while IFS= read -r line; do
   echo "$token" > "$work/one.txt"
   log="$work/$token.log"
   # perl: macOS has no timeout(1); alarm kills the install when it hangs (an installer waiting for input)
-  perl -e 'alarm shift; exec @ARGV' "$limit" /usr/bin/python3 -I "$mycask_py" install --adopt ${opts[@]+"${opts[@]}"} "$token" > "$log" 2>&1
-  rc=$?
+  for _ in 1 2; do
+    perl -e 'alarm shift; exec @ARGV' "$limit" /usr/bin/python3 -I "$mycask_py" install --adopt ${opts[@]+"${opts[@]}"} "$token" > "$log" 2>&1
+    rc=$?
+    # one more try after a failed download (a slow or reset connection), never after anything else
+    if [ "$rc" -eq 0 ] || ! grep -q 'curl .*' "$log" || ! grep -q 'command failed (' "$log"; then break; fi
+    echo "download failed, trying $token once more"
+  done
   if [ "$rc" -ne 0 ]; then
     why="$(grep -m1 '^Error:' "$log" || true)"
     echo "| $token | install | ${why:-exit status $rc} |" >> "$work/errors"
