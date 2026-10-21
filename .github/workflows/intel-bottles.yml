@@ -1,0 +1,179 @@
+name: intel-bottles
+
+# Homebrew no longer builds bottles for Intel Macs (Tier 3 since September 2026). This builds the ones the Intel Mac
+# needs on GitHub's Intel runner: only formulae (and their dependencies) with no usable Homebrew Intel bottle for the
+# current version, and no MacPorts or mise fallback in the CLI map. They go into one rolling release, intel-bottles,
+# with an index.json that mycask (tools/mycask) reads on the Mac. The plan compares each formula's pkg_version with
+# index.json, so when Homebrew updates a formula it is rebuilt on the next run.
+#
+# macos-15-intel is the last Intel runner and is gone after August 2027: from 2027-08-01 the workflow stops itself,
+# and the bottles already in the release stay there, frozen.
+
+on:
+  schedule:
+    - cron: "23 4 * * *"   # daily
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/mycask/intel/formulae.txt
+      - tools/mycask/intel/cli-map.json
+      - tools/mycask/mycask.py
+
+# one run at a time; a second one waits, so two runs never upload to the release together
+concurrency:
+  group: intel-bottles
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  RELEASE: intel-bottles
+  BASE_URL: https://github.com/${{ github.repository }}/releases/download/intel-bottles
+  # The Intel Mac runs macOS 26 (Tahoe), but bottles from the macOS 15 runner are tagged sequoia: plan for the
+  # runner's macOS, never a newer one. Sequoia bottles run on Sequoia and Tahoe.
+  PLAN_TAG: sequoia
+
+jobs:
+  plan:
+    name: what needs a bottle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      # The Intel runner is retired after August 2027: stop with a notice, not a failure
+      - name: Date guard
+        id: guard
+        run: |
+          if [ "$(date -u +%Y-%m-%d)" \> "2027-07-31" ]; then
+            echo "::notice::macos-15-intel is gone after August 2027; no more Intel bottles. The release keeps the existing ones."
+            echo "stop=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The repo: mycask and the committed Intel lists (tools/mycask/intel, written from packages.yml)
+      - name: Checkout
+        if: steps.guard.outputs.stop != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      # mycask's plan is read-only and works on Linux. A missing release or index.json (the very first run) only gives
+      # a warning: then nothing counts as built yet. HOME and the cache point at a temp directory.
+      - name: Plan (mycask formula plan)
+        id: plan
+        if: steps.guard.outputs.stop != 'true'
+        env:
+          HOME: ${{ runner.temp }}/home
+          MYCASK_CACHE: ${{ runner.temp }}/mycask-cache
+          MYCASK_ROOT: ${{ runner.temp }}/mycask-root
+          MYCASK_BOTTLES_URL: ${{ env.BASE_URL }}/index.json
+          MYCASK_CLI_MAP: ${{ github.workspace }}/tools/mycask/intel/cli-map.json
+        run: |
+          mkdir -p "$HOME"
+          python3 tools/mycask/mycask.py formula plan --tag "$PLAN_TAG" --file tools/mycask/intel/formulae.txt --json > plan.json
+          build="$(jq -c '[.build[].name]' plan.json)"   # already in dependency order
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Plan for $PLAN_TAG"
+            echo
+            echo "| formula | from | detail |"
+            echo "|---|---|---|"
+            jq -r '.items[] | "| \(.name) | \(.action) | \(.spec // (.missing | if . then join(", ") else null end) // .detail // "") |"' plan.json
+            echo
+            echo "To build, in order: $(jq -r '[.build[].name] | join(" ")' plan.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "To build: $build"
+
+  build:
+    name: build bottles (macos-15-intel)
+    needs: plan
+    if: needs.plan.outputs.build != '' && needs.plan.outputs.build != '[]'
+    runs-on: macos-15-intel
+    # GitHub-hosted jobs stop after 6 hours. Very large formulae (llvm, gcc, rust) can hit that on their own; such a
+    # formula is better given a MacPorts or mise entry in packages.yml than a CI build.
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD: ${{ needs.plan.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      # Downloads (source tarballs, poured dependency bottles) from earlier runs; saved again under this run's key
+      - name: Homebrew download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9   # v6.1.0
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: homebrew-intel-${{ github.run_id }}
+          restore-keys: homebrew-intel-
+
+      # Current formulae first, then nothing may update or check dependents behind our back. Building from source and
+      # `brew bottle` need the formula files, so homebrew/core is tapped instead of only using the API.
+      - name: Homebrew up to date
+        run: |
+          brew update
+          {
+            echo HOMEBREW_NO_AUTO_UPDATE=1
+            echo HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
+            echo HOMEBREW_NO_INSTALL_FROM_API=1
+            echo HOMEBREW_NO_ANALYTICS=1
+          } >> "$GITHUB_ENV"
+          HOMEBREW_NO_INSTALL_FROM_API=1 brew tap --force homebrew/core
+
+      # In the plan's order (dependencies first). A preinstalled copy on the runner image is removed first, so the
+      # formula is really built with --build-bottle. One that fails is reported; the rest still build and upload.
+      - name: Build and bottle
+        run: |
+          mkdir -p out
+          failed=""
+          for name in $(jq -r '.[]' <<< "$BUILD"); do
+            echo "::group::$name"
+            brew uninstall --ignore-dependencies "$name" > /dev/null 2>&1 || true
+            if brew install --build-bottle "$name" \
+                && (cd out && brew bottle --json --root-url="$BASE_URL" "$name"); then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error::$name did not build"
+              failed="$failed $name"
+            fi
+          done
+          echo "failed=${failed# }" >> "$GITHUB_ENV"
+          ls -l out
+
+      # The release's index.json (absent on the very first run), merged with the new bottles. ci-index also renames
+      # the bottles to names a release asset can have (openssl@3 -> openssl-3).
+      - name: Index (mycask formula ci-index)
+        run: |
+          mkdir -p prev
+          gh release download "$RELEASE" --pattern index.json --dir prev 2> /dev/null || echo "no index.json yet"
+          /usr/bin/python3 -I tools/mycask/mycask.py formula ci-index --bottle-dir out --base-url "$BASE_URL" \
+            --existing prev/index.json --out index.json
+
+      # One rolling release; never marked as the repo's latest release
+      - name: Release
+        run: |
+          gh release view "$RELEASE" > /dev/null 2>&1 \
+            || gh release create "$RELEASE" --title "Intel bottles" --latest=false \
+                 --notes "Homebrew bottles for Intel Macs, built by .github/workflows/intel-bottles.yml. Read by tools/mycask (index.json)."
+          shopt -s nullglob
+          bottles=(out/*.tar.gz)
+          gh release upload "$RELEASE" "${bottles[@]}" index.json --clobber
+
+      # Assets index.json no longer points at (older versions) are deleted
+      - name: Remove old assets
+        run: |
+          keep="$(jq -r '.formulae[].files[].url | split("/") | last' index.json; echo index.json)"
+          gh release view "$RELEASE" --json assets -q '.assets[].name' | while read -r asset; do
+            if ! grep -qxF "$asset" <<< "$keep"; then
+              echo "deleting $asset"
+              gh release delete-asset "$RELEASE" "$asset" --yes
+            fi
+          done
+
+      # A formula that did not build fails the run, after everything that did build was published
+      - name: Result
+        run: |
+          if [ -n "$failed" ]; then echo "::error::did not build: $failed"; exit 1; fi
+          echo "built and published: $(jq -r 'join(" ")' <<< "$BUILD")"
