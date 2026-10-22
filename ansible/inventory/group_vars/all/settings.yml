@@ -51,6 +51,10 @@ settings_defaults:
       PYTHONUNBUFFERED: "1"
     # Extra directories put in front of PATH, first entry first. Example: ["$HOME/go/bin"]
     path: []
+    # Bitwarden's SSH agent: ~/.zshenv sets SSH_AUTH_SOCK to its socket, except in an SSH session (the forwarded agent
+    # stays). auto = look at which Bitwarden is installed (macOS: App Store or dmg/cask; Linux: Flatpak, Snap, or deb /
+    # rpm / AppImage) and set nothing where there is none. Or name it: appstore, dmg, linux, snap, flatpak. off = never.
+    bitwarden_ssh_agent: auto
 
   apple:
     # Bitwarden item with your Apple ID (username and password), used by xcodes when Bitwarden is on. An optional

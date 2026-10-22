@@ -1,0 +1,42 @@
+{#- Bitwarden's SSH agent for apps that do not start from a shell (a Git client opened from the Dock): launchctl setenv at
+    every login, the way Bitwarden's page describes it. Shells get the same from ~/.zshenv. Only written on a Mac with
+    gui_apps and shell.bitwarden_ssh_agent not off (roles/dotfiles/tasks/main.yml). -#}
+{% set bw = settings.shell.bitwarden_ssh_agent | default('auto') %}
+{% set bw_sockets = {
+  'appstore': '$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock',
+  'dmg': '$HOME/.bitwarden-ssh-agent.sock',
+  'linux': '$HOME/.bitwarden-ssh-agent.sock',
+  'snap': '$HOME/snap/bitwarden/current/.bitwarden-ssh-agent.sock',
+  'flatpak': '$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock'} %}
+{% if bw == 'auto' %}
+{% set script %}
+sock=
+for app in /Applications/Bitwarden.app "$HOME/Applications/Bitwarden.app"; do
+  if [ -d "$app/Contents/_MASReceipt" ]; then sock="{{ bw_sockets.appstore }}"; break
+  elif [ -d "$app" ]; then sock="{{ bw_sockets.dmg }}"; break
+  fi
+done
+[ -n "$sock" ] || exit 0
+{% endset %}
+{% else %}
+{% set script %}
+sock="{{ bw_sockets[bw] | mandatory('shell.bitwarden_ssh_agent must be auto, off, appstore, dmg, linux, snap or flatpak') }}"
+{% endset %}
+{% endif %}
+{#- SSH_AUTH_SOCK is what ssh reads; SSH_AUTH_SOCKET is the name Bitwarden's page uses in its launchctl line -#}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dotfiles.bitwarden-ssh-agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>{{ (script + 'launchctl setenv SSH_AUTH_SOCK "$sock"\nlaunchctl setenv SSH_AUTH_SOCKET "$sock"\n') | e }}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
