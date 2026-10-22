@@ -2,7 +2,7 @@
 # Homebrew's or MacPorts' zsh when there is one, else the system's
 - name: Login shell | which zsh
   ansible.builtin.shell: |
-    for z in {{ '/opt/homebrew/bin/zsh /usr/local/bin/zsh /opt/local/bin/zsh' if dotfiles_os == 'darwin' else '' }} /usr/bin/zsh /bin/zsh; do
+    for z in {{ '/opt/homebrew/bin/zsh /opt/local/bin/zsh /usr/local/bin/zsh' if dotfiles_os == 'darwin' else '' }} /usr/bin/zsh /bin/zsh; do
       [ -x "$z" ] && { echo "$z"; exit 0; }
     done
     exit 1
