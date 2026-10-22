@@ -4,8 +4,8 @@
     python3 tools/mycask/manifests.py           write casks.txt, formulae.txt and cli-map.json
     python3 tools/mycask/manifests.py --check   exit 1 if the committed files differ from packages.yml
 
-They cover every Mac group in the inventory (what any Intel Mac could ask for), so the intel-bottles workflow builds
-what each of them needs. A machine's own lists are written by Ansible from its bundles, with the same filters
+They cover every Mac group in the inventory (what any Intel Mac could ask for), so rehannali/intel-bottles (which reads
+formulae.txt) builds what each of them needs. A machine's own lists are written by Ansible from its bundles, with the same filters
 (ansible/filter_plugins/mycask_lists.py). Needs PyYAML: use the Python Ansible runs on if python3 lacks it.
 """
 import json

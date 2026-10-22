@@ -122,8 +122,8 @@ A tool is never installed by two managers. Which manager is used per platform is
 and `packages.yml` lists every tool with the name each manager knows it by.
 
 Intel Macs have no Homebrew at all: mycask installs the casks, and each formula, dependencies first (what is already
-installed is skipped), from a Homebrew bottle where one still fits, else from a bottle this repo's CI builds on
-GitHub's Intel runner (`.github/workflows/intel-bottles.yml`, weekly, only what changed). Until August 2027 there is
+installed is skipped), from a Homebrew bottle where one still fits, else from a bottle built on
+GitHub's Intel runner in [rehannali/intel-bottles](https://github.com/rehannali/intel-bottles) (weekly, only what changed). Until August 2027 there is
 no MacPorts or mise stand-in (`fallbacks: false` in `platforms.yml`); nothing is compiled on the Mac, and a formula
 without a bottle is reported until the CI has built it. Tap tools (fvm, graphite, xcodes) stay with mise, tap formulae
 and casks (speedtest, netbird-ui) are skipped on Intel. Ruby has no prebuilt Intel build either and is compiled once by

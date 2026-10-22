@@ -39,8 +39,8 @@ Definitions come from Homebrew's `formula.json`. For each formula mycask picks t
 1. a Homebrew bottle for the current version that fits this Mac (Intel bottles stop at `sonoma`, which also runs on
    Sequoia and Tahoe), where every runtime dependency is also available as a bottle. Bottles go into
    `/usr/local/Cellar` with Homebrew's layout; placeholders and Mach-O load paths are relocated
-2. a bottle built by this repo's CI (`.github/workflows/intel-bottles.yml`) and published in the `intel-bottles`
-   release, for the current version
+2. a bottle built by [rehannali/intel-bottles](https://github.com/rehannali/intel-bottles) (listed in its `index.json`,
+   files in its release), for the current version
 3. the formula's entry in the CLI map: mise or MacPorts, prebuilt binaries only (`port -b`). The dotfiles leave the
    map empty until August 2027 (`fallbacks: false` in `platforms.yml`)
 4. otherwise it reports `needs-build`. It never compiles anything on the Mac.
@@ -63,7 +63,7 @@ mycask formula ci-index --bottle-dir DIR --base-url URL --existing index.json --
 `verify.py` reads mycask's receipts and reports anything missing or broken, with exit status 1: a formula needs its
 keg, links and dependencies, and every command it links must start (no `dyld` / `Library not loaded` / wrong CPU);
 a cask needs its apps and binaries in place. `verify-casks.sh` installs, checks and uninstalls each cask of a list.
-The `intel-bottles` workflow runs both on a clean Intel runner after every build (docs/ci.md).
+`.github/workflows/mycask-verify.yml` runs both on a clean Intel runner (docs/ci.md).
 
 ```sh
 python3 -I tools/mycask/verify.py --formulae ~/.config/mycask/formulae.txt --casks ~/.config/mycask/casks.txt
@@ -74,7 +74,7 @@ python3 -I tools/mycask/verify.py --formulae ~/.config/mycask/formulae.txt --cas
 | Variable | Default | |
 |---|---|---|
 | `MYCASK_CLI_MAP` | `~/.config/mycask/cli-map.json` | formula -> `{"mise": spec}` or `{"port": name}`, optional `"prefer": true` |
-| `MYCASK_BOTTLES_URL` | empty | the CI bottle index; the dotfiles set it to this repo's `intel-bottles/index.json` |
+| `MYCASK_BOTTLES_URL` | empty | the CI bottle index; the dotfiles set it to intel-bottles' `index.json` |
 | `MYCASK_TTL` | `86400` | seconds between automatic index refreshes |
 | `MYCASK_FORMULA_PREFIX` | `/usr/local` | where bottles go (Homebrew's Intel prefix, so non-relocatable bottles work) |
 | `MYCASK_PREFIX` | `~/.local` | where cask binaries, man pages and completions are linked |
@@ -123,8 +123,8 @@ installs them). So mycask never runs `mise use -g`, which would edit a file Ansi
 ## Timeline
 
 **Phase 1, now to July 2027.** Formulae come from Homebrew's Intel bottles where they still exist and from the
-bottles this repo's CI builds (`intel-bottles` release); MacPorts and mise stand-ins are off (`fallbacks: false`). When
-Homebrew updates a formula that CI builds, the next weekly run rebuilds it (until then a fresh install of that
+bottles rehannali/intel-bottles builds; MacPorts and mise stand-ins are off (`fallbacks: false`). When
+Homebrew updates a formula that intel-bottles builds, its next weekly run rebuilds it (until then a fresh install of that
 formula is reported as needing a build; an installed one keeps working), and `mycask formula upgrade`
 (`dot apply --tags upgrade`) picks the new bottle up.
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install every cask in a list with mycask, one at a time, check each from its receipt (verify.py), and uninstall it
-# again, so a runner with a small disk can go through about 90 apps. Used by .github/workflows/intel-bottles.yml.
+# again, so a runner with a small disk can go through about 90 apps. Used by .github/workflows/mycask-verify.yml.
 #
 #   verify-casks.sh tools/mycask/intel/casks.txt report.md
 #

@@ -9,7 +9,7 @@
 #   apps    GUI apps, in order of preference:                              cask, mas | flatpak
 #
 # On an Intel Mac there is no Homebrew: `brew` names the Homebrew formula, and mycask (tools/mycask) installs it, with
-# its dependencies first, from a Homebrew bottle or a bottle this repo's CI built (.github/workflows/intel-bottles.yml),
+# its dependencies first, from a Homebrew bottle or a bottle rehannali/intel-bottles built (github.com/rehannali/intel-bottles),
 # else reports it (nothing is compiled on the Mac). `cask` apps come from mycask too. Only a tool that is a tap formula
 # (fvm, graphite, xcodes) stays with mise: mycask reads no taps.
 #

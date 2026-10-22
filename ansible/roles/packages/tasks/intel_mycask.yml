@@ -1,7 +1,7 @@
 ---
 # Intel Mac, without Homebrew (Tier 3 since September 2026, gone on 1 September 2027): apps and command-line tools
 # come from mycask (tools/mycask). It reads Homebrew's cask and formula index itself and never compiles. A formula
-# comes from a Homebrew bottle or a bottle this repo's CI built (the intel-bottles release), dependencies first. While
+# comes from a Homebrew bottle or a bottle rehannali/intel-bottles built, dependencies first. While
 # platforms.yml has `fallbacks: false` (until August 2027) the cli map is empty, so there is no MacPorts or mise stand-in;
 # with `fallbacks: true` the blocks below install them. `mycask formula plan` decides which; it only reads, so --check
 # shows the same answer.
@@ -242,7 +242,7 @@
          | map('regex_replace', '^Error: ', '') | join('; ') | default('failed', true))] }}
   when: intel_bottles is failed
 
-- name: Intel | formulae with no prebuilt binary yet (the intel-bottles workflow builds them)
+- name: Intel | formulae with no prebuilt binary yet (rehannali/intel-bottles builds them)
   ansible.builtin.set_fact:
     install_failures: >-
       {{ install_failures | default([]) + ['mycask (Intel) ' ~ item.name ~ ': ' ~ item.action ~ ' '

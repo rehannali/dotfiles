@@ -54,5 +54,6 @@ dotfiles_repo: https://github.com/rehannali/dotfiles.git
 dotfiles_branch: main
 dotfiles_dir: "{{ ansible_facts.env.HOME }}/.dotfiles"
 
-# Intel Macs: the index of the bottles this repo's CI builds (.github/workflows/intel-bottles.yml), for mycask
-mycask_bottles_url: "{{ dotfiles_repo | regex_replace('\\.git$', '') }}/releases/download/intel-bottles/index.json"
+# Intel Macs: the index of the bottles that github.com/rehannali/intel-bottles builds (index.json in its main branch;
+# the bottle files are in its release), for mycask
+mycask_bottles_url: https://raw.githubusercontent.com/rehannali/intel-bottles/main/index.json
