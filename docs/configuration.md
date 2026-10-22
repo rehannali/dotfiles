@@ -43,7 +43,8 @@ All in `main.yml`, `true` unless noted:
 | `install_casks` | macOS GUI apps (Homebrew casks) |
 | `install_flatpaks` | Linux GUI apps from Flathub (machines with `gui_apps`, e.g. the `linux_desktop` group) |
 | `install_app_store` | Mac App Store apps (needs an App Store that is signed in). `mac_work` sets it to `false` |
-| `macports_fallback` | Intel Mac: MacPorts for formulae Homebrew has no bottle for |
+| `macports_fallback` | Intel Mac: command-line tools from MacPorts |
+| `upgrade_on_apply` | every run also upgrades: MacPorts, mise, Homebrew (Apple Silicon), casks (mycask on Intel). `false`: runs only install what is missing, `--tags upgrade` upgrades |
 | `macos_defaults` | the Dock (from `settings.macos.dock`), Finder and trackpad preferences |
 | `touch_id_sudo` | macOS 14+ with a Touch ID sensor: `sudo` asks for your fingerprint. Writes `/etc/pam.d/sudo_local` (survives macOS updates), with `pam_reattach` for tmux when `brew install pam-reattach` was done. A `sudo_local` that was not written by these dotfiles is left alone. Undo with `sudo rm /etc/pam.d/sudo_local` |
 | `install_xcode`, `install_ios_runtime` | Xcode and the iOS simulator runtime, see "Xcode" below |
@@ -102,14 +103,12 @@ which manager is used:
 ```yaml
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: brew, system: brew, apps: [cask, mas], fallbacks: false}   # mycask: bottle (Homebrew or CI); fallbacks: port, mise_fallback
+  macos_x86_64: {cli: port, system: port, apps: [cask, mas]}   # no Homebrew: MacPorts, else mise; casks from mycask
   debian: {cli: mise, system: apt, apps: [flatpak]}            # Debian, Ubuntu, Raspberry Pi OS, WSL
 ```
 
-- **Intel Macs after Homebrew:** Intel Macs already run without Homebrew: mycask installs their casks and formulae
-  (`system: brew` names the formula), so this line stays as it is. To move a tool off Homebrew's bottles before
-  September 2027, give it `intel_prefer: true` in `packages.yml`; [tools/mycask/README.md](../tools/mycask/README.md#timeline)
-  has the timeline. `tests/packages_check.py` prints what would have no source once the bottles are gone.
+- **Intel Macs:** no Homebrew. A tool comes from its `port`, else from mise (`mise_intel`, `mise`, `mise_fallback`), else
+  from its `download`; apps from mycask ([tools/mycask/README.md](../tools/mycask/README.md)).
 - **Another Linux (Fedora, Arch, ...):** a machine whose platform is not in the table still gets the dotfiles, the
   shell and every mise tool and runtime; only the system packages are skipped, and the report says so. Supporting it
   fully means a `dnf:` / `pacman:` name on the system entries, a platform line here, and its install task in the
@@ -266,16 +265,18 @@ manager uses. Leave a key out where the tool isn't available from that manager.
 | `kind` | `cli`: a single-binary tool mise can install; `system`: libraries, daemons, big apps (Homebrew or apt); `apple`: Apple developer tools, macOS only and not without `gui_apps` |
 | `mise`, `brew`, `apt` | the package name for that manager |
 | `bin` | the command the tool provides, when it differs from `name` (the CI check looks for it) |
-| `port` | MacPorts port, used on Intel Macs only, when Homebrew has no bottle for the tool (also instead of compiling a `mise_intel: false` tool). Set it only if `packages.macports.org/<port>/` has a `darwin_25.x86_64` archive |
-| `port_build` | `true`: MacPorts may compile the port itself when it has no binary archive (nmap has none, for its licence), but only once every dependency came from an archive, so it is minutes, never a chain of builds |
-| `mise_fallback` | mise tool id, used on Intel Macs only, when Homebrew has no bottle and MacPorts (no `port`, or its install failed) cannot install the tool either. It goes into the mise config. `conda:<package>` installs conda-forge's prebuilt build (ffmpeg, imagemagick, ghostscript: MacPorts would compile their libpng and everything above it) |
-| `mise_intel` | tool has no Intel Mac build in mise. A mise id (`"cargo:atuin"`) means Intel installs that instead, `false` means Intel uses Homebrew |
+| `port` | MacPorts port, used on Intel Macs (which have no Homebrew). Set it only if `packages.macports.org/<port>/` has an archive for the current macOS on Intel (`darwin_25.x86_64`, or `darwin_any.noarch`), so nothing is compiled; without one the tool goes to mise |
+| `port_build` | `true`: MacPorts has no archive for the port itself (git, autoconf, automake) and builds it, but only once every dependency came from an archive, so it is minutes, never a chain of builds |
+| `port_select` | `[group, choice]`: `port select --set` after installing (`[php, php85]`, `[pygments, py314-pygments]`) |
+| `port_links` | `{command: path}`: a link in `~/.local/bin` for a port that installs the command under another name or elsewhere (`telnet: /opt/local/bin/gtelnet`) |
+| `mise_fallback` | mise tool id for an Intel Mac, used when the tool has no `port` (ansible: `pipx:ansible-core`) or its port did not install |
+| `mise_intel` | the mise id an Intel Mac uses instead of `mise` (`"cargo:eza"`: no Intel build anywhere, mise builds it) |
+| `download` | Intel Macs: URL of a `.tgz` with the command at its top level, put in `~/.local/bin` (speedtest: Ookla's universal build); a new URL upgrades it |
 | `brew_service` | `true`: started with `brew services` once Homebrew installed it (nginx). Not when it came from MacPorts or mise instead; apt starts its own services |
 | `prebuilt` | a tap formula that downloads a ready-made binary (so there is no bottle to look for) |
 
 List what you want, not what it needs. When another listed package already installs a package as a runtime
-dependency with the same manager on the same machine (Homebrew installs `libyaml` with `ansible`, apt installs
-`git` with `git-flow`), the entry is left out or loses that manager's key, with a comment saying where it comes
+dependency with the same manager on the same machine (Homebrew installs `libyaml` with `ansible`), the entry is left out or loses that manager's key, with a comment saying where it comes
 from. Only runtime dependencies count: a bottle or a prebuilt binary never installs build-only ones. Check a formula
 with `brew deps --formula <name>` (runtime) and `brew deps --formula --include-build <name>`, and an apt package with
 `apt-cache depends <name>`. Keep an entry when the dependent is not installed on some machine: Intel Macs have no

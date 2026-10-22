@@ -14,7 +14,8 @@ gui_apps: true                   # false: command-line tools and terminal setup 
 install_casks: true              # macOS GUI apps (Homebrew casks; mycask on Intel Macs); needs gui_apps
 install_app_store: true          # Mac App Store apps (needs a signed-in App Store); needs gui_apps
 install_flatpaks: true           # Linux GUI apps from Flathub; needs gui_apps
-macports_fallback: true          # Intel Mac: MacPorts for formulae with no bottle (from Homebrew or this repo's CI)
+macports_fallback: true          # Intel Mac: MacPorts for the command-line tools (false: none from MacPorts)
+upgrade_on_apply: true           # every run also upgrades: MacPorts, mise, Homebrew (Apple Silicon), casks (mycask on Intel)
 mycask_adopt: false              # Intel Mac: true = mycask takes over apps already in place (first run after Homebrew)
 macos_defaults: true             # Dock, Finder and trackpad settings (settings.yml macos); needs gui_apps
 touch_id_sudo: true              # Touch ID for sudo on a Mac with a sensor, macOS 14+
@@ -35,11 +36,11 @@ apps_skip: []                    # app names (the `name` key)
 # above only stops installing it; to take it off machines that have it, put it here. Run with --check first to see
 # what would go.
 remove:
-  brew: [git-flow]               # Homebrew formulae (git-flow-next replaces it; they conflict)
+  brew: [git-flow, stow]         # Homebrew formulae (git-flow-next replaces git-flow; stow is not used)
   cask: []                       # Homebrew casks
   mas: []                        # App Store ids
   apt: [git-flow]                # Debian packages (git-flow-next comes from mise there)
-  mise: []                       # mise tool ids (also dropped from the mise config)
+  mise: [chezmoi]                # mise tool ids (also dropped from the mise config); chezmoi is not used
   port: []                       # MacPorts ports (Intel Macs)
   flatpak: []                    # Flathub ids (Linux desktops)
 
@@ -53,7 +54,3 @@ install_delay: 10
 dotfiles_repo: https://github.com/rehannali/dotfiles.git
 dotfiles_branch: main
 dotfiles_dir: "{{ ansible_facts.env.HOME }}/.dotfiles"
-
-# Intel Macs: the index of the bottles that github.com/rehannali/intel-bottles builds (index.json in its main branch;
-# the bottle files are in its release), for mycask
-mycask_bottles_url: https://raw.githubusercontent.com/rehannali/intel-bottles/main/index.json

@@ -13,12 +13,9 @@ export HOMEBREW_NO_ANALYTICS=1
 # Apple Silicon (Tier 1): Homebrew lives in /opt/homebrew
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 {% else %}
-# Intel: no Homebrew. mycask (~/.local/bin/mycask) puts bottles in /usr/local, Homebrew's Intel prefix, and also
-# uses the ones this repo's CI builds, listed here
-export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-export MYCASK_BOTTLES_URL={{ mycask_bottles_url | to_json }}
-# MacPorts, for what has no bottle: last, so the bottles and mise win
-export PATH="$PATH:/opt/local/bin:/opt/local/sbin"
+# Intel: no Homebrew. Command-line tools from MacPorts (and mise, whose shims come first below); apps from mycask
+export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+export MANPATH="/opt/local/share/man:$MANPATH"
 {% endif %}
 
 if chrome_path=$(locate_chrome); then

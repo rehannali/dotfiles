@@ -31,7 +31,7 @@ Do not put passwords or tokens in your shell profile.
 | Xcode without any Apple login | `DOTFILES_XCODE_XIP=/path/Xcode_26.6.xip` (a download you made yourself) | [configuration.md](configuration.md) |
 | No Mac App Store apps (App Store not signed in) | `DOTFILES_MAS=skip` (`--no-appstore`) | [configuration.md](configuration.md) |
 | No Flutter SDK | `DOTFILES_FLUTTER=skip` (`--no-flutter`) | [configuration.md](configuration.md) |
-| Intel Mac without MacPorts | `DOTFILES_MACPORTS=skip` (`--no-macports`) | [configuration.md](configuration.md) |
+| Intel Mac without its MacPorts tools | `DOTFILES_MACPORTS=skip` (`--no-macports`) | [configuration.md](configuration.md) |
 | Keep my Dock, Finder and trackpad settings | `DOTFILES_DEFAULTS=skip` (`--no-defaults`), or `macos_defaults: false` in the inventory | [configuration.md](configuration.md) |
 | Don't change my login shell | `DOTFILES_CHSH=skip` (`--no-chsh`), or `login_shell_zsh: false` | [configuration.md](configuration.md) |
 | Secrets from Bitwarden | `DOTFILES_BITWARDEN=true` (`--bitwarden`), or `bitwarden: true` | [bitwarden.md](bitwarden.md) |

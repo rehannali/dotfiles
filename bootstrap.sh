@@ -10,7 +10,7 @@
 # What it does, in order:
 #   1. unlocks sudo once and keeps it unlocked, so nothing later asks for the password again
 #   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew on Apple Silicon. Intel
-#      Macs get no Homebrew: mycask (tools/mycask, in the repo) installs their apps and tools. Linux: makes sure git
+#      Macs get no Homebrew: MacPorts and mise their tools, mycask (tools/mycask) their apps. Linux: makes sure git
 #      and curl exist (apt).
 #      Done here, with the real terminal and visible output, so a failure stops with its reason.
 #   3. with --bitwarden: logs in to Bitwarden and unlocks the vault (the playbook reads secrets from it)
@@ -35,7 +35,7 @@
 #   --ios-runtime V     this iOS simulator runtime instead of the one for that Xcode (DOTFILES_IOS_RUNTIME)
 #   --no-flutter        no Flutter SDK                                            (DOTFILES_FLUTTER=skip)
 #   --no-casks          macOS: no GUI apps from casks (Homebrew, mycask on Intel) (DOTFILES_CASKS=skip)
-#   --no-macports       Intel Mac: no MacPorts fallback for tools without a bottle (DOTFILES_MACPORTS=skip)
+#   --no-macports       Intel Mac: no command-line tools from MacPorts (DOTFILES_MACPORTS=skip)
 #   --no-appstore       macOS: no Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
 #   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone (DOTFILES_DEFAULTS=skip)
 #   --no-chsh           do not make zsh the login shell                           (DOTFILES_CHSH=skip)
@@ -150,8 +150,8 @@ if [ "$OS" = Darwin ]; then
   say "Command Line Tools: $(xcode-select -p)"
 
   # Homebrew, Apple Silicon only (/opt/homebrew). Intel Macs have none: Homebrew made them Tier 3 and drops them on
-  # 1 September 2027, so mycask (tools/mycask, run by the playbook) installs their apps and tools. It needs only the
-  # python3 that came with the Command Line Tools.
+  # 1 September 2027, so the playbook installs their tools with MacPorts and mise, and their apps with mycask
+  # (tools/mycask), which needs only the python3 that came with the Command Line Tools.
   if [ "$(uname -m)" = arm64 ]; then
     brew_bin=/opt/homebrew/bin/brew
     if [ ! -x "$brew_bin" ]; then
@@ -170,9 +170,9 @@ if [ "$OS" = Darwin ]; then
   else
     /usr/bin/python3 --version > /dev/null 2>&1 || die "/usr/bin/python3 does not run (mycask needs it; it comes with the Command Line Tools)"
     if [ -x /usr/local/bin/brew ] || [ -d /usr/local/Homebrew ]; then
-      say "Intel Mac: Homebrew is still in /usr/local; the playbook will stop at the packages and say how to remove it"
+      say "Intel Mac: Homebrew is still in /usr/local; nothing uses it any more (the report at the end says how to remove it)"
     else
-      say "Intel Mac: no Homebrew; mycask installs the apps and tools"
+      say "Intel Mac: no Homebrew; MacPorts and mise install the tools, mycask the apps"
     fi
   fi
 else

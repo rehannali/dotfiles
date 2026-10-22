@@ -1,5 +1,6 @@
 ---
-# remove: in main.yml (or a group / host). Uninstalls exactly what is listed; nothing else. Intel Macs: with mycask.
+# remove: in main.yml (or a group / host). Uninstalls exactly what is listed; nothing else. Intel Macs: casks with mycask,
+# no Homebrew formulae (there are none).
 - name: Remove | Homebrew formulae
   community.general.homebrew:
     name: "{{ item }}"
@@ -18,19 +19,8 @@
   ignore_errors: true
   when: not intel_mac
 
-- name: Remove | formulae (Intel, mycask formula uninstall)
-  ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} formula uninstall {{ item | quote }}
-  environment: "{{ mycask_env }}"
-  loop: "{{ remove.brew | default([]) }}"
-  register: removed_mycask_formula
-  changed_when: removed_mycask_formula.rc == 0
-  failed_when: removed_mycask_formula.rc != 0 and 'is not installed' not in removed_mycask_formula.stderr
-  ignore_errors: true
-  when: intel_mac
-
 - name: Remove | casks (Intel, mycask uninstall)
   ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} uninstall {{ item | quote }}
-  environment: "{{ mycask_env }}"
   loop: "{{ remove.cask | default([]) }}"
   register: removed_mycask_cask
   changed_when: removed_mycask_cask.rc == 0

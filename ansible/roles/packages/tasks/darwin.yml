@@ -4,22 +4,24 @@
     brew_prefix: "{{ '/opt/homebrew' if ansible_facts.architecture == 'arm64' else '/usr/local' }}"
     intel_mac: "{{ ansible_facts.system == 'Darwin' and ansible_facts.architecture == 'x86_64' }}"
 
-# Intel Macs have no Homebrew: mycask installs their casks and formulae (intel_mycask.yml)
-- name: Intel Mac (mycask, no Homebrew)
+# Intel Macs have no Homebrew: command-line tools from MacPorts (ports.yml) and mise (roles/mise), apps from mycask
+- name: Intel Mac (MacPorts, mise, mycask; no Homebrew)
   when: intel_mac
   environment:
-    PATH: "/usr/local/bin:/usr/local/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+    PATH: "/opt/local/bin:/opt/local/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
   block:
-    - name: Intel | casks and formulae
+    - name: Intel | command-line tools (MacPorts)
+      ansible.builtin.include_tasks: ports.yml
+
+    - name: Intel | casks (mycask)
       ansible.builtin.include_tasks: intel_mycask.yml
 
     - name: Intel | App Store and GitHub apps
       ansible.builtin.include_tasks: apps.yml
-      when: gui_apps | bool and intel_brew_msg is not defined
+      when: gui_apps | bool
 
-    - name: Intel | remove (remove.brew / cask / mas / port)
+    - name: Intel | remove (remove.cask / mas / port)
       ansible.builtin.include_tasks: darwin_remove.yml
-      when: intel_brew_msg is not defined
 
 - name: Homebrew | installed?
   ansible.builtin.stat:
@@ -39,10 +41,6 @@
     PATH: "{{ brew_prefix }}/bin:{{ brew_prefix }}/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
     HOMEBREW_NO_ANALYTICS: "1"
     HOMEBREW_NO_INSTALL_CLEANUP: "1"
-    # Intel Macs (Tier 3): never update, upgrade or compile on the side
-    HOMEBREW_NO_AUTO_UPDATE: "{{ '1' if intel_mac else '' }}"
-    HOMEBREW_NO_INSTALL_UPGRADE: "{{ '1' if intel_mac else '' }}"
-    HOMEBREW_MAKE_JOBS: "{{ '2' if intel_mac else '' }}"
   block:
     - name: Homebrew | update the formula index
       ansible.builtin.command: brew update
@@ -73,6 +71,14 @@
       ignore_errors: true
       when: not intel_mac
 
+    # every run with upgrade_on_apply (or --tags upgrade): formulae and casks with a newer version
+    - name: Homebrew | upgrade (brew upgrade)
+      ansible.builtin.command: brew upgrade
+      register: brew_upgrade
+      changed_when: brew_upgrade.stdout is search('==> Upgrading')
+      ignore_errors: true
+      when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
+
     - name: Homebrew | record formulae that did not install
       ansible.builtin.set_fact:
         install_failures: "{{ install_failures | default([]) + ['brew: ' ~ item.item.name] }}"
@@ -81,7 +87,7 @@
         label: "{{ item.item.name }}"
       when: not intel_mac
 
-    # brew_service in packages.yml; a tool that came from MacPorts or mise instead (Intel) has no Homebrew service
+    # brew_service in packages.yml
     - name: Homebrew | services
       ansible.builtin.shell: |
         brew list --formula {{ item.name | quote }} > /dev/null 2>&1 || { echo "not from Homebrew"; exit 0; }
@@ -111,40 +117,3 @@
       ansible.builtin.command: brew cleanup
       changed_when: false
       failed_when: false
-
-# platforms.yml `system: port` (an Intel Mac after Homebrew dropped it): ports straight from MacPorts, binary archives
-# only; a port_build port itself is compiled, its dependencies are not
-- name: MacPorts | ports (platform system is port)
-  when: tool_plan.port | length > 0 and macports_fallback | bool
-  block:
-    - name: MacPorts | installed?
-      ansible.builtin.include_tasks: macports.yml
-      when: macports_ready is not defined
-
-    - name: MacPorts | ports
-      ansible.builtin.script: port-install.sh {{ item | quote }} {{ (item in tool_plan.port_build) | lower }}
-      loop: "{{ tool_plan.port }}"
-      become: true
-      register: ports_result
-      changed_when: "'is already installed' not in ports_result.stdout"
-      retries: "{{ install_retries | int - 1 }}"
-      delay: "{{ install_delay }}"
-      until: ports_result is succeeded
-      ignore_errors: true
-      when: macports_ready | bool
-
-    - name: MacPorts | mise instead, where the entry has a mise_fallback
-      ansible.builtin.set_fact:
-        intel_mise_fallback: "{{ intel_mise_fallback | default([]) + [tool_plan.port_fallback[item.item]] }}"
-      loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: item.item in tool_plan.port_fallback
-
-    - name: MacPorts | record what did not install
-      ansible.builtin.set_fact:
-        install_failures: "{{ install_failures | default([]) + ['port: ' ~ item.item] }}"
-      loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: item.item not in tool_plan.port_fallback

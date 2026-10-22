@@ -3,20 +3,18 @@
     tools | tool_plan(platform, managers, gui_apps)
 
 platform is macos_arm64, macos_x86_64 or debian; managers is that platform's entry of platform_managers
-(inventory/group_vars/all/platforms.yml): {cli: brew|mise, system: brew|apt|port|none}. `none` (a platform without a
-package list yet, e.g. Fedora): system tools are left out and reported.
+(inventory/group_vars/all/platforms.yml): {cli: brew|mise|port, system: brew|apt|port|none}. `none` (a platform
+without a package list yet, e.g. Fedora): system tools are left out and reported.
 
     kind cli (or any entry with a mise key)   managers.cli first, then mise, then managers.system
     kind system / apple                       managers.system
     kind apple                                macOS with gui_apps only
 
-On an Intel Mac a brew entry carries its `port` and `mise_fallback`: the packages role tries them, in that order, when
-there is no bottle. `managers.fallbacks: false` (platforms.yml) leaves them out: the bottle is then the only source,
-Homebrew's or the one this repo's CI builds, until the fallbacks are switched on again (August 2027). A cli tool whose
-brew entry is a tap formula (owner/tap/name) stays with mise on an Intel Mac: mycask reads no taps. With `system: port` the port is used directly, else the mise_fallback, else the tool is reported in
-`unplanned`. `port_build` lets MacPorts compile the port itself (its dependencies still come as binary archives); such
-ports are also listed in `port_build`, and `port_fallback` maps a port to its mise_fallback. `mise_intel` picks another mise id on Intel Macs (or `false`: mise has no Intel build at all).
-`intel_prefer` (Intel Macs) sets `prefer` on the brew entry: mycask uses the port / mise_fallback even when a bottle exists.
+With `system: port` (an Intel Mac, which has no Homebrew) a tool without a port takes its mise_fallback, else its
+`download` (a .tgz put in ~/.local/bin), else it is reported in `unplanned`. `port_build` lets MacPorts compile the
+port itself (its dependencies still come as binary archives); such ports are also listed in `port_build`,
+`port_fallback` maps a port to its mise_fallback, `port_select` holds the [group, choice] pairs to `port select`, and
+`port_links` the commands to link into ~/.local/bin. `mise_intel` picks another mise id on Intel Macs.
 Exactly one manager per tool, so nothing is ever installed twice.
 """
 
@@ -30,11 +28,11 @@ def tool_plan(tools, platform, managers, gui_apps=True):
     is_mac = str(platform).startswith("macos")
     intel_mac = platform == "macos_x86_64"
     cli, system = managers.get("cli"), managers.get("system")
-    fallbacks = managers.get("fallbacks", True) is not False
-    if cli not in ("brew", "mise") or system not in ("brew", "apt", "port", "none"):
-        raise AnsibleFilterError("platform_managers[%s]: cli must be brew or mise, system brew, apt, port or none (got %r)"
-                                 % (platform, managers))
-    plan = {"apt": [], "brew": [], "mise": [], "port": [], "port_build": [], "port_fallback": {}, "expect": [], "unplanned": []}
+    if cli not in ("brew", "mise", "port") or system not in ("brew", "apt", "port", "none"):
+        raise AnsibleFilterError("platform_managers[%s]: cli must be brew, mise or port, system brew, apt, port or none "
+                                 "(got %r)" % (platform, managers))
+    plan = {"apt": [], "brew": [], "mise": [], "port": [], "port_build": [], "port_fallback": {}, "port_select": [],
+            "port_links": {}, "download": [], "expect": [], "unplanned": []}
     for t in tools:
         kind = t.get("kind")
         if kind not in KINDS:
@@ -46,7 +44,7 @@ def tool_plan(tools, platform, managers, gui_apps=True):
         mise_intel = t.get("mise_intel")
 
         def mise_id():
-            if "mise" not in t or (intel_mac and mise_intel is False):
+            if "mise" not in t:
                 return None
             return mise_intel if intel_mac and isinstance(mise_intel, str) else t["mise"]
 
@@ -54,41 +52,37 @@ def tool_plan(tools, platform, managers, gui_apps=True):
         via, ident = "", None
         for mgr in dict.fromkeys(order):
             ident = mise_id() if mgr == "mise" else t.get(mgr)
-            if mgr == "brew" and intel_mac and "/" in str(ident or "") and mise_id():
-                continue   # a tap formula: mycask can't read it, mise can
             if ident:
                 via = mgr
                 break
         if not via and system == "port" and t.get("mise_fallback"):
             via, ident = "mise", t["mise_fallback"]
+        if not via and system == "port" and t.get("download"):
+            via, ident = "download", t["download"]
 
         if via == "brew":
-            plan["brew"].append({
-                "name": ident,
-                "prebuilt": t.get("prebuilt") is True,
-                "service": t.get("brew_service") is True,
-                "source": mise_intel is False,
-                "port": str(t.get("port", "")) if intel_mac and fallbacks else "",
-                "port_build": intel_mac and fallbacks and t.get("port_build") is True,
-                "mise_fallback": str(t.get("mise_fallback", "")) if intel_mac and fallbacks else "",
-                "prefer": intel_mac and fallbacks and t.get("intel_prefer") is True,
-            })
+            plan["brew"].append({"name": ident, "prebuilt": t.get("prebuilt") is True,
+                                 "service": t.get("brew_service") is True})
+        elif via == "download":
+            plan["download"].append({"name": t["name"], "url": ident, "bin": t.get("bin", t["name"])})
         elif via:
             plan[via].append(ident)
-            if via == "port" and t.get("port_build") is True:
-                plan["port_build"].append(ident)
-            if via == "port" and t.get("mise_fallback"):
-                plan["port_fallback"][ident] = str(t["mise_fallback"])
-        elif system == "none" or any(k in t for k in (("brew", "port", "mise", "mise_fallback") if is_mac else ("apt", "mise"))):
+            if via == "port":
+                if t.get("port_build") is True:
+                    plan["port_build"].append(ident)
+                if t.get("mise_fallback"):
+                    plan["port_fallback"][ident] = str(t["mise_fallback"])
+                if t.get("port_select"):
+                    plan["port_select"].append(list(t["port_select"]))
+                plan["port_links"].update(t.get("port_links") or {})
+        elif system == "none" or any(k in t for k in (("brew", "port", "mise", "mise_fallback", "download") if is_mac
+                                                        else ("apt", "mise"))):
             plan["unplanned"].append(t["name"])   # meant for this kind of OS, but no manager here has it
 
         if via:
             bin_ = t.get("bin", "" if kind == "system" else t["name"])
-            on_intel_brew = intel_mac and via == "brew"
-            plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_, "source": mise_intel is False,
-                                   "port": str(t.get("port", "")) if on_intel_brew and fallbacks else "",
-                                   "mise_fallback": str(t.get("mise_fallback", ""))
-                                   if intel_mac and fallbacks and via in ("brew", "port") else ""})
+            plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_,
+                                   "mise_fallback": str(t.get("mise_fallback", "")) if via == "port" else ""})
     return plan
 
 

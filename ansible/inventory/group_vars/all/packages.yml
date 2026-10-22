@@ -19,25 +19,21 @@
 #   mise        mise tool id: registry short name, or backend:owner/repo
 #   brew        Homebrew formula (tap formulae fully qualified)
 #   apt         Debian/Ubuntu package
-#   (port, mise_fallback, intel_prefer and mise_intel below only count on an Intel Mac, and port, mise_fallback and
-#   intel_prefer only while platforms.yml has `fallbacks: true` for it; until August 2027 it is false: bottles only)
-#   port        MacPorts port. Intel Macs only: used for a tool Homebrew has no bottle for (and for a mise_intel: false
-#               tool that has none), so nothing is compiled. Only set where an Intel binary archive exists on
-#               packages.macports.org. If the port cannot be installed either, mise_fallback is tried next.
-#   port_build  true = MacPorts may compile this port itself when it has no binary archive (nmap: licence), as long as
-#               every dependency comes as one. A few minutes, never a chain of builds. Default: binary archives only.
-#   mise_fallback  Intel Macs only, the last resort for a brew tool: a mise tool id used when Homebrew has no bottle
-#               and MacPorts (no `port`, or its install failed) cannot provide it either. It goes into the mise
-#               config, so mise installs it like any other tool. A tool with none of the three is reported and
-#               skipped, never compiled (unless mise_intel: false).
-#   intel_prefer  true = Intel Macs take the `port` (or else the `mise_fallback`) even when Homebrew still has a bottle;
-#               the way to move a tool off bottles before Homebrew drops Intel (tools/mycask/README.md, phase 2)
-#   mise_intel  mise has no macOS x86_64 build of this tool (used when platforms.yml has `cli: mise` for Intel Macs, as
-#               it will from August 2027; until then Intel Macs take the Homebrew formula, except tap formulae). "cargo:<crate>" = Intel Macs build the crate with
-#               mise's prebuilt Rust (minutes); any other mise id works too (e.g. a "github:owner/repo" whose
-#               asset the registry entry misses). false = Intel Macs use Homebrew, from a bottle if there is one,
-#               otherwise built from source. (Do not use false for Rust tools: Homebrew's rust has no Intel
-#               bottle either, so it compiles LLVM, which took >4 hours in CI.)
+#   The keys below (port to download) only count on an Intel Mac, which has no Homebrew: a tool comes from its
+#   `port` if it has one, else from mise (`mise_intel`, else `mise`, else `mise_fallback`), else `download`, else it
+#   is reported. Its GUI apps (casks) come from mycask. CLI tools that ship as casks (claude-code, codex) are apps.
+#   port        MacPorts port. Only set where packages.macports.org has an Intel archive for the current macOS, so
+#               nothing is compiled, unless port_build says otherwise. If it does not install, mise_fallback is tried.
+#   port_build  true = MacPorts has no archive for the port itself (git, autoconf, automake): it is built, a few
+#               minutes, after every dependency came as an archive. Never a chain of builds.
+#   port_select [group, choice]: `port select --set` after installing (php85 as php, pygmentize from py314-pygments)
+#   port_links  {command: path}: a link in ~/.local/bin for a port that installs the command under another name
+#               (telnet is gtelnet) or somewhere else (docker-compose is a docker CLI plugin)
+#   mise_fallback  a mise tool id for a tool with no port (ansible: pipx:ansible-core), or whose port failed
+#   mise_intel  a mise id to use on Intel Macs instead of `mise`: "cargo:<crate>" builds the crate with mise's Rust
+#               (eza: no Intel build anywhere else)
+#   download    URL of a .tgz with the command at its top level (speedtest: Ookla's own universal build), put in
+#               ~/.local/bin; again when the URL changes
 #   brew_service  true = start it with `brew services` once Homebrew installed it (apt starts its own services)
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
 #   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
@@ -81,31 +77,30 @@ packages:
     # Every machine: the shell and the everyday command-line tools.
     core:
       tools:
-        - {name: atuin, kind: cli, mise: atuin, mise_intel: "cargo:atuin", brew: atuin, apt: atuin}
-        - {name: bat, kind: cli, mise: bat, brew: bat, apt: bat}
-        - {name: btop, kind: cli, mise: btop, mise_intel: false, brew: btop, port: btop, apt: btop}
-        - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, bin: bw}
-        - {name: dust, kind: cli, mise: dust, brew: dust}
-        - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}
-        - {name: fastfetch, kind: cli, mise: fastfetch, mise_intel: "github:fastfetch-cli/fastfetch", brew: fastfetch, apt: fastfetch}   # replaces neofetch
-        - {name: gh, kind: cli, mise: gh, brew: gh, apt: gh}
-        - {name: glab, kind: cli, mise: glab, brew: glab}
-        - {name: git-delta, kind: cli, mise: delta, mise_intel: "cargo:git-delta", brew: git-delta, apt: git-delta, bin: delta}
-        - {name: git-lfs, kind: cli, mise: git-lfs, brew: git-lfs, apt: git-lfs}
-        - {name: lsd, kind: cli, mise: lsd, brew: lsd, apt: lsd}
-        - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, apt: neovim, bin: nvim}
-        - {name: rclone, kind: cli, mise: rclone, brew: rclone, apt: rclone}
-        - {name: tmux, kind: cli, mise: tmux, brew: tmux, apt: tmux}
-        - {name: zoxide, kind: cli, mise: zoxide, brew: zoxide, apt: zoxide}
+        - {name: atuin, kind: cli, mise: atuin, brew: atuin, port: atuin, apt: atuin}
+        - {name: bat, kind: cli, mise: bat, brew: bat, port: bat, apt: bat}
+        - {name: btop, kind: cli, mise: btop, brew: btop, port: btop, apt: btop}
+        - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, port: bitwarden-cli, bin: bw}
+        - {name: dust, kind: cli, mise: dust, brew: dust, port: dust}
+        - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}   # Intel: no MacPorts archive, mise builds it
+        - {name: fastfetch, kind: cli, mise: fastfetch, brew: fastfetch, port: fastfetch, apt: fastfetch}   # replaces neofetch
+        - {name: gh, kind: cli, mise: gh, brew: gh, port: gh, apt: gh}
+        - {name: glab, kind: cli, mise: glab, brew: glab, port: glab}
+        - {name: git-delta, kind: cli, mise: delta, brew: git-delta, port: git-delta, apt: git-delta, bin: delta}
+        - {name: git-lfs, kind: cli, mise: git-lfs, brew: git-lfs, port: git-lfs, apt: git-lfs}
+        - {name: lsd, kind: cli, mise: lsd, brew: lsd, port: lsd, apt: lsd}
+        - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, port: neovim, apt: neovim, bin: nvim}
+        - {name: rclone, kind: cli, mise: rclone, brew: rclone, port: rclone, apt: rclone}
+        - {name: tmux, kind: cli, mise: tmux, brew: tmux, port: tmux, apt: tmux}
+        - {name: zoxide, kind: cli, mise: zoxide, brew: zoxide, port: zoxide, apt: zoxide}
         - {name: coreutils, kind: system, brew: coreutils, port: coreutils}
         - {name: curl, kind: system, apt: curl, bin: curl}
         - {name: file, kind: system, apt: file}
-        - {name: git, kind: system, brew: git, port: git, apt: git, bin: git}
+        - {name: git, kind: system, brew: git, port: git, port_build: true, apt: git, bin: git}   # MacPorts has no archive: built (minutes)
         - {name: htop, kind: system, brew: htop, port: htop, apt: htop, bin: htop}
         - {name: pwgen, kind: system, brew: pwgen, port: pwgen, apt: pwgen, bin: pwgen}
-        - {name: rsync, kind: system, brew: rsync, port: rsync, mise_fallback: 'conda:rsync', apt: rsync, bin: rsync}
-        - {name: stow, kind: system, brew: stow, apt: stow, bin: stow}
-        - {name: thefuck, kind: system, brew: thefuck, bin: thefuck}
+        - {name: rsync, kind: system, brew: rsync, port: rsync, apt: rsync, bin: rsync}
+        - {name: thefuck, kind: system, brew: thefuck, port: thefuck, bin: thefuck}
         - {name: unzip, kind: system, apt: unzip, bin: unzip}
         - {name: zip, kind: system, apt: zip}
         - {name: zsh, kind: system, brew: zsh, port: zsh, apt: zsh, bin: zsh}
@@ -114,7 +109,7 @@ packages:
     runtimes:
       runtimes:
         node: lts
-        python: "3.12"
+        python: "3.15"   # global; a project picks another in its mise.toml
         uv: latest
         ruby: "3.3"
         java: [corretto-21, corretto-17]   # first entry is the default
@@ -127,22 +122,25 @@ packages:
     # Building and shipping software.
     dev:
       tools:
-        - {name: act, kind: cli, mise: act, brew: act}
-        - {name: cmake, kind: cli, mise: cmake, brew: cmake, apt: cmake}
-        - {name: docker, kind: cli, mise: docker-cli, brew: docker}
-        - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose}
+        - {name: act, kind: cli, mise: act, brew: act, port: act}
+        - {name: cmake, kind: cli, mise: cmake, brew: cmake, port: cmake, apt: cmake}
+        - {name: deno, kind: cli, mise: deno, brew: deno, port: deno}
+        - {name: docker, kind: cli, mise: docker-cli, brew: docker, port: docker}
+        - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose, port: docker-compose-plugin,
+           port_links: {docker-compose: /opt/local/libexec/docker/cli-plugins/docker-compose}}   # Compose v2 (the docker-compose port is v1)
         - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
         - {name: graphite, kind: cli, mise: graphite, brew: withgraphite/tap/graphite, bin: gt}   # stacked PRs
-        - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, apt: mkcert}
+        - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, port: mkcert, apt: mkcert}
         - {name: payload-dumper-go, kind: cli, mise: github:ssut/payload-dumper-go, brew: payload-dumper-go}
         - {name: pipx, kind: cli, mise: pipx, brew: pipx, apt: pipx}
         - {name: poetry, kind: cli, mise: pypi:poetry, brew: poetry, apt: python3-poetry}
-        - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, apt: python3-pygments, bin: pygmentize}
+        - {name: pygments, kind: cli, mise: pypi:pygments, brew: pygments, port: py314-pygments, port_select: [pygments, py314-pygments],
+           apt: python3-pygments, bin: pygmentize}
         - {name: zig, kind: cli, mise: zig, brew: zig}
-        - {name: ansible, kind: system, brew: ansible, mise_fallback: pipx:ansible-core, apt: ansible, bin: ansible}   # Intel fallback: ansible-core only
+        - {name: ansible, kind: system, brew: ansible, mise_fallback: pipx:ansible-core, apt: ansible, bin: ansible}   # Intel: ansible-core from mise
         - {name: aria2, kind: system, brew: aria2, port: aria2, apt: aria2, bin: aria2c}   # also makes xcodes downloads faster
-        - {name: autoconf, kind: system, brew: autoconf, bin: autoconf}   # apt: comes with automake. brew: also comes with automake, but Intel Macs have no automake bottle
-        - {name: automake, kind: system, brew: automake, port: automake, apt: automake, bin: automake}
+        - {name: autoconf, kind: system, brew: autoconf, port: autoconf, port_build: true, bin: autoconf}   # apt: comes with automake. MacPorts: no archive, built
+        - {name: automake, kind: system, brew: automake, port: automake, port_build: true, apt: automake, bin: automake}
         - {name: build-essential, kind: system, apt: build-essential}
         - {name: gcc, kind: system, brew: gcc, port: gcc14}   # apt: comes with build-essential
         # git-flow-next, the maintained rewrite, replaces git-flow: Homebrew declares them in conflict (both provide the
@@ -154,7 +152,7 @@ packages:
         - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
         - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
         - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconf, bin: pkgconf}   # apt: comes with libharfbuzz-dev
-        - {name: subversion, kind: system, brew: subversion, port: subversion, mise_fallback: 'conda:subversion', apt: subversion, bin: svn}
+        - {name: subversion, kind: system, brew: subversion, port: subversion, apt: subversion, bin: svn}
         - {name: zlib, kind: system, brew: zlib, port: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
         # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
         # - {name: xz-utils, kind: system, apt: xz-utils}   # comes with build-essential (through dpkg-dev)
@@ -162,39 +160,39 @@ packages:
     # Images, video and documents on the command line.
     media:
       tools:
-        - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, mise_fallback: 'conda:ffmpeg', apt: ffmpeg, bin: ffmpeg}
-        - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, mise_fallback: 'conda:ghostscript', apt: ghostscript, bin: gs}
-        - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, mise_fallback: 'conda:graphicsmagick', apt: graphicsmagick, bin: gm}
-        - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, mise_fallback: 'conda:imagemagick', apt: imagemagick, bin: convert}
+        - {name: ffmpeg, kind: system, brew: ffmpeg, port: ffmpeg, apt: ffmpeg, bin: ffmpeg}
+        - {name: ghostscript, kind: system, brew: ghostscript, port: ghostscript, apt: ghostscript, bin: gs}
+        - {name: graphicsmagick, kind: system, brew: graphicsmagick, port: GraphicsMagick, apt: graphicsmagick, bin: gm}
+        - {name: imagemagick, kind: system, brew: imagemagick, port: ImageMagick, apt: imagemagick, bin: convert}
         - {name: libheif, kind: system, apt: libheif-dev}   # brew: comes with imagemagick and graphicsmagick
 
     # Network tools.
     network:
       tools:
-        - {name: nmap, kind: system, brew: nmap, port: nmap, port_build: true, apt: nmap, bin: nmap}
+        - {name: nmap, kind: system, brew: nmap, port: nmap, apt: nmap, bin: nmap}
         - {name: openconnect, kind: system, brew: openconnect, port: openconnect, apt: openconnect, bin: openconnect}
-        - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest}
-        - {name: telnet, kind: system, brew: telnet, apt: telnet, bin: telnet}
+        - {name: speedtest, kind: system, brew: teamookla/speedtest/speedtest, prebuilt: true, bin: speedtest,
+           download: "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-macosx-universal.tgz"}   # Intel: Ookla's own build
+        - {name: telnet, kind: system, brew: telnet, port: inetutils, port_links: {telnet: /opt/local/bin/gtelnet}, apt: telnet, bin: telnet}
         - {name: unbound, kind: system, brew: unbound, port: unbound, apt: unbound}
         - {name: wireguard-tools, kind: system, brew: wireguard-tools, port: wireguard-tools, apt: wireguard-tools, bin: wg}
 
     # A local web stack.
     web:
       tools:
-        - {name: nginx, kind: system, brew: nginx, port: nginx, mise_fallback: 'conda:nginx', apt: nginx, brew_service: true}
-        - {name: php, kind: system, brew: php, apt: php-cli, bin: php}
+        - {name: nginx, kind: system, brew: nginx, port: nginx, apt: nginx, brew_service: true}
+        - {name: php, kind: system, brew: php, port: php85, port_select: [php, php85], apt: php-cli, bin: php}
 
     # Apple development (macOS, with gui_apps): command-line tools, gems, Xcode extensions. Xcode itself is the xcode
     # role (install_xcode). The gems need the runtimes bundle (mise's Ruby).
     mac_dev:
       tools:
-        - {name: carthage, kind: apple, brew: carthage}
-        # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...). No port: MacPorts' Intel archive is linked against a
-        # libplist it no longer ships (dyld: libplist-2.0.4.dylib not loaded), so on Intel it is skipped like other formulae without a bottle
-        - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller}
-        - {name: ios-deploy, kind: apple, brew: ios-deploy, mise_fallback: npm:ios-deploy}
-        - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint}
-        - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, bin: xcodes}
+        - {name: carthage, kind: apple, brew: carthage, port: carthage}
+        # also installs libimobiledevice (ideviceinfo, idevicesyslog, ...)
+        - {name: ideviceinstaller, kind: apple, brew: ideviceinstaller, port: ideviceinstaller}
+        - {name: ios-deploy, kind: apple, brew: ios-deploy, port: ios-deploy}
+        - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint, port: swiftlint}
+        - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, port: xcodes, bin: xcodes}
       gems:
         - fastlane
         - cocoapods

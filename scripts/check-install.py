@@ -8,8 +8,8 @@ Nothing here trusts the package lists. It asks the machine:
   1. expected tools  What does the plan say should exist HERE (~/.cache/dotfiles/plan.json, written by the run from
                      the tool_plan filter for this OS/arch and machine kind)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
-                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel; on an Intel Mac
-                     "brew" means mycask's bottles in /usr/local) and not from a shadowing copy,
+                     manager that is supposed to provide it (mise / brew / apt, or on an Intel Mac MacPorts, mise, or a
+                     download in ~/.local/bin) and not from a shadowing copy,
                      and does it actually start?
   2. architecture    Every executable and native library under mise, Homebrew, ~/.local/bin, installed Mac
                      apps and gem extensions is classified with `file`: an ELF on macOS, a Mach-O on Linux, or
@@ -17,8 +17,7 @@ Nothing here trusts the package lists. It asks the machine:
   3. mise            Every tool in ~/.config/mise/config.toml is installed.
   4. shell           `zsh -i -c exit` starts without errors.
 
-Exit status 1 if anything failed. Warnings (known gaps, e.g. a Homebrew formula with no Intel bottle) do not
-fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
+Exit status 1 if anything failed. Warnings do not fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
 standard tools `file`, `zsh`.
 """
 import argparse
@@ -148,16 +147,10 @@ def brew_prefix():
     return None
 
 
-def mycask_prefix():
-    """Intel Macs without Homebrew: mycask's bottles live in /usr/local, laid out like Homebrew's, and count as brew."""
-    receipts = os.path.join(MYCASK_ROOT, "formula-receipts")
-    return "/usr/local" if INTEL_MAC and os.path.isdir("/usr/local/Cellar") and os.path.isdir(receipts) else None
-
-
 MISE = shutil.which("mise") or os.path.join(HOME, ".local", "bin", "mise")
 MYCASK_ROOT = os.path.expanduser(os.environ.get("MYCASK_ROOT", "~/.local/share/mycask"))
-BREW = (brew_prefix() or mycask_prefix()) if SYSTEM == "Darwin" else None
-MYCASK = INTEL_MAC and not shutil.which("brew") and not os.path.exists("/usr/local/bin/brew")
+BREW = brew_prefix() if SYSTEM == "Darwin" and not INTEL_MAC else None
+MYCASK = INTEL_MAC   # Intel Macs get their casks from mycask
 MISE_DIR = os.path.join(HOME, ".local", "share", "mise")
 
 
@@ -232,19 +225,14 @@ def check_expected(plan):
         path = resolved.get(e["bin"], "")
         strict = e["kind"] in ("cli", "apple")
         if not path or not os.path.exists(path):
-            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source") and not e.get("port")
-            level = WARN if (known_gap or not strict and INTEL_MAC) else FAIL
-            why = "no bottle expected on Intel (Homebrew Tier 3)" if known_gap else "not found on PATH"
-            add(level, "tools", e["name"], "%s via %s: %s" % (e["bin"], e["via"], why))
-            rows.append((level, e["name"], e["via"], "-", why))
+            add(FAIL, "tools", e["name"], "%s via %s: not found on PATH" % (e["bin"], e["via"]))
+            rows.append((FAIL, e["name"], e["via"], "-", "not found on PATH"))
             continue
         real = os.path.realpath(path)
         mgr = manager_of(path) if manager_of(path) != "other" else manager_of(real)
-        want = {"mise": "mise", "brew": "brew", "apt": "system", "port": "macports"}[e["via"]]
-        if e["via"] == "brew" and e.get("port") and mgr == "macports":
-            want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
-        if e["via"] in ("brew", "port") and e.get("mise_fallback") and mgr == "mise":
-            want = "mise"   # Intel: neither a bottle nor MacPorts, mise_fallback is the last planned fallback
+        want = {"mise": "mise", "brew": "brew", "apt": "system", "port": "macports", "download": "other"}[e["via"]]
+        if e["via"] == "port" and e.get("mise_fallback") and mgr == "mise":
+            want = "mise"   # Intel: the port did not install, its mise_fallback is the planned replacement
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))
@@ -305,6 +293,9 @@ def collect_roots(installs):
             if os.path.isdir(p):
                 files += [os.path.join(p, f) for f in sorted(os.listdir(p))]
         roots.append(("brew bin", [f for f in files if os.path.isfile(f)]))
+    if INTEL_MAC and os.path.isdir("/opt/local/bin"):
+        roots.append(("MacPorts bin", [os.path.join("/opt/local/bin", f) for f in sorted(os.listdir("/opt/local/bin"))
+                                       if os.path.isfile(os.path.join("/opt/local/bin", f))]))
     lb = os.path.join(HOME, ".local", "bin")
     if os.path.isdir(lb):
         roots.append(("~/.local/bin", [os.path.join(lb, f) for f in sorted(os.listdir(lb))
