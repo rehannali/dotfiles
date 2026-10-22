@@ -11,6 +11,12 @@
 
 - name: Flatpak apps (Linux desktops)
   ansible.builtin.include_tasks: flatpak.yml
-  when: >-
-    'flatpak' in pkg_managers.apps | default([]) and gui_apps | bool and install_flatpaks | bool
-    and (apps_wanted | selectattr('flatpak', 'defined') | list | length > 0 or remove.flatpak | default([]) | length > 0)
+  when: flatpak_apps | length > 0 or ('flatpak' in pkg_managers.apps | default([]) and remove.flatpak | default([]) | length > 0)
+
+- name: Apps from their vendor's apt repository (Linux desktops, in neither store)
+  ansible.builtin.include_tasks: deb_apps.yml
+  when: deb_apps | length > 0
+
+- name: Snap apps (Linux desktops, apps without a flatpak)
+  ansible.builtin.include_tasks: snap.yml
+  when: snap_apps | length > 0 or ('snap' in pkg_managers.apps | default([]) and remove.snap | default([]) | length > 0)

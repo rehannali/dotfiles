@@ -48,8 +48,15 @@ for t in all_tools:
         if gone in t:
             bad.append(f"{t['name']}: {gone} is no longer used")
 for a in all_apps:
-    if not any(k in a for k in ("cask", "mas", "flatpak", "github")):
-        bad.append(f"app {a['name']}: needs a cask, mas, flatpak or github id")
+    if not any(k in a for k in ("cask", "mas", "flatpak", "snap", "deb", "github")):
+        bad.append(f"app {a['name']}: needs a cask, mas, flatpak, snap, deb or github id")
+    if "deb" in a and (not isinstance(a["deb"], dict) or set(a["deb"]) != {"package", "keyring", "sources"}
+                       or not all(str(a["deb"][k]).startswith("https://") for k in ("keyring", "sources"))):
+        bad.append(f"app {a['name']}: deb is {{package, keyring: https URL, sources: https URL}}")
+    if "snap" in a and not re.match(r"^[a-z0-9](-?[a-z0-9])*$", str(a["snap"])):
+        bad.append(f"app {a['name']}: snap name {a['snap']!r} does not look like one (lowercase, digits, dashes)")
+    if "snap_classic" in a and (a["snap_classic"] is not True or "snap" not in a):
+        bad.append(f"app {a['name']}: snap_classic is true or absent, and needs a snap")
     if "github" in a and (not a.get("asset") or not str(a.get("app", "")).endswith(".app") or "cask" in a):
         bad.append(f"app {a['name']}: a github app needs asset and app (Name.app), and no cask")
     if "macbook" in a and (a["macbook"] is not True or "github" not in a):

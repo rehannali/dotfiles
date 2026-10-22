@@ -1,4 +1,5 @@
 ---
 # A Linux laptop or desktop (Debian / Ubuntu): the command-line setup plus GUI apps from Flathub (apps with a
-# flatpak id in packages.yml) and the terminal configs (wezterm, alacritty).
-bundles: [core, runtimes, dev, media, network, apps_dev, apps_productivity, apps_personal]
+# flatpak id in packages.yml), else from the Snap Store (a snap name), else from the vendor's apt repository (deb), and
+# the terminal configs (wezterm, alacritty).
+bundles: [core, runtimes, dev, media, network, apps_dev, apps_productivity, apps_network, apps_personal]

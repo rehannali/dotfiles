@@ -48,6 +48,10 @@
 #   cask        Homebrew cask (macOS)          appdir: true = into settings.macos.cask_appdir, not /Applications
 #   mas         Mac App Store id (macOS)       arch: arm64 = Apple Silicon only
 #   flatpak     Flathub id (Linux desktops)
+#   snap        Snap Store name (Linux desktops): used when the app has no flatpak (platforms.yml: flatpak first).
+#               Only a snap from the vendor (or a known maintainer); `snap_classic: true` for classic confinement
+#   deb         the vendor's own apt repository (Debian / Ubuntu desktops), for an app in neither store:
+#               {package, keyring: URL of its signing key, sources: URL of its deb822 .sources file}
 #   github      owner/repo of an app that only ships in GitHub releases (macOS, installed like a cask): the latest
 #               release's `asset` (a regex for a .zip) is unpacked, its signature checked (Developer ID, Gatekeeper)
 #               and `app` (MacTap.app) copied into /Applications; again when a newer release comes out
@@ -250,7 +254,11 @@ packages:
       apps:
         - {name: alfred, cask: alfred, appdir: true}
         - {name: bitwarden, cask: bitwarden, appdir: true, flatpak: com.bitwarden.desktop}
-        - {name: brave, cask: brave-origin, appdir: true, flatpak: com.brave.Browser}
+        # Brave Origin: no flatpak or snap (Flathub and the Snap Store only have the regular Brave), so Linux takes
+        # Brave's own apt repository (brave.com/origin/linux, free on Linux; amd64 and arm64)
+        - {name: brave, cask: brave-origin, appdir: true,
+           deb: {package: brave-origin, keyring: "https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg",
+                 sources: "https://brave-browser-apt-release.s3.brave.com/brave-browser.sources"}}
         - {name: chatgpt, cask: chatgpt, appdir: true}
         - {name: claude, cask: claude, appdir: true}
         - {name: clop, cask: clop}   # image / video / PDF optimiser on the clipboard
@@ -297,11 +305,11 @@ packages:
       apps:
         - {name: little-snitch, cask: little-snitch}
         - {name: micro-snitch, cask: micro-snitch}
-        - {name: netbird-ui, cask: netbirdio/tap/netbird-ui}   # from the netbirdio/tap tap (full name: installing it trusts it)
-        - {name: nordvpn, cask: nordvpn}
+        - {name: netbird-ui, cask: netbirdio/tap/netbird-ui, snap: netbird}   # cask from the netbirdio/tap tap; snap: client and daemon (no UI snap)
+        - {name: nordvpn, cask: nordvpn, snap: nordvpn}
         - {name: openvpn-connect, cask: openvpn-connect}
-        - {name: surfshark, cask: surfshark}
-        - {name: tailscale, cask: tailscale-app}
+        - {name: surfshark, cask: surfshark, snap: surfshark}
+        - {name: tailscale, cask: tailscale-app, snap: tailscale}
         - {name: twingate, cask: twingate}
         - {name: windscribe, cask: windscribe}
         - {name: wireguard, mas: 1451685025}
@@ -318,7 +326,9 @@ packages:
         - {name: setapp, cask: setapp}
         - {name: snagit, cask: snagit}
         - {name: spotify, cask: spotify, flatpak: com.spotify.Client}
+        - {name: steam, flatpak: com.valvesoftware.Steam}   # Linux only here
         - {name: stremio, cask: stremio, flatpak: com.stremio.Stremio}
+        - {name: telegram, flatpak: org.telegram.desktop}   # Linux only here
         - {name: vlc, cask: vlc, flatpak: org.videolan.VLC}
         - {name: whatsapp, cask: whatsapp@beta}
         # - {name: amphetamine, mas: 937984704}   # not used

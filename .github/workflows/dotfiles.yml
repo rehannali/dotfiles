@@ -3,7 +3,8 @@ name: dotfiles
 # Runs the dotfiles for real on each supported machine type, through the same entry point you use
 # (bootstrap.sh -> ansible/site.yml), then audits the result: every expected command resolves, comes from
 # the right package manager, starts, and is built for the right OS and CPU (no macOS binary on Debian, no
-# x86_64 binary on Apple Silicon, ...).
+# x86_64 binary on Apple Silicon, ...). Debian runs twice: as a server, and as a desktop with its Flathub apps (the
+# audit checks they are installed). Casks are checked one at a time by casks-verify.yml.
 #
 # Runs when, and only when: a pull request targets main, code is pushed to main, or someone starts it by hand.
 
@@ -18,7 +19,7 @@ on:
         description: Which machine type to run
         type: choice
         default: all
-        options: [all, debian, mac-intel, mac-arm]
+        options: [all, debian, debian-desktop, mac-intel, mac-arm]
       casks:
         description: "macOS casks: install = really install them (about 70 GUI apps), skip"
         type: choice
@@ -104,6 +105,7 @@ jobs:
         run: |
           all='[
             {"id":"debian",     "group":"servers",      "label":"Debian-based server (Ubuntu runner)", "os":"ubuntu-latest",  "timeout":60},
+            {"id":"debian-desktop", "group":"linux_desktop", "label":"Debian-based desktop with Flathub apps (Ubuntu runner)", "os":"ubuntu-latest", "timeout":120},
             {"id":"mac-intel",  "group":"mac_personal", "label":"macOS Intel (x86_64)",                "os":"macos-15-intel", "timeout":150},
             {"id":"mac-arm",    "group":"mac_personal", "label":"macOS Apple Silicon (arm64)",         "os":"macos-latest",   "timeout":150}
           ]'

@@ -6,6 +6,8 @@
   brew      https://formulae.brew.sh/api/formula/<name>.json      (homebrew/core; tap formulae likewise)
   mas       https://itunes.apple.com/lookup?id=<id>               (the App Store, any country's store)
   flatpak   https://flathub.org/api/v2/appstream/<id>             (Flathub)
+  snap      https://api.snapcraft.io/v2/snaps/info/<name>         (the Snap Store: a stable amd64 build, and its publisher)
+  deb       the keyring and .sources URLs of a vendor apt repository, and the package in its index
   github    https://api.github.com/repos/<repo>/releases/latest   (an asset matching `asset`; GITHUB_TOKEN if set)
   apt       apt-cache show <name>                                 (where apt-cache exists, e.g. the Ubuntu runner; only
                                                                   tools without a mise key, the others come from mise)
@@ -34,10 +36,10 @@ UA = {"User-Agent": "dotfiles-apps-check (github.com/rehannali/dotfiles)"}
 DOWN = {}   # host -> consecutive network failures; after 3 the host is treated as unreachable
 
 
-def fetch(url):
+def fetch(url, extra=None):
     """(status, json or None). Retries a few times on network errors and 5xx; 404 is an answer."""
     host = url.split("/")[2]
-    headers = dict(UA)
+    headers = {**UA, **(extra or {})}
     if host == "api.github.com" and os.environ.get("GITHUB_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
     if DOWN.get(host, 0) >= 3:
@@ -115,6 +117,45 @@ def check_flatpak(app_id):
     return (None, "store not reachable") if status is None else (False, f"not on Flathub (HTTP {status})")
 
 
+def check_snap(name):
+    status, data = fetch(f"https://api.snapcraft.io/v2/snaps/info/{name}?fields=confinement,version,publisher",
+                         {"Snap-Device-Series": "16"})
+    if status == 200 and data:
+        stable = [c for c in data.get("channel-map") or []
+                  if c["channel"]["risk"] == "stable" and c["channel"]["architecture"] == "amd64"]
+        pub = data.get("snap", {}).get("publisher", {})
+        who = pub.get("display-name", "?") + (" (verified)" if pub.get("validation") == "verified" else "")
+        if not stable:
+            return False, f"{who}: no stable amd64 build"
+        return True, f"{who}, {stable[0].get('version')} ({stable[0].get('confinement')})"
+    return (None, "store not reachable") if status is None else (False, f"not in the Snap Store (HTTP {status})")
+
+
+def check_deb(deb):
+    """The vendor repository is there and lists the package: its .sources file names the repository (URIs, Suites,
+    Components), whose Packages index for amd64 must contain the package."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(deb["keyring"], headers=UA), timeout=20) as r:
+            r.read(1)
+        with urllib.request.urlopen(urllib.request.Request(deb["sources"], headers=UA), timeout=20) as r:
+            src = r.read().decode(errors="replace")
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code} for the keyring or sources"
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None, "repository not reachable"
+    field = {k.strip(): v.strip() for k, _, v in (line.partition(":") for line in src.splitlines()) if v}
+    uri, suite = field.get("URIs", "").split()[0] if field.get("URIs") else "", field.get("Suites", "").split()[0] if field.get("Suites") else ""
+    comp = (field.get("Components", "main").split() or ["main"])[0]
+    try:
+        with urllib.request.urlopen(f"{uri.rstrip('/')}/dists/{suite}/{comp}/binary-amd64/Packages", timeout=30) as r:
+            index = r.read().decode(errors="replace")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None, f"index of {uri} not reachable"
+    if f"\nPackage: {deb['package']}\n" in "\n" + index:
+        return True, f"{deb['package']} in {uri} {suite}"
+    return False, f"{deb['package']} not in {uri} {suite}"
+
+
 def check_apt(name):
     rc = subprocess.run(["apt-cache", "show", name], capture_output=True, text=True)
     if rc.returncode == 0 and rc.stdout.strip():
@@ -135,6 +176,10 @@ for bundle, b in pk["bundles"].items():
             rows.append((*check_mas(a["mas"]), "mas", a["name"], a["mas"]))
         if "flatpak" in a:
             rows.append((*check_flatpak(a["flatpak"]), "flatpak", a["name"], a["flatpak"]))
+        if "snap" in a:
+            rows.append((*check_snap(a["snap"]), "snap", a["name"], a["snap"]))
+        if "deb" in a:
+            rows.append((*check_deb(a["deb"]), "deb", a["name"], a["deb"]["package"]))
         if "github" in a:
             rows.append((*check_github(a["github"], a["asset"]), "github", a["name"], a["github"]))
     for t in b.get("tools") or []:

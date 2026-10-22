@@ -1,0 +1,76 @@
+---
+# Linux desktops: apps with a snap name and no flatpak (site.yml: snap_apps), from the Snap Store. Ubuntu ships snapd;
+# Debian gets it from apt. snapd needs systemd, so WSL and containers without it report the apps instead.
+- name: Snap | snapd installed
+  ansible.builtin.apt:
+    name: snapd
+    state: present
+  become: true
+  register: snapd_pkg
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: snapd_pkg is succeeded
+  when: pkg_managers.system == 'apt'
+
+# a fresh snapd seeds itself first; installing before that fails with "too early for operation"
+- name: Snap | snapd ready
+  ansible.builtin.command: snap wait system seed.loaded
+  become: true
+  register: snap_ready
+  changed_when: false
+  failed_when: false
+  timeout: 300
+  when: not ansible_check_mode
+
+- name: Snap | snapd is not running
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['snap: snapd does not run here (no systemd?), not installed: '
+         ~ (snap_apps | map(attribute='name') | join(', '))] }}
+  when: not ansible_check_mode and snap_ready.rc | default(1) != 0
+
+- name: Snap | apps
+  community.general.snap:
+    name: "{{ item.snap }}"
+    classic: "{{ item.snap_classic | default(false) | bool }}"
+    state: present
+  loop: "{{ snap_apps }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.snap }})"
+  become: true
+  register: snap_result
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: snap_result is succeeded
+  ignore_errors: true
+  when: ansible_check_mode or snap_ready.rc | default(1) == 0
+
+# snapd refreshes snaps by itself four times a day; with upgrade_on_apply a run does it now
+- name: Snap | refresh (snap refresh)
+  ansible.builtin.command: snap refresh {{ snap_apps | map(attribute='snap') | map('quote') | join(' ') }}
+  become: true
+  register: snap_refresh
+  changed_when: snap_refresh.stdout is search(' refreshed')
+  failed_when: false
+  when: >-
+    snap_apps | length > 0 and (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags)
+    and not ansible_check_mode and snap_ready.rc | default(1) == 0
+
+- name: Snap | remove (remove.snap)
+  community.general.snap:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ remove.snap | default([]) }}"
+  become: true
+  register: snap_removed
+  ignore_errors: true
+  when: ansible_check_mode or snap_ready.rc | default(1) == 0
+
+- name: Snap | record what did not install or remove
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['snap: ' ~ (item.item.name | default(item.item))] }}"
+  loop: >-
+    {{ ((snap_result.results | default([])) + (snap_removed.results | default([])))
+       | selectattr('failed', 'defined') | selectattr('failed') | list }}
+  loop_control:
+    label: "{{ item.item.name | default(item.item) }}"
