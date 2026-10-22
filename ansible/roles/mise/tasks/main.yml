@@ -41,7 +41,7 @@
     {{ mise_bin }} install
   environment:
     PATH: >-
-      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:{{
+      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:{{
       ansible_facts.env.PATH }}
     # Intel Macs: mise has no prebuilt Ruby there, it compiles; keep the machine usable
     MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
@@ -53,6 +53,29 @@
   delay: "{{ install_delay }}"
   until: mise_install is succeeded
   ignore_errors: true
+
+# Every run with upgrade_on_apply (or --tags upgrade): newer versions of what the config asks for ("latest", "lts", or a
+# prefix such as python "3.15" gets the newest 3.15.x)
+- name: Mise | upgrade (mise upgrade)
+  ansible.builtin.command: "{{ mise_bin }} upgrade --yes"
+  environment:
+    PATH: >-
+      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:{{
+      ansible_facts.env.PATH }}
+    MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
+  register: mise_upgrade
+  changed_when: mise_upgrade.stderr is search('installed')
+  ignore_errors: true
+  when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
+
+# Versions no config uses any more, among them a tool that moved to another manager (MacPorts on an Intel Mac): its
+# shim would otherwise still come first on PATH and hide the new one
+- name: Mise | remove what no config uses (mise prune)
+  ansible.builtin.command: "{{ mise_bin }} prune --tools --yes"
+  register: mise_prune
+  changed_when: mise_prune.stderr is search('removed|uninstall')
+  failed_when: false
+  when: not ansible_check_mode
 
 # The global config (~/.config/mise/config.toml) is what every shell, IDE and script gets: the shims directory is on
 # PATH in .zshenv, .zprofile and .bashrc. Anything in it that is still not installed is reported by name.

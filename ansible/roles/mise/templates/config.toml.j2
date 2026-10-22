@@ -8,14 +8,14 @@
 {% endfor %}
 {% if tool_plan.mise %}
 
-# CLI tools: only where Homebrew is not the source (Linux; Intel Macs only for tap tools until August 2027, then all).
+# CLI tools: Linux, and on Intel Macs the ones without a MacPorts port (dev tooling such as pipx, poetry, zig, fvm).
 {% for id in tool_plan.mise | reject('in', remove.mise | default([])) %}
 {{ id | to_json }} = "latest"
 {% endfor %}
 {% endif %}
 {% if intel_mise_fallback | default([]) %}
 
-# Intel Mac: no bottle (Homebrew or this repo's CI) and no MacPorts archive (mise_fallback in packages.yml)
+# Intel Mac: the port did not install, its mise_fallback instead (packages.yml)
 {% for id in intel_mise_fallback %}
 {{ id | to_json }} = "latest"
 {% endfor %}
