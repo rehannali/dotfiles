@@ -1549,7 +1549,8 @@ def pick_bottle(files, key):
     for tag in order:
         f = files[tag]
         cellar = str(f.get("cellar") or ":any")
-        if cellar in (":any", ":any_skip_relocation") or Path(cellar) == CELLAR:
+        # `brew bottle --json` writes "any" where formula.json has ":any"
+        if cellar.lstrip(":") in ("any", "any_skip_relocation") or Path(cellar) == CELLAR:
             return {"tag": tag, "url": f["url"], "sha256": f["sha256"], "cellar": cellar}
     return None
 
