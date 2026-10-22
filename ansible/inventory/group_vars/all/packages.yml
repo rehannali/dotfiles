@@ -32,8 +32,9 @@
 #   port_links  {command: path}: a link in ~/.local/bin for a port that installs the command under another name
 #               (telnet is gtelnet) or somewhere else (docker-compose is a docker CLI plugin)
 #   mise_fallback  a mise tool id for a tool with no port (ansible: pipx:ansible-core), or whose port failed
-#   mise_intel  a mise id to use on Intel Macs instead of `mise`: "cargo:<crate>" builds the crate with mise's Rust
-#               (eza: no Intel build anywhere else)
+#   mise_intel  a mise id to use on Intel Macs instead of `mise` (also when a port falls back to mise): "cargo:<crate>"
+#               builds the crate with mise's Rust (eza, atuin, git-delta: mise has no Intel build of them), or a
+#               "github:owner/repo" whose release has an Intel asset the registry entry misses (fastfetch)
 #   download    URL of a .tgz with the command at its top level (speedtest: Ookla's own universal build), put in
 #               ~/.local/bin; again when the URL changes
 #   brew_service  true = start it with `brew services` once Homebrew installed it (apt starts its own services)
@@ -83,16 +84,17 @@ packages:
     # Every machine: the shell and the everyday command-line tools.
     core:
       tools:
-        - {name: atuin, kind: cli, mise: atuin, brew: atuin, port: atuin, apt: atuin}
+        - {name: atuin, kind: cli, mise: atuin, mise_intel: "cargo:atuin", brew: atuin, port: atuin, apt: atuin}
         - {name: bat, kind: cli, mise: bat, brew: bat, port: bat, apt: bat}
         - {name: btop, kind: cli, mise: btop, brew: btop, port: btop, apt: btop}
         - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, port: bitwarden-cli, bin: bw}
         - {name: dust, kind: cli, mise: dust, brew: dust, port: dust}
         - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}   # Intel: no MacPorts archive, mise builds it
-        - {name: fastfetch, kind: cli, mise: fastfetch, brew: fastfetch, port: fastfetch, apt: fastfetch}   # replaces neofetch
+        - {name: fastfetch, kind: cli, mise: fastfetch, mise_intel: "github:fastfetch-cli/fastfetch", brew: fastfetch, port: fastfetch,
+           apt: fastfetch}   # replaces neofetch
         - {name: gh, kind: cli, mise: gh, brew: gh, port: gh, apt: gh}
         - {name: glab, kind: cli, mise: glab, brew: glab, port: glab}
-        - {name: git-delta, kind: cli, mise: delta, brew: git-delta, port: git-delta, apt: git-delta, bin: delta}
+        - {name: git-delta, kind: cli, mise: delta, mise_intel: "cargo:git-delta", brew: git-delta, port: git-delta, apt: git-delta, bin: delta}
         - {name: git-lfs, kind: cli, mise: git-lfs, brew: git-lfs, port: git-lfs, apt: git-lfs}
         - {name: lsd, kind: cli, mise: lsd, brew: lsd, port: lsd, apt: lsd}
         - {name: neovim, kind: cli, mise: aqua:neovim/neovim, brew: neovim, port: neovim, apt: neovim, bin: nvim}
