@@ -53,7 +53,32 @@
       ignore_errors: true
       when: macports_ready | bool
 
-    - name: MacPorts | mise instead, where the entry has a mise_fallback
+    # no archive for this macOS (or another failure): what has no mise replacement gets a second try where MacPorts
+    # builds what it must
+    - name: MacPorts | build what has no archive and no mise replacement
+      ansible.builtin.script: >-
+        port-install.sh {{ item.item | quote }} any {{ ports_upgrade | bool | lower }}
+      loop: >-
+        {{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed')
+           | rejectattr('item', 'in', tool_plan.port_fallback) | list }}
+      loop_control:
+        label: "{{ item.item }}"
+      become: true
+      register: ports_built
+      changed_when: true
+      ignore_errors: true
+      when: macports_ready | bool
+
+    # a port whose binary archive was built against an older version of a library (dyld: Library not loaded): rebuilt
+    - name: MacPorts | rebuild ports with broken links (port rev-upgrade)
+      ansible.builtin.command: /opt/local/bin/port -N rev-upgrade
+      become: true
+      register: ports_rev
+      changed_when: ports_rev.stdout is search('--->  (Building|Installing|Activating)')
+      failed_when: false
+      when: macports_ready | bool and not ansible_check_mode
+
+    - name: MacPorts | mise instead, where the tool has a mise id (or a mise_fallback)
       ansible.builtin.set_fact:
         intel_mise_fallback: "{{ intel_mise_fallback | default([]) + [tool_plan.port_fallback[item.item]] }}"
       loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
@@ -63,11 +88,10 @@
 
     - name: MacPorts | record what did not install
       ansible.builtin.set_fact:
-        install_failures: "{{ install_failures | default([]) + ['port: ' ~ item.item] }}"
-      loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+        install_failures: "{{ install_failures | default([]) + ['port: ' ~ item.item.item] }}"
+      loop: "{{ ports_built.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
       loop_control:
-        label: "{{ item.item }}"
-      when: item.item not in tool_plan.port_fallback
+        label: "{{ item.item.item }}"
 
     - name: MacPorts | could not be installed
       ansible.builtin.set_fact:
