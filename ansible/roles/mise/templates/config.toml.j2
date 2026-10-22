@@ -6,6 +6,13 @@
 {% for name, version in selected.runtimes.items() %}
 {{ name | to_json }} = {{ version | to_json }}
 {% endfor %}
+{% if selected.gems and dotfiles_os == 'darwin' and gui_apps | bool and 'ruby' in selected.runtimes %}
+
+# Ruby gems (macOS, Apple development), installed by mise with its Ruby
+{% for gem in selected.gems %}
+{{ ('gem:' ~ gem) | to_json }} = "latest"
+{% endfor %}
+{% endif %}
 {% if tool_plan.mise %}
 
 # CLI tools: Linux, and on Intel Macs the ones without a MacPorts port (dev tooling such as pipx, poetry, zig, fvm).

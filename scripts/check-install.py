@@ -249,7 +249,7 @@ def check_expected(plan):
 
 
 RUNTIME_BINS = ["node", "npm", "python3", "pip3", "ruby", "gem", "java", "javac", "go", "rustc", "cargo", "uv", "mise"]
-if SYSTEM == "Darwin":  # gems installed into mise's Ruby by the dev role
+if SYSTEM == "Darwin":  # gems, mise tools with the gem: backend
     RUNTIME_BINS += ["pod", "fastlane"]
 
 
