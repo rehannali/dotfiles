@@ -63,8 +63,13 @@ jobs:
         run: |
           pipx install --include-deps ansible-lint
           pipx inject ansible-lint pyyaml
-          command -v shellcheck > /dev/null || sudo apt-get install -y shellcheck
-          command -v zsh > /dev/null || sudo apt-get install -y zsh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"   # pipx's commands (ansible-galaxy, ...); a local act run lacks it
+          missing=""
+          command -v shellcheck > /dev/null || missing="$missing shellcheck"
+          command -v zsh > /dev/null || missing="$missing zsh"
+          # GitHub's runner has both; a local run with act (docs/ci.md) does not, and starts with no apt index
+          # shellcheck disable=SC2086  # one word per package
+          if [ -n "$missing" ]; then sudo apt-get update -qq && sudo apt-get install -y $missing; fi
       - name: ansible-lint and syntax
         working-directory: ansible
         run: |
