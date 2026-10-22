@@ -81,19 +81,27 @@ inventory() {
 host_vars() { ansible-inventory "${inv[@]}" --host "$host" 2> /dev/null || true; }
 
 # git needs a name and an email; ask once and keep them (bootstrap.sh --name / --email do the same)
+# a git name / email nothing has given yet: asked (your git config is the suggestion, Enter takes it); without a
+# terminal, or with DOTFILES_YES=true, the git config value is taken as it is
 ask_name_email() {
-  local vars name="" email="" lines=()
+  local vars value suggestion key label lines=()
   vars="$(host_vars)"
-  if grep -q '"git_name": ""' <<< "$vars"; then
-    has_tty || return 0
-    read -r -p "Your name, for git commits: " name < /dev/tty
-    [ -z "$name" ] || lines+=("git_name: $(yaml_str "$name")")
-  fi
-  if grep -q '"git_email": ""' <<< "$vars"; then
-    has_tty || return 0
-    read -r -p "Your email, for git commits: " email < /dev/tty
-    [ -z "$email" ] || lines+=("git_email: $(yaml_str "$email")")
-  fi
+  for key in git_name git_email; do
+    grep -q "\"$key\": \"\"" <<< "$vars" || continue
+    if [ "$key" = git_name ]; then label="Your name, for git commits"; suggestion="$(git config --global user.name || true)"
+    else label="Your email, for git commits"; suggestion="$(git config --global user.email || true)"
+    fi
+    value=""
+    if has_tty && [ "${DOTFILES_YES:-}" != true ]; then
+      while [ -z "$value" ]; do
+        read -r -p "$label${suggestion:+ [$suggestion]}: " value < /dev/tty || break
+        value="${value:-$suggestion}"
+      done
+    else
+      value="$suggestion"
+    fi
+    [ -z "$value" ] || lines+=("$key: $(yaml_str "$value")")
+  done
   [ ${#lines[@]} -eq 0 ] && return 0
   remember "${lines[@]}"
   say "kept in $LOCAL_VARS"

@@ -129,6 +129,7 @@ jobs:
     env:
       # Unattended first run: nothing is asked, no App Store, no Apple ID. Pull requests and pushes skip the casks
       # (about 70 GUI apps); a manual run installs them unless you choose otherwise.
+      DOTFILES_YES: "true"   # ask nothing
       DOTFILES_NAME: CI
       DOTFILES_EMAIL: ci@dotfiles.invalid
       DOTFILES_BITWARDEN: "false"

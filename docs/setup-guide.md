@@ -31,7 +31,7 @@ Two separate questions decide what a machine ends up with:
 |---|---|---|---|
 | Apple Silicon Mac | Homebrew | Homebrew | casks, App Store |
 | Intel Mac | MacPorts, else mise | MacPorts | casks (mycask), App Store |
-| Debian, Ubuntu, Raspberry Pi OS, WSL | mise | apt | Flathub (desktops) |
+| Debian, Ubuntu, Raspberry Pi OS, WSL | mise | apt | Flathub, else Snap, else vendor apt repo (desktops) |
 | Other Linux (Fedora, ...) | mise | not yet: reported and skipped | |
 
 So a personal Intel Mac and an office Intel Mac use the same managers and differ only in their bundles. An office
@@ -182,6 +182,31 @@ install_xcode: false
 
 ## 4. Set up a machine
 
+### Before the first run
+
+`bootstrap.sh` asks the few things it must know at the start, shows what it will do, and then runs on its own:
+
+| Asked (when nothing says it yet) | Suggested | Give it instead |
+|---|---|---|
+| the group of a machine that is not in `hosts.yml` | from the OS: `mac_personal` on a Mac, `wsl` in WSL, `linux_desktop` with a desktop session, else `servers` | `--group`, or add the host to `hosts.yml` |
+| your name and email for git | your git config (`user.name`, `user.email`) | `--name`, `--email`, or `git_name` / `git_email` in the inventory |
+| "Run the setup with these?" | Enter: yes | `--yes` |
+
+The answers are kept for the machine in `~/.config/dotfiles/local.yml`. Everything else has a default; change it with
+an option (`bootstrap.sh --help`, [environment.md](environment.md)) or in the inventory (section 9):
+
+| Default | Change with |
+|---|---|
+| GUI apps on (casks and App Store on a Mac; on a Linux desktop Flathub, else Snap, else the vendor's apt repository) | `--cli`, `--no-casks`, `--no-appstore`, `--no-flatpaks`, `--no-snaps` |
+| every run also upgrades (`upgrade_on_apply`) | `upgrade_on_apply: false` |
+| Xcode, the newest this Mac can run; your Apple ID typed at the end | `--no-xcode`, `--xcode`, the environment or Bitwarden (Apple ID section below) |
+| Bitwarden off | `--bitwarden` (section 6) |
+| zsh as the login shell, the Dock / Finder / trackpad settings | `--no-chsh`, `--no-defaults` |
+
+Fully automated (a VM, a script, CI): `--yes` with `--name` and `--email` (or with them in your git config), plus
+`--no-xcode --no-appstore` or the Apple ID in the environment. Nothing is asked; a missing name or email stops only
+the dotfiles part, and the report at the end says so.
+
 There are three ways to run it. Each runs the same playbook, `ansible/site.yml`.
 
 | Where | Command | Use it for |
@@ -201,7 +226,7 @@ In order, it:
 
 1. unlocks sudo once and keeps it unlocked for the run
 2. installs what Ansible can't install itself: on macOS, the Command Line Tools, and Homebrew on Apple Silicon
-   (Intel Macs get none: mycask, in the repo, needs only the Command Line Tools' python3); on Linux, git and curl
+   (Intel Macs get none: MacPorts and mise install their tools, mycask their apps); on Linux, git and curl
 3. with `--bitwarden`, logs in to Bitwarden and unlocks the vault
 4. clones the repo to `~/.dotfiles`, installs Ansible with uv (its own Python), keeps your options in
    `~/.config/dotfiles/local.yml`, and runs the playbook on this machine (`-c local`, no SSH)
@@ -217,7 +242,7 @@ is in `bootstrap.sh --help` and [environment.md](environment.md). The ones you w
 | `--name`, `--email` | git identity ([section 5](#5-name-and-email)) |
 | `--cli` | no GUI apps, only terminal tools and configs |
 | `--bitwarden`, `--bw-method`, `--bw-server` | secrets from Bitwarden ([section 6](#6-bitwarden)) |
-| `--no-xcode`, `--no-casks`, `--no-appstore`, `--no-flutter`, `--no-defaults`, `--no-chsh` | leave a part out |
+| `--no-xcode`, `--no-casks`, `--no-appstore`, `--no-macports`, `--no-flutter`, `--no-defaults`, `--no-chsh` | leave a part out |
 | `--check` | show what would change, change nothing |
 
 Options that describe the machine are kept in `local.yml`: name, email, `--cli`, `--bitwarden`, the `--no-*`
@@ -357,11 +382,23 @@ export BW_SESSION=$(bw unlock --raw)
 cd ~/.dotfiles/ansible && ansible-playbook site.yml -l pi4 -K
 ```
 
-### Apple ID for Xcode
+### Apple ID: Xcode and the App Store
 
-Name a Bitwarden item in `settings.apple.bitwarden_item` (default `Apple ID`), with your Apple ID as its username and
-password. Optionally, a custom field `FASTLANE_SESSION` lets Xcode install without the two-factor code. The details
-are in [bitwarden.md](bitwarden.md#apple-id-for-xcode-and-the-two-factor-code).
+Decide before the first run how Xcode gets your Apple ID. `xcodes` takes the first of these that is there:
+
+1. **Typed in.** Nothing set up: the playbook does everything else first, then runs `xcodes` on your terminal at the
+   end, where you type the Apple ID, the password and the two-factor code.
+2. **The environment.** `XCODES_USERNAME` and `XCODES_PASSWORD`, plus `FASTLANE_SESSION` (a saved Apple session, valid
+   about a month) to skip the two-factor code; then nothing is asked ([environment.md](environment.md)).
+3. **Bitwarden.** With `--bitwarden`, the item named in `settings.apple.bitwarden_item` (default `Apple ID`): its
+   username and password, and optionally a custom field `FASTLANE_SESSION`
+   ([bitwarden.md](bitwarden.md#apple-id-for-xcode-and-the-two-factor-code)).
+
+CI uses the second way: a manual run with `xcode=install` reads the `FASTLANE_SESSION` secret ([ci.md](ci.md)).
+
+The Mac App Store is different: sign in to the App Store app yourself before the run (`mas` can no longer sign in
+from the command line), or leave it out with `--no-appstore`. A Mac App Store sign-in has no saved session like
+`FASTLANE_SESSION`, and its two-factor code needs a person, so App Store apps are never installed in CI.
 
 ## 7. Tools and apps
 
@@ -463,6 +500,7 @@ Set them in a group or host file for a kind of machine or one machine, or with `
 | `gui_apps` | `true` | `false`: no GUI apps or GUI configs (servers, WSL) |
 | `install_casks` | `true` | macOS apps from Homebrew casks |
 | `install_app_store` | `true` | Mac App Store apps (needs a signed-in App Store) |
+| `install_flatpaks`, `install_snaps` | `true` | Linux desktops: apps from Flathub, and from the Snap Store for apps without a flatpak (snapd is installed if missing) |
 | `install_flatpaks` | `true` | Linux desktop apps from Flathub |
 | `macports_fallback` | `true` | Intel Macs: command-line tools from MacPorts |
 | `upgrade_on_apply` | `true` | every run also upgrades (MacPorts, mise, Homebrew, casks); `false`: only installs, `--tags upgrade` upgrades |
@@ -509,6 +547,7 @@ settings_override:
 | `macos.dock.*` | left, 42, autohide, no recents | Dock settings |
 | `shell.env` | two Python variables | extra environment variables for every zsh |
 | `shell.path` | `[]` | extra directories at the front of PATH |
+| `shell.bitwarden_ssh_agent` | `auto` | `SSH_AUTH_SOCK` for Bitwarden's SSH agent: `auto`, `appstore`, `dmg`, `linux`, `snap`, `flatpak` or `off` ([bitwarden.md](bitwarden.md#ssh-agent)) |
 | `apple.bitwarden_item` | `Apple ID` | the Bitwarden item with your Apple ID |
 | `wsl.distribution`, `wsl.username` | `Ubuntu`, `""` | the WSL domain wezterm opens (Windows) |
 
@@ -529,12 +568,12 @@ More in [configuration.md](configuration.md).
 ```yaml
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: mise, system: brew, apps: [cask, mas]}
+  macos_x86_64: {cli: port, system: port, apps: [cask, mas]}
   debian: {cli: mise, system: apt, apps: [flatpak]}
 ```
 
-You change this file only when a platform changes. Homebrew dropping Intel Macs (2027) is not one of those: they
-already use mycask for the `brew` and `cask` entries (tools/mycask/README.md).
+You change this file only when a platform changes. Intel Macs already run without Homebrew: MacPorts, else mise, for
+the tools, and mycask for the casks ([tools/mycask/README.md](../tools/mycask/README.md)).
 
 ### For one run
 

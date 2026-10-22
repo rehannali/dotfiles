@@ -17,8 +17,9 @@ Do not put passwords or tokens in your shell profile.
 | Scenario | Set | Explained in |
 |---|---|---|
 | Set up this machine as listed in the inventory | `--host NAME` (default: the hostname) | [README](../README.md) |
-| A new machine, not in the inventory yet | `--host NAME --group mac_work` (or `mac_personal`, `servers`, `wsl`) | [README](../README.md) |
-| No questions at all (fresh VM, script, CI) | `git_name` / `git_email` in the inventory or `--name` / `--email`, plus `--no-xcode --no-appstore` | [configuration.md](configuration.md) |
+| A new machine, not in the inventory yet | `--host NAME --group mac_work` (or `mac_personal`, `servers`, `linux_desktop`, `wsl`); without `--group` it is asked, with a suggestion | [README](../README.md) |
+| No questions at all (fresh VM, script, CI) | `--yes` (`DOTFILES_YES=true`): takes every suggestion; give `--name` / `--email` (or have them in the inventory or your git config), plus `--no-xcode --no-appstore` | [setup-guide.md](setup-guide.md#before-the-first-run) |
+| A Linux desktop without Flathub / Snap apps | `DOTFILES_FLATPAKS=skip` (`--no-flatpaks`), `DOTFILES_SNAPS=skip` (`--no-snaps`) | [configuration.md](configuration.md) |
 | A server, no GUI apps | put it in the `servers` group, or `--cli` for one run | [configuration.md](configuration.md) |
 | See what would change, change nothing | `--check` | |
 | Try it without installing the ~70 apps | `DOTFILES_CASKS=skip` (`--no-casks`) | [configuration.md](configuration.md) |
@@ -80,6 +81,9 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host m
 | `--no-macports` | `DOTFILES_MACPORTS=skip` | `macports_fallback=false` |
 | `--no-defaults` | `DOTFILES_DEFAULTS=skip` | `macos_defaults=false` |
 | `--no-chsh` | `DOTFILES_CHSH=skip` | `login_shell_zsh=false` |
+| `--no-flatpaks` | `DOTFILES_FLATPAKS=skip` | `install_flatpaks=false` |
+| `--no-snaps` | `DOTFILES_SNAPS=skip` | `install_snaps=false` |
+| `--yes`, `-y` | `DOTFILES_YES=true` | asks nothing: the suggested group, the name / email from your git config; no summary to confirm (also read by `dot`) |
 | `--check` | | `--check --diff` |
 | `--branch NAME` | | clone / update that branch |
 | `--source PATH` | `DOTFILES_SOURCE` | use that checkout (`dotfiles_update=false`) |
