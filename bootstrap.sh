@@ -18,6 +18,14 @@
 #      ansible/site.yml for this machine. Everything that could not be installed is listed at the end.
 #   5. if Xcode needs your Apple ID's two-factor code, runs that step last, on your terminal
 #
+# What it needs to know, it asks at the start (with a terminal), then runs on its own:
+#   - the group of a machine that is not in ansible/inventory/hosts.yml (suggested from the OS: a Mac, WSL, a Linux
+#     desktop session, else a server)
+#   - your name and email for git, unless an option, ~/.config/dotfiles/local.yml or the inventory has them
+#     (suggested from your git config)
+# then shows what it will do and waits for Enter. Everything else has a default, changed with the options below.
+# --yes (or no terminal) asks nothing and takes the suggestions; a missing name or email then stops the dotfiles part.
+#
 # Options (all optional):
 #   --host NAME         this machine in ansible/inventory/hosts.yml (default: its hostname)  (DOTFILES_HOST)
 #   --group GROUP       a machine not in the inventory gets what GROUP gets                  (DOTFILES_GROUP)
@@ -39,6 +47,9 @@
 #   --no-appstore       macOS: no Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
 #   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone (DOTFILES_DEFAULTS=skip)
 #   --no-chsh           do not make zsh the login shell                           (DOTFILES_CHSH=skip)
+#   --no-flatpaks       Linux desktop: no apps from Flathub                        (DOTFILES_FLATPAKS=skip)
+#   --no-snaps          Linux desktop: no apps from the Snap Store                 (DOTFILES_SNAPS=skip)
+#   --yes               ask nothing: take every suggested answer (CI, scripts)     (DOTFILES_YES=true)
 #   --check             show what would change, change nothing (ansible-playbook --check --diff)
 #   --branch NAME       use this branch of the repo instead of the default one
 #   --source PATH       use a local checkout instead of cloning (it is not pulled) (DOTFILES_SOURCE)
@@ -82,6 +93,9 @@ while [ $# -gt 0 ]; do
     --no-appstore) export DOTFILES_MAS=skip ;;
     --no-defaults) export DOTFILES_DEFAULTS=skip ;;
     --no-chsh)     export DOTFILES_CHSH=skip ;;
+    --no-flatpaks) export DOTFILES_FLATPAKS=skip ;;
+    --no-snaps)    export DOTFILES_SNAPS=skip ;;
+    --yes | -y)    export DOTFILES_YES=true ;;
     --check)       CHECK=1 ;;
     --branch)      [ $# -ge 2 ] || die "--branch needs a value"; BRANCH="$2"; shift ;;
     --source)      [ $# -ge 2 ] || die "--source needs a value"; SOURCE="$2"; shift ;;
@@ -94,6 +108,73 @@ done
 
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
+
+# 0. what it needs to know: asked now, so everything after this runs without you
+interactive() { [ "${DOTFILES_YES:-}" != true ] && ( : < /dev/tty ) 2> /dev/null; }
+ask() {   # ask "question" "suggestion" -> the answer, or the suggestion on Enter
+  local answer=""
+  read -r -p "$1${2:+ [$2]}: " answer < /dev/tty || true
+  printf '%s' "${answer:-$2}"
+}
+hosts_yml() {   # the inventory, from --source, an existing checkout, or the repo on GitHub
+  local dir="${SOURCE:-${DOTFILES_DIR:-$HOME/.dotfiles}}"
+  if [ -f "$dir/ansible/inventory/hosts.yml" ]; then cat "$dir/ansible/inventory/hosts.yml"
+  else curl -fsSL "https://raw.githubusercontent.com/$REPO/${BRANCH:-HEAD}/ansible/inventory/hosts.yml" 2> /dev/null || true
+  fi
+}
+local_has() { grep -q "^      $1: " "$HOME/.config/dotfiles/local.yml" 2> /dev/null; }
+[ -n "$HOST" ] || HOST="$(hostname -s 2> /dev/null || hostname)"
+ASKED=()   # answers kept in local.yml (an inventory: the repo's host_vars still win over them)
+
+if [ -z "$GROUP" ] && ! hosts_yml | grep -qE "^[[:space:]]+$HOST:[[:space:]]*(#.*)?$"; then
+  if [ "$OS" = Darwin ]; then GROUP=mac_personal; groups="mac_personal mac_work"
+  else
+    groups="servers linux_desktop wsl"
+    if grep -qi microsoft /proc/version 2> /dev/null; then GROUP=wsl
+    elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}${XDG_CURRENT_DESKTOP:-}" ]; then GROUP=linux_desktop
+    else GROUP=servers
+    fi
+  fi
+  if interactive; then
+    say "$HOST is not in ansible/inventory/hosts.yml. Which kind of machine is it? ($groups)"
+    while :; do
+      answer="$(ask "Group" "$GROUP")"
+      case " $groups " in *" $answer "*) GROUP="$answer"; break ;; esac
+      printf 'One of: %s\n' "$groups"
+    done
+  fi
+fi
+
+if [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
+  suggestion="$(git config --global user.name 2> /dev/null || true)"
+  if interactive; then
+    answer=""
+    while [ -z "$answer" ]; do answer="$(ask "Your name, for git commits" "$suggestion")"; done
+  else
+    answer="$suggestion"
+  fi
+  [ -z "$answer" ] || ASKED+=("git_name: $(printf '"%s"' "${answer//\"/\\\"}")")
+fi
+if [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
+  suggestion="$(git config --global user.email 2> /dev/null || true)"
+  if interactive; then
+    answer=""
+    while [ -z "$answer" ]; do answer="$(ask "Your email, for git commits" "$suggestion")"; done
+  else
+    answer="$suggestion"
+  fi
+  [ -z "$answer" ] || ASKED+=("git_email: $(printf '"%s"' "${answer//\"/\\\"}")")
+fi
+
+if interactive; then
+  say "About to set up $HOST${GROUP:+ as $GROUP} ($OS $(uname -m))"
+  for line in ${ASKED[@]+"${ASKED[@]}"}; do printf '  %s\n' "$line"; done
+  [ -z "${DOTFILES_NAME:-}" ] || printf '  git_name: %s\n' "$DOTFILES_NAME"
+  [ -z "${DOTFILES_EMAIL:-}" ] || printf '  git_email: %s\n' "$DOTFILES_EMAIL"
+  env | sed -n 's/^\(DOTFILES_[A-Z_]*=\)/  \1/p' | grep -vE 'DOTFILES_(NAME|EMAIL|HOST|GROUP)=' || true
+  printf '  %s\n' "Defaults for everything else; bootstrap.sh --help lists the options. Ctrl-C to stop."
+  case "$(ask "Run the setup with these? [Y/n]" "")" in [nN]*) die "stopped; nothing was changed" ;; esac
+fi
 
 # 1. sudo, once
 SUDO_KEEPALIVE_PID=""
@@ -302,7 +383,6 @@ ansible-galaxy collection install --upgrade -r "$REPO_DIR/ansible/requirements.y
 # which machine this is
 cd "$REPO_DIR/ansible"
 export ANSIBLE_CONFIG="$REPO_DIR/ansible/ansible.cfg"
-[ -n "$HOST" ] || HOST="$(hostname -s 2> /dev/null || hostname)"
 args=(-i inventory/hosts.yml -c local -e "dotfiles_dir=$REPO_DIR" -e "dotfiles_branch=$branch")
 if ! ansible-inventory -i inventory/hosts.yml --host "$HOST" > /dev/null 2>&1 || [ -n "$GROUP" ]; then
   if [ -z "$GROUP" ]; then
@@ -341,6 +421,13 @@ fi
 [ "${DOTFILES_MAS:-}" != skip ] || choice install_app_store false
 [ "${DOTFILES_DEFAULTS:-}" != skip ] || choice macos_defaults false
 [ "${DOTFILES_CHSH:-}" != skip ] || choice login_shell_zsh false
+[ "${DOTFILES_FLATPAKS:-}" != skip ] || choice install_flatpaks false
+[ "${DOTFILES_SNAPS:-}" != skip ] || choice install_snaps false
+# the answers to the questions at the start: kept, not forced (-e), so host_vars in the repo still win
+saved+=(${ASKED[@]+"${ASKED[@]}"})
+if [ -n "$CHECK" ]; then   # --check keeps nothing, so hand them to this run directly
+  for line in ${ASKED[@]+"${ASKED[@]}"}; do args+=(-e "{\"${line%%:*}\": ${line#*: }}"); done
+fi
 
 # keep them, and ask for a git name / email nothing has given yet (not with --check: that changes nothing)
 dot_cmd() { DOTFILES_DIR="$REPO_DIR" DOTFILES_HOST="$HOST" DOTFILES_GROUP="$GROUP" bash "$REPO_DIR/home/.local/bin/dot" "$@"; }
