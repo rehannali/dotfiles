@@ -6,38 +6,21 @@ Intel runner and a macOS Apple Silicon runner (as personal Macs), and `scripts/c
 up installed. It runs for pull
 requests to `main`, pushes to `main`, and when started by hand.
 
-The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have none, and mycask
-([tools/mycask](../tools/mycask/README.md)) installs their tools and casks, taking over the runner's preinstalled apps.
+The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have none. MacPorts and mise install their
+tools, mycask ([tools/mycask](../tools/mycask/README.md)) their casks, taking over the runner's preinstalled apps.
 
-## Intel bottles and their verification
+## Intel Mac casks
 
-The bottles are not built here. [rehannali/intel-bottles](https://github.com/rehannali/intel-bottles) builds them on
-`macos-15-intel` (Mondays and on demand): it reads `tools/mycask/intel/formulae.txt` and `mycask.py` from this repo,
-builds the formulae (with their dependencies and build tools like rust and go) that have no Homebrew Intel bottle for
-the current version, and publishes each bottle as soon as it is built: the files in its release `bottles`, the list
-mycask reads in `index.json` on its `main` branch. The first fill compiles about 140 formulae and takes several runs;
-after that only what Homebrew bumped is built. The Mac finds it through `mycask_bottles_url` in
-`ansible/inventory/group_vars/all/main.yml`. Until the bottle repo follows a branch that is not merged yet, set its
-repository variable `DOTFILES_REF` to that branch (`gh variable set DOTFILES_REF -R rehannali/intel-bottles -b feat/ansible`).
+`.github/workflows/mycask-verify.yml` checks that mycask installs every cask the Intel Macs get. On a clean
+`macos-15-intel` runner, every cask in `tools/mycask/intel/casks.txt` is installed one at a time with `--adopt`,
+checked from mycask's receipt, not its exit status (`tools/mycask/verify.py`: app or binary in place, commands start),
+and uninstalled again to keep the runner's disk free; 25 minutes at most each, a failed download is tried once more. It
+runs when `tools/mycask` changes (pull request to `main`, push to `main` or `feat/ansible`), on Tuesdays (a cask's new
+version may drop Intel), and by hand. The table in the run's summary says what is missing or broken. From 2027-08-01
+it stops itself: the Intel runner is gone after August 2027. The Intel Mac's command-line tools (MacPorts, mise) are
+checked by the `mac-intel` job of `dotfiles.yml`.
 
-`.github/workflows/mycask-verify.yml` is what this repo runs about it. On a clean `macos-15-intel` runner (Homebrew
-removed, as on the Mac) it installs everything the Intel Macs ask for with mycask and checks the result from mycask's
-receipts, not from its exit status (`tools/mycask/verify.py`, `verify-casks.sh`):
-
-- **command-line tools:** every formula in `formulae.txt` is installed with `mycask formula bundle`; then the same
-  install runs again and must change nothing (dependencies already there are skipped). The check wants a receipt, the
-  keg, every link, every dependency, and that each linked command starts (no missing library, right CPU).
-- **casks:** every cask in `casks.txt`, one at a time with `--adopt`: receipt, app or binary in place, commands start;
-  then it is uninstalled again to keep the runner's disk free. 25 minutes at most each.
-
-It runs when `tools/mycask` changes (pull request to `main`, push to `main` or `feat/ansible`), on Tuesdays, after the
-Monday build, and by hand. Each job prints a table to the run's summary and fails when anything is missing; the summary
-also lists the tools that still have no bottle. While the first fill is going, the tool check fails for those; that is
-what it is for. From 2027-08-01 it stops itself: the Intel runner is gone after August 2027.
-
-    gh workflow run build.yml -R rehannali/intel-bottles    # build what is missing now
-    gh workflow run mycask-verify.yml                       # verify now
-    gh release view bottles -R rehannali/intel-bottles      # what is published
+    gh workflow run mycask-verify.yml
 
 ## Manual runs
 
