@@ -1710,7 +1710,8 @@ def formula_setup():
         raise CaskError(f"Homebrew is still installed in {FPREFIX}; remove it before using this prefix")
     dirs = [FPREFIX / d for d in PREFIX_DIRS]
     log(f"Creating {', '.join(d.name for d in dirs)} under {FPREFIX} and giving them to {os.environ.get('USER', 'you')}")
-    run(["mkdir", "-p"] + dirs, sudo=not writable_parent(dirs[0] / "x"))
+    # mkdir needs root when something is missing and the prefix itself is not ours (bin alone may be: a runner owns it)
+    run(["mkdir", "-p"] + dirs, sudo=any(not d.is_dir() for d in dirs) and not os.access(FPREFIX, os.W_OK))
     user = os.environ.get("USER") or subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
     run(["chown", "-R", f"{user}:admin"] + dirs, sudo=True)
     run(["chmod", "u+rwx"] + dirs, sudo=True)
