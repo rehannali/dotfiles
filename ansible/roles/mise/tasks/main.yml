@@ -17,6 +17,26 @@
     path: "{{ mise_bin }}"
   register: mise_stat
 
+# Apple Silicon: everything comes from Homebrew, mise too (brew upgrade keeps it current)
+- name: Mise | install (Homebrew, Apple Silicon)
+  community.general.homebrew:
+    name: mise
+    state: present
+  environment:
+    PATH: "/opt/homebrew/bin:/opt/homebrew/sbin:{{ ansible_facts.env.PATH }}"
+  register: mise_brew
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_brew is succeeded
+  when: not mise_stat.stat.exists and dotfiles_os == 'darwin' and dotfiles_arch == 'arm64'
+
+# a copy from mise's own installer would come first on PATH (~/.local/bin) and hide Homebrew's
+- name: Mise | no installer copy next to Homebrew's (Apple Silicon)
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.local/bin/mise"
+    state: absent
+  when: dotfiles_os == 'darwin' and dotfiles_arch == 'arm64'
+
 - name: Mise | install (official installer, prebuilt binary)
   # download first: `sh -c "$(curl ...)"` would report success when the download failed
   ansible.builtin.shell: installer="$(curl -fsSL https://mise.run)" && sh -c "$installer"
@@ -26,7 +46,7 @@
   retries: "{{ install_retries | int - 1 }}"
   delay: "{{ install_delay }}"
   until: mise_installer is succeeded
-  when: not mise_stat.stat.exists
+  when: not mise_stat.stat.exists and not (dotfiles_os == 'darwin' and dotfiles_arch == 'arm64')
 
 - name: Mise | remove (remove.mise)
   ansible.builtin.command: "{{ mise_bin }} uninstall --all {{ item }}"

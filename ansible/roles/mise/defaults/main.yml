@@ -1,2 +1,3 @@
 ---
-mise_bin: "{{ ansible_facts.env.HOME }}/.local/bin/mise"
+# Apple Silicon: from Homebrew; elsewhere: mise's own installer, into ~/.local/bin
+mise_bin: "{{ '/opt/homebrew/bin/mise' if (dotfiles_os == 'darwin' and dotfiles_arch == 'arm64') else ansible_facts.env.HOME ~ '/.local/bin/mise' }}"
