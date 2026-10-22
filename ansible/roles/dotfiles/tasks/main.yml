@@ -17,7 +17,9 @@
       {{ dotfiles_skip_extra
          + ([] if dotfiles_os == 'darwin' else ['.config/karabiner', '.hyper.js'])
          + ([] if gui_apps | bool else ['.config/alacritty', '.config/wezterm', '.config/karabiner', '.hyper.js'])
-         + ([] if bitwarden | bool else ['.config/dotfiles/secrets.zsh.j2']) }}
+         + ([] if bitwarden | bool else ['.config/dotfiles/secrets.zsh.j2'])
+         + ([] if dotfiles_os == 'darwin' and gui_apps | bool and (settings.shell.bitwarden_ssh_agent | default('auto')) != 'off'
+             else ['Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2']) }}
 
 - name: Dotfiles | the files in home/
   ansible.builtin.set_fact:
@@ -113,6 +115,28 @@
 
 - name: Dotfiles | links
   ansible.builtin.include_tasks: links.yml
+
+# The Bitwarden SSH agent LaunchAgent (home/Library/LaunchAgents) runs at every login; load it now so this session has it
+# too. Not in --check, and a failure (no login session, as on CI) is not an error: the next login loads it.
+- name: Dotfiles | Bitwarden SSH agent for apps outside a shell (launchctl)
+  when: >-
+    not ansible_check_mode and dotfiles_os == 'darwin'
+    and (dotfiles_files | selectattr('path', 'equalto', 'Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2') | list | length) > 0
+  vars:
+    bw_agent_label: com.dotfiles.bitwarden-ssh-agent
+    bw_agent_domain: "gui/{{ ansible_facts.user_uid }}"
+  block:
+    - name: Dotfiles | unload the Bitwarden SSH agent LaunchAgent
+      ansible.builtin.command: launchctl bootout {{ bw_agent_domain }}/{{ bw_agent_label }}
+      changed_when: false
+      failed_when: false
+
+    - name: Dotfiles | load the Bitwarden SSH agent LaunchAgent
+      ansible.builtin.command: >-
+        launchctl bootstrap {{ bw_agent_domain }}
+        {{ ansible_facts.env.HOME }}/Library/LaunchAgents/{{ bw_agent_label }}.plist
+      changed_when: false
+      failed_when: false
 
 - name: Dotfiles | alacritty themes
   ansible.builtin.include_tasks: alacritty.yml

@@ -139,6 +139,31 @@ Doing it by hand: `bw config server <url>`; `bw config server` shows the current
 Ansible runs `bw` for every lookup, so after `bootstrap.sh` the CLI keeps pointing at that server. Without
 `bootstrap.sh`, set the server once with `bw config server <url>` before `bw login`.
 
+## SSH agent
+
+Bitwarden can serve the SSH keys in the vault (Settings, SSH agent, in the desktop app). `~/.zshenv` points
+`SSH_AUTH_SOCK` at its socket, so `ssh` and `git` use those keys in every shell. It is not set inside an SSH session,
+where the forwarded agent is the right one. Setting `shell.bitwarden_ssh_agent` (`auto` by default) chooses the socket:
+
+| Bitwarden | `shell.bitwarden_ssh_agent` | `SSH_AUTH_SOCK` |
+|---|---|---|
+| macOS, App Store | `appstore` | `~/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock` |
+| macOS, dmg or the cask | `dmg` | `~/.bitwarden-ssh-agent.sock` |
+| Linux, deb, rpm, AppImage | `linux` | `~/.bitwarden-ssh-agent.sock` |
+| Linux, Snap | `snap` | `~/snap/bitwarden/current/.bitwarden-ssh-agent.sock` |
+| Linux, Flatpak | `flatpak` | `~/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock` |
+
+With `auto` the shell looks at what is installed when it starts: on macOS an `_MASReceipt` inside Bitwarden.app means
+the App Store version, otherwise the dmg or cask; on Linux the Flatpak data folder, the Snap folder, or `/opt/Bitwarden`
+or an existing socket (deb, rpm, AppImage). A machine without Bitwarden gets nothing set. `off` turns it off.
+
+On a Mac with `gui_apps` the same is also done with `launchctl setenv`, as Bitwarden's page describes, for apps that
+do not start from a shell (a Git client opened from the Dock) and so never read `~/.zshenv`. A LaunchAgent,
+written from `home/Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2`, runs it at
+every login (and the playbook loads it right away), so it survives a restart. It sets `SSH_AUTH_SOCK`, which `ssh` reads,
+and `SSH_AUTH_SOCKET`, the name Bitwarden's page uses in its `launchctl` line. Linux gets only the `~/.zshenv` part.
+`shell.bitwarden_ssh_agent: off` removes both.
+
 ## Not covered
 
 Bitwarden Secrets Manager (`bws`) has its own Ansible lookup (`community.general.bitwarden_secrets_manager`), but

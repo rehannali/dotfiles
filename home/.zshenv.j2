@@ -33,6 +33,42 @@ export PATH="$HOME/fvm/default/bin:$PATH"
 # cron) never run `mise activate`, but they do read this file, so they still find every runtime.
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
 
+{% set bw_agent = settings.shell.bitwarden_ssh_agent | default('auto') %}
+{% set bw_sockets = {
+  'appstore': '$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock',
+  'dmg': '$HOME/.bitwarden-ssh-agent.sock',
+  'linux': '$HOME/.bitwarden-ssh-agent.sock',
+  'snap': '$HOME/snap/bitwarden/current/.bitwarden-ssh-agent.sock',
+  'flatpak': '$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock'} %}
+{% if bw_agent != 'off' %}
+# Bitwarden's SSH agent (docs/bitwarden.md): ssh and git use the keys in the vault. Not inside an SSH session, where the
+# forwarded agent is the one to use. The socket exists while Bitwarden runs with its SSH agent switched on.
+if [[ -z "$SSH_CONNECTION" ]]; then
+{% if bw_agent == 'auto' and dotfiles_os == 'darwin' %}
+  for _bw_app in /Applications/Bitwarden.app "$HOME/Applications/Bitwarden.app"; do
+    if [[ -d "$_bw_app/Contents/_MASReceipt" ]]; then   # App Store: sandboxed, the socket is in its container
+      export SSH_AUTH_SOCK="{{ bw_sockets.appstore }}"
+      break
+    elif [[ -d "$_bw_app" ]]; then   # dmg or cask
+      export SSH_AUTH_SOCK="{{ bw_sockets.dmg }}"
+      break
+    fi
+  done
+  unset _bw_app
+{% elif bw_agent == 'auto' and dotfiles_os == 'linux' %}
+  if [[ -d "$HOME/.var/app/com.bitwarden.desktop" ]]; then   # Flatpak
+    export SSH_AUTH_SOCK="{{ bw_sockets.flatpak }}"
+  elif [[ -d "$HOME/snap/bitwarden" ]]; then   # Snap
+    export SSH_AUTH_SOCK="{{ bw_sockets.snap }}"
+  elif [[ -d /opt/Bitwarden || -S "$HOME/.bitwarden-ssh-agent.sock" ]]; then   # deb, rpm, AppImage
+    export SSH_AUTH_SOCK="{{ bw_sockets.linux }}"
+  fi
+{% elif bw_agent != 'auto' %}
+  export SSH_AUTH_SOCK="{{ bw_sockets[bw_agent] | mandatory('shell.bitwarden_ssh_agent must be auto, off, appstore, dmg, linux, snap or flatpak') }}"
+{% endif %}
+fi
+
+{% endif %}
 # settings.shell.env and settings.shell.path (docs/configuration.md)
 {% for name, value in settings.shell.env.items() %}
 export {{ name }}={{ value | string | to_json }}

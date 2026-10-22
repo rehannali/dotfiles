@@ -163,6 +163,7 @@ settings_override:
 | `macos.cask_appdir` | `~/Applications` | where casks with `appdir: true` install their app. `/Applications` puts every app in one place. Only applies to casks installed from now on |
 | `macos.dock.orientation`, `.tile_size`, `.autohide`, `.show_recents` | `left`, `42`, `true`, `false` | the Dock preferences |
 | `shell.env` | the two Python variables | extra environment variables for every zsh (`~/.zshenv`), a map `NAME: value`; values may use `$HOME` |
+| `shell.bitwarden_ssh_agent` | `auto` | `SSH_AUTH_SOCK` in `~/.zshenv` for Bitwarden's SSH agent, not set in an SSH session; on a Mac also `launchctl setenv` at login for apps outside a shell. `auto` picks it from the Bitwarden that is installed (App Store, dmg / cask, Flatpak, Snap, deb / rpm / AppImage) and sets nothing without one; or `appstore`, `dmg`, `linux`, `snap`, `flatpak`; `off` never ([bitwarden.md](bitwarden.md#ssh-agent)) |
 | `shell.path` | empty | extra directories in front of `PATH`, first entry wins, for example `["$HOME/go/bin"]` |
 | `wsl.distribution`, `.username` | `Ubuntu`, empty | the WSL domain wezterm offers on Windows; without a username wezterm uses the distribution's default user |
 | `flutter.version` | `stable` | Flutter SDK that fvm installs and makes global (`stable`, `beta`, `3.35.0`...) |
