@@ -1,0 +1,169 @@
+---
+# Sets up every machine in the inventory, or the ones picked with -l. One part only: --tags dotfiles (or packages,
+# shell, mise, dev, macos, xcode). What would change, without changing it: --check --diff.
+# Every part reports what it could not do and the next one still runs; the report at the end lists all of it.
+- name: Set up the machine
+  hosts: all
+  pre_tasks:
+    - name: What every part needs to know about this machine
+      ansible.builtin.set_fact:
+        dotfiles_os: "{{ ansible_facts.system | lower }}"
+        dotfiles_arch: "{{ 'arm64' if ansible_facts.architecture in ['arm64', 'aarch64'] else 'x86_64' }}"
+        # macos_arm64 / macos_x86_64 / debian, or the OS family (redhat, archlinux, ...) for a platform without packages
+        dotfiles_platform: >-
+          {{ ('macos_' ~ ('arm64' if ansible_facts.architecture in ['arm64', 'aarch64'] else 'x86_64'))
+             if ansible_facts.system == 'Darwin' else ansible_facts.os_family | lower }}
+        settings: "{{ settings_defaults | combine(settings_override | default({}), recursive=True) }}"
+        install_failures: []
+      tags: [always]
+
+    - name: The bundles this machine gets, and the package managers of its platform
+      ansible.builtin.set_fact:
+        selected: "{{ packages.bundles | select_bundles(bundles) }}"
+        pkg_managers: >-
+          {{ platform_managers[dotfiles_platform]
+             | default({'cli': 'mise', 'system': 'none', 'apps': []}) }}
+      tags: [always]
+
+    - name: Which manager installs each tool
+      ansible.builtin.set_fact:
+        tool_plan: >-
+          {{ (selected.tools + tools_extra) | rejectattr('name', 'in', tools_skip) | list
+             | tool_plan(dotfiles_platform, pkg_managers, gui_apps | bool) }}
+        apps_wanted: "{{ (selected.apps + apps_extra) | rejectattr('name', 'in', apps_skip) | list }}"
+      tags: [always]
+
+    # Linux desktops: an app comes from Flathub when it has a flatpak id (and flatpaks are on), else from the Snap Store,
+    # else from its vendor's apt repository (deb)
+    - name: Linux apps, Flathub first, then the Snap Store, then the vendor's apt repository
+      ansible.builtin.set_fact:
+        flatpak_apps: >-
+          {{ apps_wanted | selectattr('flatpak', 'defined') | list
+             if 'flatpak' in pkg_managers.apps | default([]) and gui_apps | bool and install_flatpaks | bool else [] }}
+        snap_apps: >-
+          {{ apps_wanted | selectattr('snap', 'defined')
+             | rejectattr('name', 'in', (apps_wanted | selectattr('flatpak', 'defined') | map(attribute='name') | list)
+               if 'flatpak' in pkg_managers.apps | default([]) and install_flatpaks | bool else [])
+             | list
+             if 'snap' in pkg_managers.apps | default([]) and gui_apps | bool and install_snaps | bool else [] }}
+      tags: [always]
+
+    - name: Linux apps from their vendor's apt repository (in neither store)
+      ansible.builtin.set_fact:
+        deb_apps: >-
+          {{ apps_wanted | selectattr('deb', 'defined')
+             | rejectattr('name', 'in', (flatpak_apps + snap_apps) | map(attribute='name') | list) | list
+             if 'deb' in pkg_managers.apps | default([]) and gui_apps | bool else [] }}
+      tags: [always]
+
+    - name: No package list for this OS yet
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures + [ansible_facts.distribution ~ ': no system packages (platforms.yml has no ' ~ dotfiles_platform
+          ~ '); dotfiles, shell and mise tools are set up'] }}
+      when: dotfiles_platform not in platform_managers
+      tags: [always]
+
+    - name: Tools no package manager here can install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures + ['not available on ' ~ dotfiles_platform ~ ': ' ~ (tool_plan.unplanned | join(', '))] }}"
+      when: tool_plan.unplanned | length > 0 and dotfiles_platform in platform_managers
+      tags: [always]
+
+  tasks:
+    - name: Dotfiles (links and templates from home/)
+      tags: [dotfiles]
+      block:
+        - name: Dotfiles
+          ansible.builtin.import_role:
+            name: dotfiles
+      rescue:
+        - name: Dotfiles did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['dotfiles: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    # --tags upgrade: the packages part, and on Intel Macs also mycask's upgrades (normal runs leave versions alone)
+    - name: Packages (apt / Homebrew / mycask / MacPorts, casks, App Store, removals)
+      tags: [packages, upgrade]
+      block:
+        - name: Packages
+          ansible.builtin.import_role:
+            name: packages
+      rescue:
+        - name: Packages did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['packages: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Shell (Oh My Zsh, plugins, login shell)
+      tags: [shell]
+      block:
+        - name: Shell
+          ansible.builtin.import_role:
+            name: shell
+      rescue:
+        - name: Shell did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['shell: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Mise (runtimes and command-line tools)
+      tags: [mise]
+      block:
+        - name: Mise
+          ansible.builtin.import_role:
+            name: mise
+      rescue:
+        - name: Mise did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['mise: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Dev (gems, npm packages, Flutter)
+      tags: [dev]
+      block:
+        - name: Dev
+          ansible.builtin.import_role:
+            name: dev
+      rescue:
+        - name: Dev did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['dev: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Server (disks, Docker, cloudflared, NetBird, speedtest)
+      tags: [server]
+      when: server is defined and dotfiles_os == 'linux'
+      block:
+        - name: Server
+          ansible.builtin.import_role:
+            name: server
+      rescue:
+        - name: Server did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['server: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: MacOS (defaults, Touch ID)
+      tags: [macos]
+      when: dotfiles_os == 'darwin'
+      block:
+        - name: MacOS
+          ansible.builtin.import_role:
+            name: macos
+      rescue:
+        - name: MacOS did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['macos: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Xcode (Xcode and the iOS simulator runtime)
+      tags: [xcode]
+      when: dotfiles_os == 'darwin' and gui_apps | bool and (install_xcode | bool or install_ios_runtime | bool)
+      block:
+        - name: Xcode
+          ansible.builtin.import_role:
+            name: xcode
+      rescue:
+        - name: Xcode did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['xcode: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
+    - name: Report
+      ansible.builtin.import_role:
+        name: report
+      tags: [always]

@@ -1,0 +1,130 @@
+---
+# Runtimes (node, python, ruby, ...) and, on Intel Macs and Linux, the command-line tools, from packages.yml.
+- name: Mise | config directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.config/mise"
+    state: directory
+    mode: "0755"
+
+- name: Mise | config
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: "{{ ansible_facts.env.HOME }}/.config/mise/config.toml"
+    mode: "0644"
+
+- name: Mise | installed?
+  ansible.builtin.stat:
+    path: "{{ mise_bin }}"
+  register: mise_stat
+
+# Apple Silicon: everything comes from Homebrew, mise too (brew upgrade keeps it current)
+- name: Mise | install (Homebrew, Apple Silicon)
+  community.general.homebrew:
+    name: mise
+    state: present
+  environment:
+    PATH: "/opt/homebrew/bin:/opt/homebrew/sbin:{{ ansible_facts.env.PATH }}"
+  register: mise_brew
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_brew is succeeded
+  when: not mise_stat.stat.exists and dotfiles_os == 'darwin' and dotfiles_arch == 'arm64'
+
+# a copy from mise's own installer would come first on PATH (~/.local/bin) and hide Homebrew's
+- name: Mise | no installer copy next to Homebrew's (Apple Silicon)
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.local/bin/mise"
+    state: absent
+  when: dotfiles_os == 'darwin' and dotfiles_arch == 'arm64'
+
+- name: Mise | install (official installer, prebuilt binary)
+  # download first: `sh -c "$(curl ...)"` would report success when the download failed
+  ansible.builtin.shell: installer="$(curl -fsSL https://mise.run)" && sh -c "$installer"
+  args:
+    creates: "{{ mise_bin }}"
+  register: mise_installer
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_installer is succeeded
+  when: not mise_stat.stat.exists and not (dotfiles_os == 'darwin' and dotfiles_arch == 'arm64')
+
+- name: Mise | remove (remove.mise)
+  ansible.builtin.command: "{{ mise_bin }} uninstall --all {{ item }}"
+  loop: "{{ remove.mise | default([]) }}"
+  register: mise_removed
+  changed_when: mise_removed.rc == 0
+  failed_when: false
+
+- name: Mise | install the tools
+  ansible.builtin.command: >-
+    {{ 'nice -n 10' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '' }}
+    {{ mise_bin }} install
+  environment:
+    PATH: >-
+      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:{{
+      ansible_facts.env.PATH }}
+    # Intel Macs: mise has no prebuilt Ruby there, it compiles; keep the machine usable
+    MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
+    MAKE_OPTS: -j2
+    RUBY_MAKE_OPTS: -j2
+    # Intel Macs compile Ruby: MacPorts' OpenSSL and libyaml (psych), as there is no Homebrew for ruby-build to find
+    RUBY_CONFIGURE_OPTS: >-
+      {{ '--with-openssl-dir=/opt/local/libexec/openssl3 --with-libyaml-dir=/opt/local'
+         if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '' }}
+  register: mise_install
+  changed_when: "'installed' in mise_install.stderr"
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: mise_install is succeeded
+  ignore_errors: true
+
+# Every run with upgrade_on_apply (or --tags upgrade): newer versions of what the config asks for ("latest", "lts", or a
+# prefix such as python "3.15" gets the newest 3.15.x)
+- name: Mise | upgrade (mise upgrade)
+  ansible.builtin.command: "{{ mise_bin }} upgrade --yes"
+  environment:
+    PATH: >-
+      {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:{{
+      ansible_facts.env.PATH }}
+    MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
+  register: mise_upgrade
+  changed_when: mise_upgrade.stderr is search('installed')
+  ignore_errors: true
+  when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
+
+# Versions no config uses any more, among them a tool that moved to another manager (MacPorts on an Intel Mac): its
+# shim would otherwise still come first on PATH and hide the new one
+- name: Mise | remove what no config uses (mise prune)
+  ansible.builtin.command: "{{ mise_bin }} prune --tools --yes"
+  register: mise_prune
+  changed_when: mise_prune.stderr is search('removed|uninstall')
+  failed_when: false
+  when: not ansible_check_mode
+
+# The global config (~/.config/mise/config.toml) is what every shell, IDE and script gets: the shims directory is on
+# PATH in .zshenv, .zprofile and .bashrc. Anything in it that is still not installed is reported by name.
+- name: Mise | anything in the global config not installed
+  ansible.builtin.command: "{{ mise_bin }} ls --global --missing --json"
+  environment:
+    PATH: "{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+  register: mise_missing
+  changed_when: false
+  failed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+
+- name: Mise | record what is missing
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['mise: not installed: ' ~ (mise_missing.stdout | from_json | dict2items
+         | map(attribute='key') | join(', '))] }}
+  when: mise_missing.rc | default(1) == 0 and (mise_missing.stdout | default('{}', true) | from_json | length > 0)
+
+- name: Mise | record a failed install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['mise install: some tools did not install, run  mise install  to see which'] }}"
+  when: mise_install is failed and (mise_missing.rc | default(1) != 0)
+
+- name: Mise | shims
+  ansible.builtin.command: "{{ mise_bin }} reshim"
+  changed_when: false
+  failed_when: false

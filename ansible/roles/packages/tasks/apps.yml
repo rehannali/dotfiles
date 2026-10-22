@@ -1,0 +1,121 @@
+---
+# Some casks are Intel-only; Apple Silicon runs them through Rosetta
+- name: Rosetta (Apple Silicon)
+  ansible.builtin.command: /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+  args:
+    creates: /Library/Apple/usr/libexec/oah/libRosettaRuntime
+  become: true
+  failed_when: false
+  when: not intel_mac
+
+- name: Apps | the casks and App Store apps for this Mac (bundles + apps_extra - apps_skip)
+  ansible.builtin.set_fact:
+    casks_wanted: >-
+      {{ apps_wanted | selectattr('cask', 'defined')
+         | rejectattr('arch', 'defined') | list
+         + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
+            | selectattr('arch', 'equalto', dotfiles_arch) | list)
+         if 'cask' in pkg_managers.apps else [] }}
+    mas_wanted: >-
+      {{ apps_wanted | selectattr('mas', 'defined') | rejectattr('cask', 'defined') | list
+         if 'mas' in pkg_managers.apps else [] }}
+    github_apps_wanted: >-
+      {{ apps_wanted | selectattr('github', 'defined')
+         | rejectattr('arch', 'defined') | list
+         + (apps_wanted | selectattr('github', 'defined') | selectattr('arch', 'defined')
+            | selectattr('arch', 'equalto', dotfiles_arch) | list)
+         if 'cask' in pkg_managers.apps else [] }}
+
+- name: Casks | install
+  community.general.homebrew_cask:
+    name: "{{ item.cask }}"
+    state: present
+    install_options: "{{ ['appdir=' ~ (settings.macos.cask_appdir | replace('~', ansible_facts.env.HOME))] if item.appdir | default(false) else omit }}"
+  loop: "{{ casks_wanted }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: casks_result
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: casks_result is succeeded
+  ignore_errors: true
+  when: install_casks | bool and not intel_mac   # Intel: mycask installs them (intel_mycask.yml)
+
+- name: Casks | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['cask: ' ~ item.item.name] }}"
+  loop: "{{ casks_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: "GitHub apps | is this Mac a MacBook (apps with macbook: true need one)"
+  ansible.builtin.command: system_profiler SPHardwareDataType
+  register: mac_hardware
+  changed_when: false
+  check_mode: false
+  when: install_casks | bool and github_apps_wanted | selectattr('macbook', 'defined') | list | length > 0
+
+- name: GitHub apps | apps from GitHub releases, where there is no cask
+  ansible.builtin.include_tasks: github_app.yml
+  loop: >-
+    {{ github_apps_wanted | rejectattr('macbook', 'defined') | list
+       + (github_apps_wanted | selectattr('macbook', 'defined') | list
+          if 'Model Name: MacBook' in (mac_hardware.stdout | default('')) else []) }}
+  loop_control:
+    loop_var: gh_app
+    label: "{{ gh_app.name }}"
+  when: install_casks | bool
+
+- name: App Store
+  when: install_app_store | bool and mas_wanted | length > 0
+  block:
+    - name: App Store | mas (command line for the App Store)
+      community.general.homebrew:
+        name: mas
+        state: present
+      register: mas_cli
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: mas_cli is succeeded
+      when: not intel_mac   # Intel: the mas port (ports.yml)
+
+    - name: App Store | mas from MacPorts (Intel)
+      ansible.builtin.command: /opt/local/bin/mas version
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      when: intel_mac
+
+    - name: App Store | apps (needs a signed-in App Store)
+      community.general.mas:
+        id: "{{ item.mas }}"
+        state: present
+      loop: "{{ mas_wanted }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: mas_result
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: mas_result is succeeded
+      ignore_errors: true
+
+    - name: App Store | record what did not install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: ' ~ item.item.name] }}"
+      loop: "{{ mas_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: App Store | update the apps (mas upgrade)
+      ansible.builtin.command: mas upgrade
+      register: mas_upgrade
+      changed_when: "'Upgrading' in mas_upgrade.stdout"
+      ignore_errors: true
+
+    - name: App Store | update failed
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: mas upgrade failed (signed in?)'] }}"
+      when: mas_upgrade is failed
+  rescue:
+    - name: App Store | mas could not be installed
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['App Store: mas could not be installed, no App Store apps'] }}"

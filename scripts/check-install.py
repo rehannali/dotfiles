@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-"""Audit this machine after `chezmoi apply`.
+"""Audit this machine after the Ansible run (ansible/site.yml).
 
-    scripts/check-install.py [--source REPO] [--no-shell]
+    scripts/check-install.py [--plan FILE] [--no-shell]
 
 Nothing here trusts the package lists. It asks the machine:
 
-  1. expected tools  What does the dotfiles tool plan say should exist HERE (home/.chezmoitemplates/tool-plan,
-                     rendered by chezmoi for this OS/arch)? For each one: does the command resolve in a login
+  1. expected tools  What does the plan say should exist HERE (~/.cache/dotfiles/plan.json, written by the run from
+                     the tool_plan filter for this OS/arch and machine kind)? For each one: does the command resolve in a login
                      zsh (so ~/.zshenv / ~/.zprofile PATH handling is tested too), does it come from the
-                     manager that is supposed to provide it (mise / brew / apt, or MacPorts on Intel) and not from a shadowing copy,
+                     manager that is supposed to provide it (mise / brew / apt, or on an Intel Mac MacPorts, mise, or a
+                     download in ~/.local/bin) and not from a shadowing copy,
                      and does it actually start?
   2. architecture    Every executable and native library under mise, Homebrew, ~/.local/bin, installed Mac
                      apps and gem extensions is classified with `file`: an ELF on macOS, a Mach-O on Linux, or
                      the wrong CPU (x86_64 on Apple Silicon, arm64 on Intel) is a failure.
   3. mise            Every tool in ~/.config/mise/config.toml is installed.
   4. shell           `zsh -i -c exit` starts without errors.
+  5. apps            casks (Homebrew, or mycask's receipts on an Intel Mac), Flathub apps, snaps and apps from vendor
+                     apt repositories (Linux desktops) are installed.
 
-Exit status 1 if anything failed. Warnings (known gaps, e.g. a Homebrew formula with no Intel bottle) do not
-fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
-standard tools `file`, `zsh`; `chezmoi` for the plan.
+Exit status 1 if anything failed. Warnings do not fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
+standard tools `file`, `zsh`.
 """
 import argparse
 import json
@@ -148,7 +150,9 @@ def brew_prefix():
 
 
 MISE = shutil.which("mise") or os.path.join(HOME, ".local", "bin", "mise")
-BREW = brew_prefix() if SYSTEM == "Darwin" else None
+MYCASK_ROOT = os.path.expanduser(os.environ.get("MYCASK_ROOT", "~/.local/share/mycask"))
+BREW = brew_prefix() if SYSTEM == "Darwin" and not INTEL_MAC else None
+MYCASK = INTEL_MAC   # Intel Macs get their casks from mycask
 MISE_DIR = os.path.join(HOME, ".local", "share", "mise")
 
 
@@ -198,16 +202,13 @@ def smoke(path):
     return OK, first
 
 
-def load_plan(source):
-    if not shutil.which("chezmoi"):
-        add(WARN, "tools", "plan", "chezmoi not on PATH: expectations skipped")
+def load_plan(path):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as e:
+        add(FAIL, "tools", "plan", "%s: %s (run the playbook first)" % (path, e))
         return None
-    cmd = ["chezmoi"] + (["-S", source] if source else []) + ["execute-template", '{{ includeTemplate "tool-plan" . }}']
-    rc, out = run(cmd, timeout=120)
-    if rc != 0:
-        add(FAIL, "tools", "plan", out.strip()[:300])
-        return None
-    return json.loads(out)
 
 
 def check_expected(plan):
@@ -226,19 +227,14 @@ def check_expected(plan):
         path = resolved.get(e["bin"], "")
         strict = e["kind"] in ("cli", "apple")
         if not path or not os.path.exists(path):
-            known_gap = INTEL_MAC and e["via"] == "brew" and not e.get("source") and not e.get("port")
-            level = WARN if (known_gap or not strict and INTEL_MAC) else FAIL
-            why = "no bottle expected on Intel (Homebrew Tier 3)" if known_gap else "not found on PATH"
-            add(level, "tools", e["name"], "%s via %s: %s" % (e["bin"], e["via"], why))
-            rows.append((level, e["name"], e["via"], "-", why))
+            add(FAIL, "tools", e["name"], "%s via %s: not found on PATH" % (e["bin"], e["via"]))
+            rows.append((FAIL, e["name"], e["via"], "-", "not found on PATH"))
             continue
         real = os.path.realpath(path)
         mgr = manager_of(path) if manager_of(path) != "other" else manager_of(real)
-        want = {"mise": "mise", "brew": "brew", "apt": "system"}[e["via"]]
-        if e["via"] == "brew" and e.get("port") and mgr == "macports":
-            want = "macports"   # Intel: no Homebrew bottle, the MacPorts binary is the planned fallback
-        if e["via"] == "brew" and e.get("mise_fallback") and mgr == "mise":
-            want = "mise"   # Intel: neither a bottle nor MacPorts, mise_fallback is the last planned fallback
+        want = {"mise": "mise", "brew": "brew", "apt": "system", "port": "macports", "download": "other"}[e["via"]]
+        if e["via"] == "port" and e.get("mise_fallback") and mgr == "mise":
+            want = "mise"   # Intel: the port did not install, its mise_fallback is the planned replacement
         if strict and mgr != want:
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))
@@ -253,22 +249,13 @@ def check_expected(plan):
 
 
 RUNTIME_BINS = ["node", "npm", "python3", "pip3", "ruby", "gem", "java", "javac", "go", "rustc", "cargo", "uv", "mise"]
-if SYSTEM == "Darwin":  # gems installed into mise's Ruby by run_onchange_after_13-install-ruby-gems
+if SYSTEM == "Darwin":  # gems, mise tools with the gem: backend
     RUNTIME_BINS += ["pod", "fastlane"]
 
 
-def flutter_expected(source):
-    """Is a Flutter SDK part of this machine's setup (settings.flutter.version, full profile, not skipped)?"""
-    if os.environ.get("DOTFILES_FLUTTER") == "skip" or configured_profile() == "cli" or not shutil.which("chezmoi"):
-        return False
-    cmd = ["chezmoi"] + (["-S", source] if source else []) + ["execute-template", "{{ .settings.flutter.version }}"]
-    rc, out = run(cmd, timeout=60)
-    return rc == 0 and bool(out.strip())
-
-
-def check_runtimes(source=None):
+def check_runtimes(plan):
     rows = []
-    runtime_bins = RUNTIME_BINS + (["flutter", "dart"] if flutter_expected(source) else [])
+    runtime_bins = RUNTIME_BINS + (["flutter", "dart"] if (plan or {}).get("flutter") else [])
     script = 'for b in "$@"; do printf "%s\\t%s\\n" "$b" "$(command -v "$b" 2>/dev/null)"; done'
     shell = shutil.which("zsh") or shutil.which("bash")
     rc, out = run([shell, "-l", "-c", script, "_"] + runtime_bins, timeout=120)
@@ -308,6 +295,9 @@ def collect_roots(installs):
             if os.path.isdir(p):
                 files += [os.path.join(p, f) for f in sorted(os.listdir(p))]
         roots.append(("brew bin", [f for f in files if os.path.isfile(f)]))
+    if INTEL_MAC and os.path.isdir("/opt/local/bin"):
+        roots.append(("MacPorts bin", [os.path.join("/opt/local/bin", f) for f in sorted(os.listdir("/opt/local/bin"))
+                                       if os.path.isfile(os.path.join("/opt/local/bin", f))]))
     lb = os.path.join(HOME, ".local", "bin")
     if os.path.isdir(lb):
         roots.append(("~/.local/bin", [os.path.join(lb, f) for f in sorted(os.listdir(lb))
@@ -360,33 +350,139 @@ def bare_app_name(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-def check_casks(source):
-    """Casks from packages.yml: installed, and the .app really sits where the cask was told to put it."""
-    if SYSTEM != "Darwin" or os.environ.get("DOTFILES_CASKS", "install") != "install" \
-            or os.environ.get("DOTFILES_PROFILE", "full") == "cli":
+def mycask_receipts():
+    """{token: receipt} of the casks mycask installed (Intel Macs), also under each receipt's old tokens."""
+    out = {}
+    folder = os.path.join(MYCASK_ROOT, "receipts")
+    for f in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(folder, f)) as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        out[rec.get("token") or f[:-5]] = rec
+        for old in (rec.get("meta") or {}).get("old_tokens") or []:
+            out.setdefault(old, rec)
+    return out
+
+
+def check_casks_mycask(plan, wanted):
+    """Intel Macs: the casks from mycask's receipts, and each app in the folder it was meant for."""
+    cask_appdir = os.path.expanduser(plan.get("cask_appdir") or "~/Applications")
+    receipts = mycask_receipts()
+    rows, installed = [], 0
+    for c in wanted:
+        name = c.get("cask") or c["name"]
+        if "/" in name:
+            add(WARN, "casks", name, "from a tap, which mycask can't install")
+            rows.append((WARN, name, "-", "tap cask, skipped on Intel"))
+            continue
+        rec = receipts.get(name)
+        if not rec:
+            add(WARN, "casks", name, "not installed by mycask (unsupported or disabled for this Mac, see the run's report)")
+            rows.append((WARN, name, "-", "not installed"))
+            continue
+        installed += 1
+        appdir = cask_appdir if c.get("appdir") else "/Applications"
+        apps = [i["path"] for i in rec.get("items") or [] if i.get("kind") in ("app", "suite")]
+        if not apps:
+            rows.append((OK, name, "-", "installed (no .app: font, pkg or binary)"))
+            continue
+        for path in apps:
+            app = os.path.basename(path)
+            if not os.path.exists(path):
+                add(FAIL, "casks", name, "mycask installed %s but it is gone" % path)
+                rows.append((FAIL, name, "-", "%s missing" % app))
+            elif os.path.realpath(os.path.dirname(path)) != os.path.realpath(appdir):
+                add(WARN, "casks", name, "%s is in %s, not in %s" % (app, os.path.dirname(path), appdir))
+                rows.append((WARN, name, os.path.dirname(path), "%s not in the appdir" % app))
+            else:
+                rows.append((OK, name, appdir.replace(HOME, "~"), app))
+    add(OK, "casks", "summary", "%d of %d casks installed (mycask)" % (installed, len(wanted)))
+    return rows
+
+
+def check_flatpaks(plan):
+    """Linux desktops: every Flathub app this machine should have is installed."""
+    wanted = (plan or {}).get("flatpaks") or []
+    if SYSTEM != "Linux" or not wanted:
         return []
+    if not shutil.which("flatpak"):
+        add(FAIL, "flatpaks", "flatpak", "not installed, so none of %d apps are" % len(wanted))
+        return []
+    rc, out = run(["flatpak", "list", "--app", "--columns=application"], timeout=120)
+    installed = set(out.split()) if rc == 0 else set()
+    rows = []
+    for app in wanted:
+        if app in installed:
+            rows.append((OK, app, "installed"))
+        else:
+            add(FAIL, "flatpaks", app, "not installed")
+            rows.append((FAIL, app, "not installed"))
+    add(OK, "flatpaks", "summary", "%d of %d Flathub apps installed" % (len(wanted) - len([r for r in rows if r[0] == FAIL]),
+                                                                      len(wanted)))
+    return rows
+
+
+def check_snaps(plan):
+    """Linux desktops: every Snap Store app this machine should have (the ones without a flatpak) is installed."""
+    wanted = (plan or {}).get("snaps") or []
+    if SYSTEM != "Linux" or not wanted:
+        return []
+    if not shutil.which("snap"):
+        add(FAIL, "snaps", "snapd", "not installed, so none of %d snaps are" % len(wanted))
+        return []
+    rc, out = run(["snap", "list"], timeout=120)
+    installed = {line.split()[0] for line in out.splitlines()[1:] if line.strip()} if rc == 0 else set()
+    rows = []
+    for name in wanted:
+        if name in installed:
+            rows.append((OK, name, "installed"))
+        else:
+            add(FAIL, "snaps", name, "not installed")
+            rows.append((FAIL, name, "not installed"))
+    add(OK, "snaps", "summary", "%d of %d snaps installed" % (len(wanted) - len([r for r in rows if r[0] == FAIL]),
+                                                             len(wanted)))
+    return rows
+
+
+def check_debs(plan):
+    """Linux desktops: apps from their vendor's apt repository (Brave Origin) are installed."""
+    wanted = (plan or {}).get("debs") or []
+    if SYSTEM != "Linux" or not wanted:
+        return []
+    rows = []
+    for pkg in wanted:
+        rc, out = run(["dpkg-query", "-W", "-f=${Status} ${Version}", pkg], timeout=60)
+        if rc == 0 and out.startswith("install ok installed"):
+            rows.append((OK, pkg, out.split()[-1]))
+        else:
+            add(FAIL, "debs", pkg, "not installed")
+            rows.append((FAIL, pkg, "not installed"))
+    return rows
+
+
+def check_casks(plan):
+    """Casks this machine should have: installed, and the .app really sits where the cask was told to put it."""
+    wanted = (plan or {}).get("casks") or []
+    if SYSTEM != "Darwin" or not wanted:
+        return []
+    if MYCASK:
+        return check_casks_mycask(plan, wanted)
     brew = os.path.join(BREW, "bin", "brew") if BREW else shutil.which("brew")
-    if not brew or not shutil.which("chezmoi"):
-        add(WARN, "casks", "check", "needs brew and chezmoi: skipped")
+    if not brew:
+        add(WARN, "casks", "check", "needs brew: skipped")
         return []
-    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
-        "execute-template", "{{ concat .packages.darwin.casks %s | toJson }}" % (
-            ".packages.darwin_arm.casks" if ARCH == "arm64" else "(list)")], timeout=120)
-    if rc != 0:
-        add(FAIL, "casks", "list", out.strip()[:300])
-        return []
-    wanted = json.loads(out)
-    rc, out = run(["chezmoi"] + (["-S", source] if source else []) + [
-        "execute-template", '{{ dig "settings" "macos" "cask_appdir" "~/Applications" . }}'], timeout=60)
-    cask_appdir = out.strip() if rc == 0 and out.strip() else "~/Applications"
-    cask_appdir = os.path.expanduser(cask_appdir)
+    cask_appdir = os.path.expanduser(plan.get("cask_appdir") or "~/Applications")
     rc, out = run([brew, "list", "--cask"], timeout=120)
     installed = set(out.split()) if rc == 0 else set()
     rows = []
     for c in wanted:
-        name = c["name"]
+        name = c.get("cask") or c["name"]   # apps from packages.yml: name, cask (token), appdir
         token = name.rsplit("/", 1)[-1]
-        appdir = cask_appdir if "appdir" in c.get("args_str", "") else "/Applications"
+        appdir = cask_appdir if c.get("appdir") else "/Applications"
         rc, info = run([brew, "info", "--json=v2", "--cask", name], timeout=120)
         meta = {}
         try:
@@ -396,7 +492,7 @@ def check_casks(source):
         # a cask that was renamed (qlvideo -> quicklook-video) is installed under its new token
         token = meta.get("token") or token
         if token not in installed:
-            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see 'Left out' in the log)")
+            add(WARN, "casks", name, "not installed (unsupported or disabled for this Mac, see the run's report)")
             rows.append((WARN, name, "-", "not installed"))
             continue
         apps = []
@@ -502,23 +598,16 @@ def check_xcode():
     add(OK, "xcode", "Xcode", selected.strip()[:120])
 
 
-def configured_profile():
-    """full | cli, from the environment or the chezmoi config `chezmoi init` wrote."""
-    if os.environ.get("DOTFILES_PROFILE"):
-        return os.environ["DOTFILES_PROFILE"]
-    try:
-        with open(os.path.join(HOME, ".config", "chezmoi", "chezmoi.toml")) as fh:
-            m = re.search(r'^\s*profile\s*=\s*"(\w+)"', fh.read(), re.M)
-            return m.group(1) if m else "full"
-    except OSError:
-        return "full"
+def configured_profile(plan):
+    """full | cli: does this machine get GUI apps (gui_apps in the inventory, written to the plan)?"""
+    return "full" if (plan or {}).get("gui_apps", True) else "cli"
 
 
 GUI_PATHS = [".config/alacritty", ".config/wezterm", ".config/karabiner", ".hyper.js"]
 
 
-def check_profile():
-    profile = configured_profile()
+def check_profile(plan):
+    profile = configured_profile(plan)
     if profile != "cli":
         add(OK, "profile", "full", "everything is installed")
         return
@@ -558,20 +647,24 @@ def table(headers, rows):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--source", help="chezmoi source (repo) to read the tool plan from; default: chezmoi's own")
+    ap.add_argument("--plan", default=os.path.join(HOME, ".cache", "dotfiles", "plan.json"),
+                    help="the plan the Ansible run wrote (default: ~/.cache/dotfiles/plan.json)")
     ap.add_argument("--no-shell", action="store_true", help="skip the interactive zsh check")
     args = ap.parse_args()
 
     md = ["# Dotfiles install audit: %s" % TARGET, ""]
     md.append("Host: `%s` · brew prefix: `%s` · mise: `%s`" % (platform.platform(), BREW or "none", MISE))
 
-    plan = load_plan(args.source)
+    plan = load_plan(args.plan)
     tool_rows = check_expected(plan) if plan else []
-    runtime_rows = check_runtimes(args.source)
-    cask_rows = check_casks(args.source)
+    runtime_rows = check_runtimes(plan)
+    cask_rows = check_casks(plan)
+    flatpak_rows = check_flatpaks(plan)
+    snap_rows = check_snaps(plan)
+    deb_rows = check_debs(plan)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
-    check_profile()
+    check_profile(plan)
     check_xcode()
     if not args.no_shell:
         check_shell()
@@ -589,6 +682,12 @@ def main():
                table(["", "tool", "via", "resolved", "version / note"], tool_rows)]
     if cask_rows:
         md += ["", "## Casks (%d)" % len(cask_rows), table(["", "cask", "where", "note"], cask_rows)]
+    if flatpak_rows:
+        md += ["", "## Flathub apps (%d)" % len(flatpak_rows), table(["", "app", "state"], flatpak_rows)]
+    if snap_rows:
+        md += ["", "## Snaps (%d)" % len(snap_rows), table(["", "snap", "state"], snap_rows)]
+    if deb_rows:
+        md += ["", "## Apps from vendor apt repositories (%d)" % len(deb_rows), table(["", "package", "version"], deb_rows)]
     md += ["", "## Runtimes", table(["", "command", "resolved", "version"], runtime_rows)]
     md += ["", "## Architecture", table(["", "origin", "native files", "wrong"], arch_rows)]
 

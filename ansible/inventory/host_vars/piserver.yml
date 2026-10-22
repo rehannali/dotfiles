@@ -1,0 +1,18 @@
+---
+# piserver: the Raspberry Pi 4 homelab server (Ubuntu Server, arm64). Its 2 TB disk holds Docker and every service.
+# Set up from the laptop: ansible-playbook site.yml -l piserver -K   (docs/setup-guide.md, "From your laptop, over SSH")
+server:
+  mounts:
+    - path: /mnt/kingston2tb
+      src: ""            # after flashing Ubuntu: `lsblk -f` on the Pi, then UUID=<the disk's UUID> here
+      fstype: ext4       # what `lsblk -f` shows as FSTYPE
+      opts: defaults,nofail,x-systemd.device-timeout=30s
+  docker:
+    data_root: /mnt/kingston2tb/docker
+    containerd_root: /mnt/kingston2tb/containerd
+    services_dir: /mnt/kingston2tb/docker-services
+    log_max_size: 10m
+    log_max_file: 3
+  cloudflared: true
+  netbird: true
+  speedtest: true

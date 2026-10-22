@@ -1,0 +1,41 @@
+---
+# fvm links the global SDK to ~/fvm/default, and ~/fvm/default/bin is on PATH (~/.zshenv)
+- name: Flutter | fvm installed?
+  ansible.builtin.command: which fvm
+  environment: "{{ dev_env }}"
+  register: dev_fvm
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+
+- name: Flutter | no fvm
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['flutter: fvm is not installed, so Flutter is skipped'] }}"
+  when: dev_fvm.rc != 0
+
+- name: Flutter | {{ settings.flutter.version }}
+  when: dev_fvm.rc == 0
+  block:
+    - name: Flutter | install {{ settings.flutter.version }}
+      ansible.builtin.command: fvm install {{ settings.flutter.version }}
+      environment: "{{ dev_env }}"
+      register: dev_fvm_install
+      changed_when: "'already installed' not in dev_fvm_install.stdout"
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: dev_fvm_install is succeeded
+
+    - name: Flutter | make it the global one
+      ansible.builtin.command: fvm global {{ settings.flutter.version }}
+      environment: "{{ dev_env }}"
+      changed_when: true
+
+    # fvm says "setup" even when it could not unpack the Dart SDK (no unzip), so run Flutter itself
+    - name: Flutter | does it run
+      ansible.builtin.command: "{{ ansible_facts.env.HOME }}/fvm/default/bin/flutter --version"
+      changed_when: false
+  rescue:
+    - name: Flutter | not installed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['flutter ' ~ settings.flutter.version ~ ': ' ~ (ansible_failed_result.msg | default('failed'))] }}

@@ -1,0 +1,113 @@
+name: casks-verify
+
+# Checks that every cask the Macs ask for really installs, on both kinds of Mac:
+#
+#   Intel          with mycask (tools/mycask), which reads Homebrew's cask index without Homebrew; the runner's own
+#                  Homebrew is left alone (mycask does not use /usr/local)
+#   Apple Silicon  with Homebrew
+#
+# Each cask in tools/mycask/<intel|arm64>/casks.txt (written from packages.yml by tools/mycask/manifests.py) is installed
+# on its own with --adopt (the runner's preinstalled Chrome, Firefox, ... are taken over), checked by
+# tools/mycask/verify.py (mycask: from its receipt; Homebrew: from `brew info`; app in its folder, linked commands start),
+# and uninstalled again to keep the runner's disk free; 25 minutes at most each, a failed download is tried once more.
+# A table in the run's summary says what is missing or broken, and the job fails. The command-line tools, runtimes and
+# Flathub apps are checked by dotfiles.yml. App Store apps need an Apple ID and are not checked in CI.
+#
+# Runs on pull requests to main, pushes to main (only when the cask lists or the cask code change), once a week (a cask's
+# new version may break), and by hand. macos-15-intel is gone after August 2027: from 2027-08-01 the Intel job stops.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/mycask/**
+      - .github/workflows/casks-verify.yml
+  push:
+    branches: [main]
+    paths:
+      - tools/mycask/**
+      - .github/workflows/casks-verify.yml
+  schedule:
+    - cron: "23 5 * * 2"   # Tuesdays
+  workflow_dispatch:
+
+concurrency:
+  group: casks-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Intel runner still there?
+    runs-on: ubuntu-latest
+    outputs:
+      stop: ${{ steps.guard.outputs.stop }}
+    steps:
+      - name: Date guard
+        id: guard
+        run: |
+          if [ "$(date -u +%Y-%m-%d)" \> "2027-07-31" ]; then
+            echo "::notice::macos-15-intel is gone after August 2027; the Intel casks are not checked any more."
+            echo "stop=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  intel:
+    name: casks · Intel (mycask, macos-15-intel)
+    needs: guard
+    if: needs.guard.outputs.stop != 'true'
+    runs-on: macos-15-intel
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      - name: Install and check each cask (mycask)
+        run: |
+          rc=0
+          bash tools/mycask/verify-casks.sh tools/mycask/intel/casks.txt "$RUNNER_TEMP/casks.md" || rc=$?
+          { echo "### Casks on Intel (mycask)"; cat "$RUNNER_TEMP/casks.md"; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Keep the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: casks-intel
+          path: ${{ runner.temp }}/casks.md
+          if-no-files-found: ignore
+          retention-days: 14
+
+  apple-silicon:
+    name: casks · Apple Silicon (Homebrew, macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 300
+    env:
+      CASK_TOOL: brew
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      - name: Homebrew up to date
+        run: brew update
+
+      - name: Install and check each cask (Homebrew)
+        run: |
+          rc=0
+          bash tools/mycask/verify-casks.sh tools/mycask/arm64/casks.txt "$RUNNER_TEMP/casks.md" || rc=$?
+          { echo "### Casks on Apple Silicon (Homebrew)"; cat "$RUNNER_TEMP/casks.md"; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Keep the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: casks-apple-silicon
+          path: ${{ runner.temp }}/casks.md
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,172 @@
+---
+# Intel Mac: the command-line tools from MacPorts (`port` in packages.yml), binary archives only (port_build: the port
+# itself is compiled, its dependencies are not). A port that is installed is left alone, or upgraded when
+# upgrade_on_apply is on (or with --tags upgrade); a missing one is installed. One that fails falls back to its
+# mise_fallback, else it is reported. Then `port select`, the links of port_links, and the `download` tools.
+# Homebrew left in /usr/local is not used any more; its commands come after MacPorts on PATH. Say how to remove it.
+- name: Intel | Homebrew still installed?
+  ansible.builtin.stat:
+    path: /usr/local/bin/brew
+  register: intel_old_brew
+
+- name: Intel | Homebrew is no longer used
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['Intel Mac: Homebrew is still in /usr/local and no longer used. Remove it with
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)", then
+      sudo rm -rf /usr/local/Homebrew /usr/local/Caskroom /usr/local/Cellar (apps in /Applications stay)'] }}
+  when: intel_old_brew.stat.exists
+
+- name: MacPorts | the ports for this Mac (and mas, for the App Store apps)
+  ansible.builtin.set_fact:
+    ports_wanted: >-
+      {{ tool_plan.port
+         + (['mas'] if gui_apps | bool and install_app_store | bool
+            and apps_wanted | selectattr('mas', 'defined') | rejectattr('cask', 'defined') | list | length > 0 else []) }}
+    ports_upgrade: "{{ upgrade_on_apply | bool or 'upgrade' in ansible_run_tags }}"
+
+- name: MacPorts | ports
+  when: ports_wanted | length > 0 and macports_fallback | bool
+  block:
+    - name: MacPorts | installed?
+      ansible.builtin.include_tasks: macports.yml
+      when: macports_ready is not defined
+
+    # every run that upgrades: otherwise `port outdated` compares against an old ports tree
+    - name: MacPorts | update the ports tree (port selfupdate)
+      ansible.builtin.command: /opt/local/bin/port -N selfupdate
+      become: true
+      changed_when: false
+      failed_when: false
+      when: macports_ready | bool and ports_upgrade | bool and not ansible_check_mode
+
+    - name: MacPorts | install{{ ' or upgrade' if ports_upgrade | bool else '' }} the ports
+      ansible.builtin.script: >-
+        port-install.sh {{ item | quote }} {{ (item in tool_plan.port_build) | lower }} {{ ports_upgrade | bool | lower }}
+      loop: "{{ ports_wanted }}"
+      become: true
+      register: ports_result
+      changed_when: ports_result.stdout is not search('is already installed|is up to date')
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: ports_result is succeeded
+      ignore_errors: true
+      when: macports_ready | bool
+
+    # no archive for this macOS (or another failure): what has no mise replacement gets a second try where MacPorts
+    # builds what it must
+    - name: MacPorts | build what has no archive and no mise replacement
+      ansible.builtin.script: >-
+        port-install.sh {{ item.item | quote }} any {{ ports_upgrade | bool | lower }}
+      loop: >-
+        {{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed')
+           | rejectattr('item', 'in', tool_plan.port_fallback) | list }}
+      loop_control:
+        label: "{{ item.item }}"
+      become: true
+      register: ports_built
+      changed_when: true
+      ignore_errors: true
+      when: macports_ready | bool
+
+    # a port whose binary archive was built against an older version of a library (dyld: Library not loaded): rebuilt
+    - name: MacPorts | rebuild ports with broken links (port rev-upgrade)
+      ansible.builtin.command: /opt/local/bin/port -N rev-upgrade
+      become: true
+      register: ports_rev
+      changed_when: ports_rev.stdout is search('--->  (Building|Installing|Activating)')
+      failed_when: false
+      when: macports_ready | bool and not ansible_check_mode
+
+    - name: MacPorts | mise instead, where the tool has a mise id (or a mise_fallback)
+      ansible.builtin.set_fact:
+        intel_mise_fallback: "{{ intel_mise_fallback | default([]) + [tool_plan.port_fallback[item.item]] }}"
+      loop: "{{ ports_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.item in tool_plan.port_fallback
+
+    - name: MacPorts | record what did not install
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['port: ' ~ item.item.item] }}"
+      loop: "{{ ports_built.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+      loop_control:
+        label: "{{ item.item.item }}"
+
+    - name: MacPorts | could not be installed
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['port: MacPorts missing, not installed: ' ~ (ports_wanted | join(', '))] }}"
+      when: not macports_ready | bool
+
+    # php85 as `php`, py314-pygments as `pygmentize`
+    - name: MacPorts | port select
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if /opt/local/bin/port select --show {{ item[0] | quote }} 2> /dev/null | grep -qw {{ item[1] | quote }}; then
+          echo unchanged
+        else
+          /opt/local/bin/port select --set {{ item[0] | quote }} {{ item[1] | quote }}
+        fi
+      args:
+        executable: /bin/bash
+      loop: "{{ tool_plan.port_select }}"
+      loop_control:
+        label: "{{ item | join(' ') }}"
+      become: true
+      register: port_select
+      changed_when: "'unchanged' not in port_select.stdout"
+      failed_when: false
+      when: macports_ready | bool and item[1] in ports_wanted and not ansible_check_mode
+
+- name: MacPorts | ~/.local/bin
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.local/bin"
+    state: directory
+    mode: "0755"
+  when: tool_plan.port_links | length > 0 or tool_plan.download | length > 0
+
+# telnet is installed as gtelnet, docker-compose as a docker CLI plugin
+- name: MacPorts | commands under their usual name (port_links)
+  ansible.builtin.file:
+    src: "{{ item.value }}"
+    dest: "{{ ansible_facts.env.HOME }}/.local/bin/{{ item.key }}"
+    state: link
+    force: true
+  loop: "{{ tool_plan.port_links | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} -> {{ item.value }}"
+
+# A .tgz with the command at its top level (speedtest: Ookla's universal build). Again when the URL in packages.yml
+# changes, which is how it is upgraded.
+- name: Downloads | tools without a port (download in packages.yml)
+  ansible.builtin.shell: |
+    set -eu
+    bin="$HOME/.local/bin/$BIN"
+    marker="$HOME/.local/share/dotfiles/downloads/$BIN.url"
+    if [ -x "$bin" ] && [ "$(cat "$marker" 2> /dev/null)" = "$URL" ]; then echo unchanged; exit 0; fi
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fsSL --retry 3 "$URL" -o "$tmp/download.tgz"
+    tar -xzf "$tmp/download.tgz" -C "$tmp"
+    [ -f "$tmp/$BIN" ] || { echo "$BIN is not at the top of $URL" >&2; exit 1; }
+    install -m 0755 "$tmp/$BIN" "$bin"
+    mkdir -p "$(dirname "$marker")"
+    printf '%s\n' "$URL" > "$marker"
+    echo installed
+  environment:
+    URL: "{{ item.url }}"
+    BIN: "{{ item.bin }}"
+  loop: "{{ tool_plan.download }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: downloads
+  changed_when: "'installed' in downloads.stdout"
+  ignore_errors: true
+  when: not ansible_check_mode
+
+- name: Downloads | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['download: ' ~ item.item.name] }}"
+  loop: "{{ downloads.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"

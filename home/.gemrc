@@ -1,0 +1,3 @@
+# RubyGems, for every gem install (mise's gem: tools too): no rdoc/ri documentation. Faster, and the rdoc hook
+# crashes on Ruby 3.4 when a gem (fastlane) pulls in a newer rdoc than the one Ruby ships.
+gem: --no-document

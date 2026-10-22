@@ -1,0 +1,143 @@
+---
+- name: Dotfiles | name and email for git are set
+  ansible.builtin.assert:
+    that: [git_name | length > 0, git_email | length > 0]
+    fail_msg: >-
+      git_name and git_email are empty: set them in inventory/group_vars/all/main.yml (or for this group / host),
+      or pass bootstrap.sh --name/--email. No dotfiles were written.
+    quiet: true
+
+- name: Dotfiles | update the checkout on the machine
+  ansible.builtin.include_tasks: checkout.yml
+  when: dotfiles_update | bool
+
+- name: Dotfiles | what this machine leaves out
+  ansible.builtin.set_fact:
+    dotfiles_skip: >-
+      {{ dotfiles_skip_extra
+         + ([] if dotfiles_os == 'darwin' else ['.config/karabiner', '.hyper.js'])
+         + ([] if gui_apps | bool else ['.config/alacritty', '.config/wezterm', '.config/karabiner', '.hyper.js'])
+         + ([] if bitwarden | bool else ['.config/dotfiles/secrets.zsh.j2'])
+         + ([] if dotfiles_os == 'darwin' and gui_apps | bool and (settings.shell.bitwarden_ssh_agent | default('auto')) != 'off'
+             else ['Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2']) }}
+
+- name: Dotfiles | the files in home/
+  ansible.builtin.set_fact:
+    dotfiles_files: >-
+      {{ lookup('community.general.filetree', dotfiles_source, wantlist=True)
+         | selectattr('state', 'equalto', 'file')
+         | rejectattr('path', 'match', '^(' ~ (dotfiles_skip | map('regex_escape') | join('|')) ~ ')(/|$)')
+         | list }}
+
+- name: Dotfiles | directories
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/{{ item }}"
+    state: directory
+    mode: "{{ '0700' if item in dotfiles_private_dirs else '0755' }}"
+  # every directory on the way, parents first: creating a/b/c alone would give a and a/b the mode meant for c
+  loop: >-
+    {%- set ns = namespace(dirs=[]) -%}
+    {%- for d in dotfiles_files | map(attribute='path') | map('dirname') | reject('equalto', '') | unique -%}
+    {%-   set parts = d.split('/') -%}
+    {%-   for i in range(1, parts | length + 1) -%}{%- set ns.dirs = ns.dirs + [parts[:i] | join('/')] -%}{%- endfor -%}
+    {%- endfor -%}
+    {{ ns.dirs | unique | sort }}
+
+- name: Dotfiles | sort the files
+  ansible.builtin.set_fact:
+    dotfiles_templates: "{{ dotfiles_files | selectattr('path', 'search', '\\.j2$') | list }}"
+    dotfiles_copies: >-
+      {{ dotfiles_files | rejectattr('path', 'search', '(\.j2|/\.keep)$')
+         | selectattr('path', 'match', '^(' ~ (dotfiles_copy | map('regex_escape') | join('|')) ~ ')/') | list }}
+    dotfiles_links: >-
+      {{ dotfiles_files | rejectattr('path', 'search', '(\.j2|(^|/)\.keep)$')
+         | rejectattr('path', 'match', '^(' ~ (dotfiles_copy | map('regex_escape') | join('|')) ~ ')/') | list }}
+
+- name: Dotfiles | secrets from Bitwarden (secrets.yml)
+  ansible.builtin.set_fact:
+    dotfiles_secrets: >-
+      {{ dotfiles_secrets | default({}) | combine({item.key: lookup('community.general.bitwarden', item.value.item,
+         field=item.value.field | default('password'))[0]}) }}
+  loop: "{{ secrets.env | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  when: bitwarden | bool
+
+- name: Dotfiles | no secrets to write
+  ansible.builtin.set_fact:
+    dotfiles_secrets: {}
+  when: bitwarden | bool and dotfiles_secrets is not defined
+
+- name: Dotfiles | templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.path | regex_replace('\\.j2$', '') }}"
+    mode: "{{ '0600' if item.path.startswith('.config/dotfiles/') else '0644' }}"
+    backup: true
+  loop: "{{ dotfiles_templates }}"
+  loop_control:
+    label: "{{ item.path }}"
+  vars:
+    dotfiles_secret_values: "{{ dotfiles_secrets | default({}) }}"
+  when: not item.path.startswith('.config/dotfiles/') or dotfiles_secrets is defined
+
+- name: Dotfiles | directories for the coding agents' instructions
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/{{ item.file | dirname }}"
+    state: directory
+    mode: "{{ '0700' if (item.file | dirname) in dotfiles_private_dirs else '0755' }}"
+  loop: "{{ dotfiles_agents }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Dotfiles | instructions for the coding agents
+  ansible.builtin.template:
+    src: agent-instructions.md.j2
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.file }}"
+    mode: "0644"
+    backup: true
+  loop: "{{ dotfiles_agents }}"
+  loop_control:
+    label: "{{ item.file }}"
+  vars:
+    agent: "{{ item }}"
+
+- name: Dotfiles | copies
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ ansible_facts.env.HOME }}/{{ item.path }}"
+    mode: "0600"
+    backup: true
+  loop: "{{ dotfiles_copies }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Dotfiles | links
+  ansible.builtin.include_tasks: links.yml
+
+# The Bitwarden SSH agent LaunchAgent (home/Library/LaunchAgents) runs at every login; load it now so this session has it
+# too. Not in --check, and a failure (no login session, as on CI) is not an error: the next login loads it.
+- name: Dotfiles | Bitwarden SSH agent for apps outside a shell (launchctl)
+  when: >-
+    not ansible_check_mode and dotfiles_os == 'darwin'
+    and (dotfiles_files | selectattr('path', 'equalto', 'Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2') | list | length) > 0
+  vars:
+    bw_agent_label: com.dotfiles.bitwarden-ssh-agent
+    bw_agent_domain: "gui/{{ ansible_facts.user_uid }}"
+  block:
+    - name: Dotfiles | unload the Bitwarden SSH agent LaunchAgent
+      ansible.builtin.command: launchctl bootout {{ bw_agent_domain }}/{{ bw_agent_label }}
+      changed_when: false
+      failed_when: false
+
+    - name: Dotfiles | load the Bitwarden SSH agent LaunchAgent
+      ansible.builtin.command: >-
+        launchctl bootstrap {{ bw_agent_domain }}
+        {{ ansible_facts.env.HOME }}/Library/LaunchAgents/{{ bw_agent_label }}.plist
+      changed_when: false
+      failed_when: false
+
+- name: Dotfiles | alacritty themes
+  ansible.builtin.include_tasks: alacritty.yml
+  when: gui_apps | bool

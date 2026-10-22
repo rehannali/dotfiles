@@ -1,0 +1,34 @@
+---
+# Not the git module: it refuses to update a checkout with local changes, and editing a linked dotfile IS a local
+# change. A fast-forward merge only stops when an incoming change touches a file you changed.
+- name: Dotfiles | clone
+  ansible.builtin.git:
+    repo: "{{ dotfiles_repo }}"
+    dest: "{{ dotfiles_dir }}"
+    version: "{{ dotfiles_branch }}"
+    update: false
+  register: dotfiles_clone
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: dotfiles_clone is succeeded
+
+- name: Dotfiles | fetch and fast-forward
+  ansible.builtin.shell: |
+    set -e
+    git fetch --quiet origin {{ dotfiles_branch | quote }}
+    before="$(git rev-parse HEAD)"
+    git merge --quiet --ff-only FETCH_HEAD
+    [ "$before" = "$(git rev-parse HEAD)" ] || echo updated
+  args:
+    chdir: "{{ dotfiles_dir }}"
+  register: dotfiles_pull
+  changed_when: "'updated' in dotfiles_pull.stdout"
+  failed_when: false
+  when: not dotfiles_clone.changed
+
+- name: Dotfiles | checkout not updated
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['dotfiles: could not fast-forward ' ~ dotfiles_dir ~ ' (your changes conflict with new
+      ones? commit them, then git pull); used as it is'] }}
+  when: dotfiles_pull.rc | default(0) != 0

@@ -1,82 +1,105 @@
 #!/usr/bin/env bash
-# One command to set up a machine (macOS Apple Silicon / Intel, Debian-based Linux, WSL2):
+# One command to set up a machine (macOS Apple Silicon / Intel, Debian-based Linux, WSL2) with Ansible:
 #
-#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --cli
+#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook
+#
+# --host is this machine's name in ansible/inventory/hosts.yml (default: its hostname); that decides what it gets.
+# A machine that is not in the inventory yet: add --group mac_personal | mac_work | servers | wsl (default:
+# mac_personal on a Mac, servers on Linux).
 #
 # What it does, in order:
 #   1. unlocks sudo once and keeps it unlocked, so nothing later asks for the password again
-#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew (on Intel by hand: the
-#      official installer refuses Intel Macs).
-#      Linux:  makes sure git and curl exist (apt).
-#      This has to happen first: on a bare Mac the first `git` call, which `chezmoi init <repo>` makes, is
-#      what opens the "install developer tools" dialog and aborts. Homebrew is installed here, with the real
-#      terminal and visible output, so a failure stops the run with its reason instead of showing up later as
-#      "brew: command not found".
-#   3. downloads chezmoi into a temp dir (nothing is left in $HOME)
-#   4. runs `chezmoi init --apply`, which does everything else. It gets your terminal as its input even when
-#      this script came through a pipe (curl ... | bash), so xcodes can ask for the Apple two-factor code.
+#   2. macOS: installs the Xcode Command Line Tools without the GUI dialog, then Homebrew on Apple Silicon. Intel
+#      Macs get no Homebrew: MacPorts and mise their tools, mycask (tools/mycask) their apps. Linux: makes sure git
+#      and curl exist (apt).
+#      Done here, with the real terminal and visible output, so a failure stops with its reason.
+#   3. with --bitwarden: logs in to Bitwarden and unlocks the vault (the playbook reads secrets from it)
+#   4. clones the repo to ~/.dotfiles (or updates it), installs Ansible (with uv, into its own Python), and runs
+#      ansible/site.yml for this machine. Everything that could not be installed is listed at the end.
+#   5. if Xcode needs your Apple ID's two-factor code, runs that step last, on your terminal
 #
-# Options (all optional; anything you leave out is asked once by chezmoi on your terminal):
-#   --name "Full Name"  name for git commits                                      (DOTFILES_NAME)
-#   --email ADDRESS     email for git commits                                     (DOTFILES_EMAIL)
-#   --cli | --full      profile: command-line tools and terminal setup only (servers), or everything (default)
-#                                                                                 (DOTFILES_PROFILE)
-#   --bitwarden         fetch secrets from Bitwarden, see "Bitwarden" in the README   (DOTFILES_BITWARDEN=true)
+# What it needs to know, it asks at the start (with a terminal), then runs on its own:
+#   - the group of a machine that is not in ansible/inventory/hosts.yml (suggested from the OS: a Mac, WSL, a Linux
+#     desktop session, else a server)
+#   - your name and email for git, unless an option, ~/.config/dotfiles/local.yml or the inventory has them
+#     (suggested from your git config)
+# then shows what it will do and waits for Enter. Everything else has a default, changed with the options below.
+# --yes (or no terminal) asks nothing and takes the suggestions; a missing name or email then stops the dotfiles part.
+#
+# Options (all optional):
+#   --host NAME         this machine in ansible/inventory/hosts.yml (default: its hostname)  (DOTFILES_HOST)
+#   --group GROUP       a machine not in the inventory gets what GROUP gets                  (DOTFILES_GROUP)
+#   --name "Full Name"  name for git commits (else git_name from the inventory)              (DOTFILES_NAME)
+#   --email ADDRESS     email for git commits (else git_email from the inventory)           (DOTFILES_EMAIL)
+#   --cli               command-line tools and terminal setup only, no GUI apps (gui_apps=false)
+#                                                                                 (DOTFILES_PROFILE=cli)
+#   --bitwarden         fetch secrets from Bitwarden, see docs/bitwarden.md       (DOTFILES_BITWARDEN=true)
 #   --bw-method M       how to log in to Bitwarden: apikey, sso or password; implies --bitwarden
 #                                                                                 (DOTFILES_BW_METHOD)
 #   --bw-email ADDRESS  Bitwarden login email, default is --email; implies --bitwarden (DOTFILES_BW_EMAIL)
 #   --bw-server URL     self-hosted or EU Bitwarden server; implies --bitwarden   (DOTFILES_BW_SERVER)
-#   --no-xcode          do not install Xcode / the simulator runtime (they need your Apple ID)
-#                                                                                 (DOTFILES_XCODE=skip)
-#   --xcode VERSION     install this Xcode instead of the newest one this Mac can run (DOTFILES_XCODE_VERSION)
-#   --ios-runtime V     install this iOS simulator runtime instead of the one for that Xcode
-#                                                                                 (DOTFILES_IOS_RUNTIME)
-#   --no-flutter        do not install the Flutter SDK with fvm                  (DOTFILES_FLUTTER=skip)
-#   --no-casks          macOS: only check the cask list, install none            (DOTFILES_CASKS=check)
-#   --no-macports       Intel Mac: do not fall back to MacPorts for tools Homebrew has no bottle for
-#                                                                                 (DOTFILES_MACPORTS=skip)
-#   --no-appstore       macOS: skip Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
-#   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone    (DOTFILES_DEFAULTS=skip)
-#   --no-chsh           do not make zsh the login shell (that step needs sudo)        (DOTFILES_CHSH=skip)
+#   --no-xcode          no Xcode / simulator runtime (they need your Apple ID)    (DOTFILES_XCODE=skip)
+#   --xcode VERSION     this Xcode instead of the newest one this Mac can run     (DOTFILES_XCODE_VERSION)
+#   --ios-runtime V     this iOS simulator runtime instead of the one for that Xcode (DOTFILES_IOS_RUNTIME)
+#   --no-flutter        no Flutter SDK                                            (DOTFILES_FLUTTER=skip)
+#   --no-casks          macOS: no GUI apps from casks (Homebrew, mycask on Intel) (DOTFILES_CASKS=skip)
+#   --no-macports       Intel Mac: no command-line tools from MacPorts (DOTFILES_MACPORTS=skip)
+#   --no-appstore       macOS: no Mac App Store apps (needs a signed-in App Store) (DOTFILES_MAS=skip)
+#   --no-defaults       macOS: leave the Dock, Finder and trackpad settings alone (DOTFILES_DEFAULTS=skip)
+#   --no-chsh           do not make zsh the login shell                           (DOTFILES_CHSH=skip)
+#   --no-flatpaks       Linux desktop: no apps from Flathub                        (DOTFILES_FLATPAKS=skip)
+#   --no-snaps          Linux desktop: no apps from the Snap Store                 (DOTFILES_SNAPS=skip)
+#   --yes               ask nothing: take every suggested answer (CI, scripts)     (DOTFILES_YES=true)
+#   --check             show what would change, change nothing (ansible-playbook --check --diff)
 #   --branch NAME       use this branch of the repo instead of the default one
-#   --source PATH       use a local checkout instead of GitHub                    (DOTFILES_SOURCE)
+#   --source PATH       use a local checkout instead of cloning (it is not pulled) (DOTFILES_SOURCE)
 #   -h, --help          this text
 #
-# Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_CHEZMOI_ARGS (extra
-# flags for chezmoi, e.g. --verbose), DOTFILES_CHEZMOI_VERSION (a chezmoi release tag such as v2.73.2 instead of the
-# latest), and for Bitwarden BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is
-# not asked) and BW_SESSION (an already unlocked vault). Every variable, by scenario: docs/environment.md
+# Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_DIR (where the repo is
+# cloned, default ~/.dotfiles), DOTFILES_SKIP_CASKS (casks to leave out, space separated), DOTFILES_ANSIBLE_ARGS
+# (extra ansible-playbook options), and for Bitwarden
+# BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is not asked) and BW_SESSION
+# (an already unlocked vault). Every variable, by scenario: docs/environment.md
 set -euo pipefail
 
 REPO="${DOTFILES_REPO:-rehannali/dotfiles}"
 BRANCH=""
 SOURCE="${DOTFILES_SOURCE:-}"
+HOST="${DOTFILES_HOST:-}"
+GROUP="${DOTFILES_GROUP:-}"
+CHECK=""
 
 say() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --host)        [ $# -ge 2 ] || die "--host needs a name"; HOST="$2"; shift ;;
+    --group)       [ $# -ge 2 ] || die "--group needs a group"; GROUP="$2"; shift ;;
     --name)        [ $# -ge 2 ] || die "--name needs a value"; export DOTFILES_NAME="$2"; shift ;;
+    --email)       [ $# -ge 2 ] || die "--email needs a value"; export DOTFILES_EMAIL="$2"; shift ;;
+    --cli)         export DOTFILES_PROFILE=cli ;;
+    --full)        export DOTFILES_PROFILE=full ;;
     --bitwarden)   export DOTFILES_BITWARDEN=true ;;
     --bw-method)   [ $# -ge 2 ] || die "--bw-method needs apikey, sso or password"; export DOTFILES_BW_METHOD="$2" DOTFILES_BITWARDEN=true; shift ;;
     --bw-email)    [ $# -ge 2 ] || die "--bw-email needs an address"; export DOTFILES_BW_EMAIL="$2" DOTFILES_BITWARDEN=true; shift ;;
     --bw-server)   [ $# -ge 2 ] || die "--bw-server needs a URL"; export DOTFILES_BW_SERVER="$2" DOTFILES_BITWARDEN=true; shift ;;
-    --cli)         export DOTFILES_PROFILE=cli ;;
-    --full)        export DOTFILES_PROFILE=full ;;
-    --email)       [ $# -ge 2 ] || die "--email needs a value"; export DOTFILES_EMAIL="$2"; shift ;;
     --no-xcode)    export DOTFILES_XCODE=skip ;;
     --xcode)       [ $# -ge 2 ] || die "--xcode needs a version"; export DOTFILES_XCODE_VERSION="$2"; shift ;;
     --ios-runtime) [ $# -ge 2 ] || die "--ios-runtime needs a version"; export DOTFILES_IOS_RUNTIME="$2"; shift ;;
     --no-flutter)  export DOTFILES_FLUTTER=skip ;;
-    --no-casks)    export DOTFILES_CASKS=check ;;
+    --no-casks)    export DOTFILES_CASKS=skip ;;
     --no-macports) export DOTFILES_MACPORTS=skip ;;
     --no-appstore) export DOTFILES_MAS=skip ;;
     --no-defaults) export DOTFILES_DEFAULTS=skip ;;
     --no-chsh)     export DOTFILES_CHSH=skip ;;
+    --no-flatpaks) export DOTFILES_FLATPAKS=skip ;;
+    --no-snaps)    export DOTFILES_SNAPS=skip ;;
+    --yes | -y)    export DOTFILES_YES=true ;;
+    --check)       CHECK=1 ;;
     --branch)      [ $# -ge 2 ] || die "--branch needs a value"; BRANCH="$2"; shift ;;
     --source)      [ $# -ge 2 ] || die "--source needs a value"; SOURCE="$2"; shift ;;
+    --ansible)     ;;   # Ansible is the only way now; kept so older commands still work
     -h | --help)   sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
     *)             die "unknown option: $1 (try --help)" ;;
   esac
@@ -86,58 +109,72 @@ done
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
 
-# Homebrew's installer (install.sh) and its .pkg refuse every Intel Mac now ("only supported on Apple Silicon
-# processors"), but brew itself still runs there (Tier 3, supported until September 2027). Intel gets what the old
-# installer did: a checkout of Homebrew/brew in /usr/local/Homebrew, linked as /usr/local/bin/brew, then
-# `brew update` fetches the formula index (it comes from the API, nothing else is cloned).
-# BREW_PREFIX (default /usr/local) and BREW_GROUP (default admin) are only changed by a test.
-
-# Homebrew's own installer prepares /usr/local like this, and the manual install has to end up the same: every
-# directory brew writes into exists, belongs to you and the admin group, and is group-writable (the directories zsh
-# reads completions from stay 755: group-writable ones make compinit complain about insecure directories). On a Mac
-# that had /usr/local before Homebrew, some of these (lib/pkgconfig, share/man/man8, ...) belong to root and brew then
-# warns "directories not writable by your user". The list is install.sh's plus brew's own
-# (Keg.must_be_writable_directories and must_exist_subdirectories). Runs every time, also when brew is already installed.
-dir_group() { stat -f %Sg "$1" 2> /dev/null || stat -c %G "$1"; }   # macOS, then GNU stat
-
-brew_fix_intel_dirs() {
-  local prefix="${BREW_PREFIX:-/usr/local}" group="${BREW_GROUP:-admin}" me dir target
-  me="$(id -un)"
-  for dir in bin etc etc/bash_completion.d include lib lib/cps lib/pkgconfig sbin opt Cellar Caskroom Frameworks \
-      share share/aclocal share/doc share/info share/locale share/man share/man/man1 share/man/man2 share/man/man3 \
-      share/man/man4 share/man/man5 share/man/man6 share/man/man7 share/man/man8 share/cps share/zsh \
-      share/zsh/site-functions share/fish share/fish/vendor_completions.d share/fish/vendor_functions.d share/pwsh \
-      share/pwsh/completions var var/log var/homebrew var/homebrew/linked var/homebrew/locks; do
-    target="$prefix/$dir"
-    [ -d "$target" ] || as_root mkdir -p "$target"
-    [ -O "$target" ] || as_root chown "$me" "$target"
-    [ "$(dir_group "$target")" = "$group" ] || as_root chgrp "$group" "$target"
-    case "$dir" in
-      share/zsh | share/zsh/site-functions) as_root chmod 755 "$target" ;;
-      *) as_root chmod u+rwx,g+rwx "$target" ;;
-    esac
-  done
-  # the checkout of Homebrew/brew itself, and the Python packages brew installs (lib/pythonX.Y/site-packages)
-  for target in "$prefix/Homebrew" "$prefix"/lib/python*/site-packages; do
-    [ -d "$target" ] || continue
-    { [ -O "$target" ] && [ "$(dir_group "$target")" = "$group" ]; } || as_root chown -R "$me:$group" "$target"
-  done
+# 0. what it needs to know: asked now, so everything after this runs without you
+interactive() { [ "${DOTFILES_YES:-}" != true ] && ( : < /dev/tty ) 2> /dev/null; }
+ask() {   # ask "question" "suggestion" -> the answer, or the suggestion on Enter
+  local answer=""
+  read -r -p "$1${2:+ [$2]}: " answer < /dev/tty || true
+  printf '%s' "${answer:-$2}"
 }
-
-brew_install_intel() {
-  local prefix="${BREW_PREFIX:-/usr/local}"
-  command -v git > /dev/null 2>&1 || die "git is needed to install Homebrew"
-  brew_fix_intel_dirs
-  if [ ! -d "$prefix/Homebrew/.git" ]; then
-    # /usr/local belongs to root: the checkout's directory is made (and handed over) with sudo, like the installer does
-    as_root mkdir -p "$prefix/Homebrew"
-    as_root chown -R "$(id -un):${BREW_GROUP:-admin}" "$prefix/Homebrew"
-    git clone --quiet https://github.com/Homebrew/brew "$prefix/Homebrew" \
-      || die "Could not download Homebrew from github.com/Homebrew/brew"
+hosts_yml() {   # the inventory, from --source, an existing checkout, or the repo on GitHub
+  local dir="${SOURCE:-${DOTFILES_DIR:-$HOME/.dotfiles}}"
+  if [ -f "$dir/ansible/inventory/hosts.yml" ]; then cat "$dir/ansible/inventory/hosts.yml"
+  else curl -fsSL "https://raw.githubusercontent.com/$REPO/${BRANCH:-HEAD}/ansible/inventory/hosts.yml" 2> /dev/null || true
   fi
-  ln -sf "$prefix/Homebrew/bin/brew" "$prefix/bin/brew"
-  "$prefix/bin/brew" update --force --quiet || die "brew update failed (its output is above)"
 }
+local_has() { grep -q "^      $1: " "$HOME/.config/dotfiles/local.yml" 2> /dev/null; }
+[ -n "$HOST" ] || HOST="$(hostname -s 2> /dev/null || hostname)"
+ASKED=()   # answers kept in local.yml (an inventory: the repo's host_vars still win over them)
+
+if [ -z "$GROUP" ] && ! hosts_yml | grep -qE "^[[:space:]]+$HOST:[[:space:]]*(#.*)?$"; then
+  if [ "$OS" = Darwin ]; then GROUP=mac_personal; groups="mac_personal mac_work"
+  else
+    groups="servers linux_desktop wsl"
+    if grep -qi microsoft /proc/version 2> /dev/null; then GROUP=wsl
+    elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}${XDG_CURRENT_DESKTOP:-}" ]; then GROUP=linux_desktop
+    else GROUP=servers
+    fi
+  fi
+  if interactive; then
+    say "$HOST is not in ansible/inventory/hosts.yml. Which kind of machine is it? ($groups)"
+    while :; do
+      answer="$(ask "Group" "$GROUP")"
+      case " $groups " in *" $answer "*) GROUP="$answer"; break ;; esac
+      printf 'One of: %s\n' "$groups"
+    done
+  fi
+fi
+
+if [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
+  suggestion="$(git config --global user.name 2> /dev/null || true)"
+  if interactive; then
+    answer=""
+    while [ -z "$answer" ]; do answer="$(ask "Your name, for git commits" "$suggestion")"; done
+  else
+    answer="$suggestion"
+  fi
+  [ -z "$answer" ] || ASKED+=("git_name: $(printf '"%s"' "${answer//\"/\\\"}")")
+fi
+if [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
+  suggestion="$(git config --global user.email 2> /dev/null || true)"
+  if interactive; then
+    answer=""
+    while [ -z "$answer" ]; do answer="$(ask "Your email, for git commits" "$suggestion")"; done
+  else
+    answer="$suggestion"
+  fi
+  [ -z "$answer" ] || ASKED+=("git_email: $(printf '"%s"' "${answer//\"/\\\"}")")
+fi
+
+if interactive; then
+  say "About to set up $HOST${GROUP:+ as $GROUP} ($OS $(uname -m))"
+  for line in ${ASKED[@]+"${ASKED[@]}"}; do printf '  %s\n' "$line"; done
+  [ -z "${DOTFILES_NAME:-}" ] || printf '  git_name: %s\n' "$DOTFILES_NAME"
+  [ -z "${DOTFILES_EMAIL:-}" ] || printf '  git_email: %s\n' "$DOTFILES_EMAIL"
+  env | sed -n 's/^\(DOTFILES_[A-Z_]*=\)/  \1/p' | grep -vE 'DOTFILES_(NAME|EMAIL|HOST|GROUP)=' || true
+  printf '  %s\n' "Defaults for everything else; bootstrap.sh --help lists the options. Ctrl-C to stop."
+  case "$(ask "Run the setup with these? [Y/n]" "")" in [nN]*) die "stopped; nothing was changed" ;; esac
+fi
 
 # 1. sudo, once
 SUDO_KEEPALIVE_PID=""
@@ -149,23 +186,23 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO_KEEPALIVE_PID=$!
   disown "$SUDO_KEEPALIVE_PID" 2> /dev/null || true   # no "Terminated: 15" when cleanup stops it
 fi
-CHEZMOI_TMP="$(mktemp -d)"
+WORK_TMP="$(mktemp -d)"
 cleanup() {
   [ -z "$SUDO_KEEPALIVE_PID" ] || kill "$SUDO_KEEPALIVE_PID" 2> /dev/null || true
-  rm -rf "$CHEZMOI_TMP"
+  rm -rf "$WORK_TMP"
 }
 trap cleanup EXIT
 
 as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
 # `curl ... | bash` makes stdin the pipe the script itself arrives on: a program that asks something (the Bitwarden
-# CLI, chezmoi's prompts, xcodes asking for the two-factor code) would read the end of the pipe instead of
+# CLI, Ansible asking for the sudo password, xcodes asking for the two-factor code) would read the end of the pipe instead of
 # your keyboard. Give those the terminal. Without a terminal (CI) they keep stdin as it is.
 with_tty() {
   if [ ! -t 0 ] && ( : < /dev/tty ) 2> /dev/null; then "$@" < /dev/tty; else "$@"; fi
 }
 
-# 2. what chezmoi needs before it can start
+# 2. what has to be there before git and Ansible can run
 if [ "$OS" = Darwin ]; then
   if ! xcode-select -p > /dev/null 2>&1; then
     say "Installing the Xcode Command Line Tools (no dialog)"
@@ -193,28 +230,32 @@ if [ "$OS" = Darwin ]; then
   fi
   say "Command Line Tools: $(xcode-select -p)"
 
-  # Homebrew. Apple Silicon: /opt/homebrew, Intel: /usr/local.
-  if [ "$(uname -m)" = arm64 ]; then brew_bin=/opt/homebrew/bin/brew; else brew_bin=/usr/local/bin/brew; fi
-  if [ ! -x "$brew_bin" ]; then
-    [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
-    if [ "$(uname -m)" = arm64 ]; then
+  # Homebrew, Apple Silicon only (/opt/homebrew). Intel Macs have none: Homebrew made them Tier 3 and drops them on
+  # 1 September 2027, so the playbook installs their tools with MacPorts and mise, and their apps with mycask
+  # (tools/mycask), which needs only the python3 that came with the Command Line Tools.
+  if [ "$(uname -m)" = arm64 ]; then
+    brew_bin=/opt/homebrew/bin/brew
+    if [ ! -x "$brew_bin" ]; then
+      [ "$(id -u)" -ne 0 ] || die "Homebrew will not install as root. Run this as your normal (administrator) user."
       say "Installing Homebrew"
       brew_installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
         || die "Could not download the Homebrew installer (no network?)"
       # NONINTERACTIVE: the installer would wait for RETURN. sudo is already unlocked above, so it asks nothing.
       NONINTERACTIVE=1 /bin/bash -c "$brew_installer" \
         || die "The Homebrew installer failed (its output is above). Fix that, then run this again."
+    fi
+    [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
+    # PATH for everything started from here on: Ansible and what it runs
+    eval "$("$brew_bin" shellenv)"
+    say "Homebrew: $(brew --version | sed -n 1p) ($brew_bin)"
+  else
+    /usr/bin/python3 --version > /dev/null 2>&1 || die "/usr/bin/python3 does not run (mycask needs it; it comes with the Command Line Tools)"
+    if [ -x /usr/local/bin/brew ] || [ -d /usr/local/Homebrew ]; then
+      say "Intel Mac: Homebrew is still in /usr/local; nothing uses it any more (the report at the end says how to remove it)"
     else
-      say "Installing Homebrew for an Intel Mac (its own installer no longer supports Intel, so: git checkout)"
-      brew_install_intel
+      say "Intel Mac: no Homebrew; MacPorts and mise install the tools, mycask the apps"
     fi
   fi
-  # a Homebrew from an earlier run may sit in directories that root owns
-  [ "$(uname -m)" = arm64 ] || brew_fix_intel_dirs
-  [ -x "$brew_bin" ] || die "Homebrew is not at $brew_bin after installing it (the installer output above says why)"
-  # PATH for everything started from here on: chezmoi and every script it runs
-  eval "$("$brew_bin" shellenv)"
-  say "Homebrew: $(brew --version | sed -n 1p) ($brew_bin)"
 else
   if ! command -v git > /dev/null 2>&1 || ! command -v curl > /dev/null 2>&1; then
     command -v apt-get > /dev/null 2>&1 || die "git and curl are missing and this is not a Debian-based system"
@@ -224,16 +265,9 @@ else
   fi
 fi
 
-# 3. chezmoi
-say "Downloading chezmoi"
-# DOTFILES_CHEZMOI_VERSION=v2.73.2 pins the release; the installer takes the tag with -t
-sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$CHEZMOI_TMP" ${DOTFILES_CHEZMOI_VERSION:+-t "$DOTFILES_CHEZMOI_VERSION"}
-export PATH="$CHEZMOI_TMP:$PATH"
-
-# Bitwarden, only with --bitwarden
-# chezmoi reads secrets while it renders templates, which is before any script of the dotfiles has run, so the
-# vault has to be open before `chezmoi init`. The CLI is not installed yet at this point: use the official
-# standalone build.
+# 3. Bitwarden, only with --bitwarden
+# The playbook reads secrets (secrets.yml, the Apple ID) from the vault, so it has to be open before it starts. The
+# CLI is not installed yet at this point: use the official standalone build (it stays on PATH for the run).
 bw_install() {
   command -v bw > /dev/null 2>&1 && return 0
   local platform=linux
@@ -243,11 +277,11 @@ bw_install() {
     as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y unzip
   fi
   say "Downloading the Bitwarden CLI"
-  curl -fsSL "https://vault.bitwarden.com/download/?app=cli&platform=$platform" -o "$CHEZMOI_TMP/bw.zip"
-  unzip -q -o "$CHEZMOI_TMP/bw.zip" -d "$CHEZMOI_TMP"
-  chmod +x "$CHEZMOI_TMP/bw"
+  curl -fsSL "https://vault.bitwarden.com/download/?app=cli&platform=$platform" -o "$WORK_TMP/bw.zip"
+  unzip -q -o "$WORK_TMP/bw.zip" -d "$WORK_TMP"
+  chmod +x "$WORK_TMP/bw"
   # the macOS download can be an Intel-only binary, which an Apple Silicon Mac runs through Rosetta
-  if [ "$OS" = Darwin ] && [ "$(uname -m)" = arm64 ] && ! file "$CHEZMOI_TMP/bw" | grep -q arm64; then
+  if [ "$OS" = Darwin ] && [ "$(uname -m)" = arm64 ] && ! file "$WORK_TMP/bw" | grep -q arm64; then
     as_root softwareupdate --install-rosetta --agree-to-license > /dev/null 2>&1 || true
   fi
 }
@@ -303,38 +337,128 @@ bw_open_vault() {
 
 if [ "${DOTFILES_BITWARDEN:-}" = true ]; then bw_open_vault; fi
 
-# 4. everything else
-# Extra chezmoi flags, e.g. DOTFILES_CHEZMOI_ARGS="--verbose" (CI uses it for a readable log)
-extra=()
-if [ -n "${DOTFILES_CHEZMOI_ARGS:-}" ]; then read -r -a extra <<< "$DOTFILES_CHEZMOI_ARGS"; fi
+export PATH="$WORK_TMP:$PATH"   # the Bitwarden CLI, when it was downloaded
 
-# `chezmoi init` clones only when there is no checkout yet: on a Mac that ran this before, it would apply the old
-# copy of the dotfiles again. So bring an existing checkout up to date first.
-CHEZMOI_SOURCE="${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi"
-if [ -z "$SOURCE" ] && [ -d "$CHEZMOI_SOURCE/.git" ]; then
-  say "Updating the existing checkout in $CHEZMOI_SOURCE"
+# 4. the repo and Ansible
+REPO_DIR="${SOURCE:-${DOTFILES_DIR:-$HOME/.dotfiles}}"
+if [ -n "$SOURCE" ]; then
+  [ -d "$SOURCE/ansible" ] || die "--source $SOURCE is not a checkout of the dotfiles repo"
+elif [ -d "$REPO_DIR/.git" ]; then
+  # an existing checkout: bring it up to date first, or the old setup is applied again
+  say "Updating $REPO_DIR"
   if [ -n "$BRANCH" ]; then
-    git -C "$CHEZMOI_SOURCE" fetch --quiet origin "$BRANCH" \
-      && { git -C "$CHEZMOI_SOURCE" checkout --quiet "$BRANCH" 2> /dev/null \
-           || git -C "$CHEZMOI_SOURCE" checkout --quiet -b "$BRANCH" --track "origin/$BRANCH"; } \
-      && git -C "$CHEZMOI_SOURCE" merge --quiet --ff-only "origin/$BRANCH" \
-      || printf '\n\033[1;33mWARNING:\033[0m could not update %s to %s (local changes?); applying it as it is.\n' "$CHEZMOI_SOURCE" "$BRANCH" >&2
+    git -C "$REPO_DIR" fetch --quiet origin "$BRANCH" \
+      && { git -C "$REPO_DIR" checkout --quiet "$BRANCH" 2> /dev/null \
+           || git -C "$REPO_DIR" checkout --quiet -b "$BRANCH" --track "origin/$BRANCH"; } \
+      && git -C "$REPO_DIR" merge --quiet --ff-only "origin/$BRANCH" \
+      || printf '\n\033[1;33mWARNING:\033[0m could not update %s to %s (local changes?); using it as it is.\n' "$REPO_DIR" "$BRANCH" >&2
   else
-    git -C "$CHEZMOI_SOURCE" pull --quiet --ff-only \
-      || printf '\n\033[1;33mWARNING:\033[0m could not update %s (local changes?); applying it as it is.\n' "$CHEZMOI_SOURCE" >&2
+    git -C "$REPO_DIR" pull --quiet --ff-only \
+      || printf '\n\033[1;33mWARNING:\033[0m could not update %s (local changes?); using it as it is.\n' "$REPO_DIR" >&2
   fi
+else
+  say "Cloning $REPO into $REPO_DIR"
+  git clone --quiet ${BRANCH:+--branch "$BRANCH"} "https://github.com/$REPO.git" "$REPO_DIR" || die "Could not clone $REPO"
+fi
+branch="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
+
+# Ansible runs from uv: a Python of its own, nothing goes into the system Python
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv > /dev/null 2>&1; then
+  say "Installing uv (for Ansible)"
+  installer="$(curl -fsSL https://astral.sh/uv/install.sh)" || die "Could not download the uv installer (no network?)"
+  UV_NO_MODIFY_PATH=1 sh -c "$installer" || die "The uv installer failed"
+fi
+say "Installing Ansible"
+# A Python ansible-core supports: uv would otherwise take the newest one it finds (3.15 broke ansible-core's imports).
+# uv downloads it if the machine has none.
+# Intel Macs: cryptography (ansible-core needs it) has had no x86_64 macOS wheel since version 49, and building it needs
+# Rust, pkg-config and OpenSSL, which an Intel Mac without Homebrew does not have. 48.0.1 is the last with a universal2 wheel.
+ansible_with=()
+if [ "$OS" = Darwin ] && [ "$(uname -m)" = x86_64 ]; then ansible_with=(--with "cryptography<49"); fi
+uv tool install --quiet --upgrade --python 3.13 ${ansible_with[@]+"${ansible_with[@]}"} ansible-core || die "Could not install Ansible"
+ansible-galaxy collection install --upgrade -r "$REPO_DIR/ansible/requirements.yml" > /dev/null \
+  || die "Could not install the Ansible collections"
+
+# which machine this is
+cd "$REPO_DIR/ansible"
+export ANSIBLE_CONFIG="$REPO_DIR/ansible/ansible.cfg"
+args=(-i inventory/hosts.yml -c local -e "dotfiles_dir=$REPO_DIR" -e "dotfiles_branch=$branch")
+if ! ansible-inventory -i inventory/hosts.yml --host "$HOST" > /dev/null 2>&1 || [ -n "$GROUP" ]; then
+  if [ -z "$GROUP" ]; then
+    if [ "$OS" = Darwin ]; then GROUP=mac_personal; else GROUP=servers; fi
+    say "$HOST is not in ansible/inventory/hosts.yml: setting it up like the $GROUP group (--group to choose; add it to the inventory to keep it)"
+  fi
+  # a machine that is not in the inventory yet: give it the group's setup for this run
+  printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$GROUP" "$HOST" > "$WORK_TMP/new-host.yml"
+  args+=(-i "$WORK_TMP/new-host.yml")
+fi
+args+=(-l "$HOST")
+
+# options and DOTFILES_* variables -> inventory switches. They are this machine's choices: kept in
+# ~/.config/dotfiles/local.yml (dot remember), so every later `dot apply` / `dot sync` uses them too
+yaml_str() { local s="${1//\\/\\\\}"; printf '"%s"' "${s//\"/\\\"}"; }
+saved=()
+choice() { args+=(-e "{\"$1\": $2}"); saved+=("$1: $2"); }
+[ -z "$SOURCE" ] || args+=(-e dotfiles_update=false)
+[ -z "${DOTFILES_NAME:-}" ] || choice git_name "$(yaml_str "$DOTFILES_NAME")"
+[ -z "${DOTFILES_EMAIL:-}" ] || choice git_email "$(yaml_str "$DOTFILES_EMAIL")"
+case "${DOTFILES_PROFILE:-}" in cli) choice gui_apps false ;; full) choice gui_apps true ;; esac
+[ "${DOTFILES_BITWARDEN:-}" != true ] || choice bitwarden true
+[ "${DOTFILES_XCODE:-}" != skip ] || { choice install_xcode false; choice install_ios_runtime false; }
+[ "${DOTFILES_RUNTIME:-}" != skip ] || [ "${DOTFILES_XCODE:-}" = skip ] || choice install_ios_runtime false
+[ -z "${DOTFILES_XCODE_VERSION:-}" ] || choice xcode_version "$(yaml_str "$DOTFILES_XCODE_VERSION")"
+[ -z "${DOTFILES_IOS_RUNTIME:-}" ] || choice ios_runtime "$(yaml_str "$DOTFILES_IOS_RUNTIME")"
+[ "${DOTFILES_FLUTTER:-}" != skip ] || choice install_flutter false
+case "${DOTFILES_CASKS:-}" in skip | check) choice install_casks false ;; esac
+# DOTFILES_SKIP_CASKS="netbird-ui other": apps (names in packages.yml) left out (replaces apps_skip)
+if [ -n "${DOTFILES_SKIP_CASKS:-}" ]; then
+  skip_list=""
+  for c in $DOTFILES_SKIP_CASKS; do skip_list="$skip_list${skip_list:+, }$(yaml_str "$c")"; done
+  choice apps_skip "[$skip_list]"
+fi
+[ "${DOTFILES_MACPORTS:-}" != skip ] || choice macports_fallback false
+[ "${DOTFILES_MAS:-}" != skip ] || choice install_app_store false
+[ "${DOTFILES_DEFAULTS:-}" != skip ] || choice macos_defaults false
+[ "${DOTFILES_CHSH:-}" != skip ] || choice login_shell_zsh false
+[ "${DOTFILES_FLATPAKS:-}" != skip ] || choice install_flatpaks false
+[ "${DOTFILES_SNAPS:-}" != skip ] || choice install_snaps false
+# the answers to the questions at the start: kept, not forced (-e), so host_vars in the repo still win
+saved+=(${ASKED[@]+"${ASKED[@]}"})
+if [ -n "$CHECK" ]; then   # --check keeps nothing, so hand them to this run directly
+  for line in ${ASKED[@]+"${ASKED[@]}"}; do args+=(-e "{\"${line%%:*}\": ${line#*: }}"); done
 fi
 
-# ${extra[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`
-if [ -n "$SOURCE" ]; then
-  say "chezmoi init --apply (from $SOURCE)"
-  with_tty chezmoi init --source "$SOURCE" --apply ${extra[@]+"${extra[@]}"}
-elif [ -n "$BRANCH" ]; then
-  say "chezmoi init --apply $REPO (branch $BRANCH)"
-  with_tty chezmoi init --apply --branch "$BRANCH" ${extra[@]+"${extra[@]}"} "$REPO"
-else
-  say "chezmoi init --apply $REPO"
-  with_tty chezmoi init --apply ${extra[@]+"${extra[@]}"} "$REPO"
+# keep them, and ask for a git name / email nothing has given yet (not with --check: that changes nothing)
+dot_cmd() { DOTFILES_DIR="$REPO_DIR" DOTFILES_HOST="$HOST" DOTFILES_GROUP="$GROUP" bash "$REPO_DIR/home/.local/bin/dot" "$@"; }
+if [ -z "$CHECK" ]; then
+  if [ ${#saved[@]} -gt 0 ]; then dot_cmd remember "${saved[@]}" || die "Could not save this machine's choices"; fi
+  dot_cmd remember || true
+fi
+local_vars="$HOME/.config/dotfiles/local.yml"
+[ ! -f "$local_vars" ] || args+=(-i "$local_vars")
+[ -z "$CHECK" ] || args+=(--check --diff)
+# DOTFILES_ANSIBLE_ARGS="-e install_casks=false --tags dotfiles": extra ansible-playbook options (word-split)
+if [ -n "${DOTFILES_ANSIBLE_ARGS:-}" ]; then read -r -a extra_ansible <<< "$DOTFILES_ANSIBLE_ARGS"; args+=("${extra_ansible[@]}"); fi
+
+# sudo was unlocked in step 1 and is kept unlocked. Where sudo remembers that per terminal (macOS), Ansible's own
+# sudo calls may not see it: then Ansible asks for the password once more.
+if [ "$(id -u)" -ne 0 ] && [ -z "$CHECK" ] \
+    && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
+  args+=(--ask-become-pass)
+fi
+say "ansible-playbook site.yml for $HOST${GROUP:+ (group $GROUP)}"
+with_tty ansible-playbook "${args[@]}" site.yml
+
+# 5. what needs your terminal: Xcode with an Apple ID that asks for a two-factor code
+pending="$HOME/.cache/dotfiles/xcode-install.sh"
+if [ -z "$CHECK" ] && [ -x "$pending" ]; then
+  if ( : < /dev/tty ) 2> /dev/null; then
+    say "Xcode: your Apple ID needs a two-factor code"
+    with_tty bash "$pending" || printf '\n\033[1;33mWARNING:\033[0m the Xcode install did not finish; run %s again later.\n' "$pending" >&2
+  else
+    say "Xcode needs your Apple ID's two-factor code: run $pending on a terminal."
+  fi
 fi
 
 say "Done. Open a new terminal."

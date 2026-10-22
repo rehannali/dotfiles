@@ -1,0 +1,32 @@
+---
+# Ookla's speedtest, their own build for this CPU, in /usr/local/bin. A new server_speedtest_version upgrades it.
+# The first run asks you to accept Ookla's licence (or: speedtest --accept-license --accept-gdpr).
+- name: Speedtest | this CPU's build
+  ansible.builtin.set_fact:
+    speedtest_arch: "{{ {'x86_64': 'x86_64', 'aarch64': 'aarch64', 'armv7l': 'armhf', 'armv6l': 'armel'}[ansible_facts.architecture] | default('') }}"
+
+- name: Speedtest | no build for this CPU
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['server: no Ookla speedtest build for ' ~ ansible_facts.architecture] }}"
+  when: speedtest_arch | length == 0
+
+- name: Speedtest | install {{ server_speedtest_version }}
+  ansible.builtin.shell: |
+    set -eu
+    marker=/usr/local/share/dotfiles/speedtest.version
+    if [ -x /usr/local/bin/speedtest ] && [ "$(cat "$marker" 2> /dev/null)" = "$VERSION" ]; then echo unchanged; exit 0; fi
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fsSL --retry 3 "https://install.speedtest.net/app/cli/ookla-speedtest-$VERSION-linux-$ARCH.tgz" -o "$tmp/st.tgz"
+    tar -xzf "$tmp/st.tgz" -C "$tmp"
+    install -m 0755 "$tmp/speedtest" /usr/local/bin/speedtest
+    mkdir -p "$(dirname "$marker")"
+    printf '%s\n' "$VERSION" > "$marker"
+    echo installed
+  environment:
+    VERSION: "{{ server_speedtest_version }}"
+    ARCH: "{{ speedtest_arch }}"
+  become: true
+  register: speedtest_install
+  changed_when: "'installed' in speedtest_install.stdout"
+  when: speedtest_arch | length > 0 and not ansible_check_mode

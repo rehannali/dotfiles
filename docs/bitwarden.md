@@ -1,22 +1,19 @@
 # Bitwarden
 
 Optional. If you use it, tokens and keys stay in your vault and the dotfiles only ask Bitwarden for them while
-applying. It uses chezmoi's Bitwarden support, see the
-[chezmoi documentation](https://www.chezmoi.io/user-guide/password-managers/bitwarden/).
+applying. It uses Ansible's `community.general.bitwarden` lookup, which calls the `bw` CLI.
 
 ## Turn it on
 
 ```sh
-bootstrap.sh --bitwarden            # or DOTFILES_BITWARDEN=true
+bootstrap.sh --bitwarden            # or DOTFILES_BITWARDEN=true; kept for this machine
 ```
 
-or answer yes to "Fetch secrets from Bitwarden" in `chezmoi init`. This sets `bitwarden = true` in
-`~/.config/chezmoi/chezmoi.toml` and also `[bitwarden] unlock = "auto"`, so later `chezmoi apply` runs unlock
-the vault themselves when `BW_SESSION` isn't set.
+or for good: `bitwarden: true` in `ansible/inventory/group_vars/all/main.yml`, or only for a group or host.
 
 ## Say which secrets you want
 
-Edit `home/.chezmoidata/secrets.yml`:
+Edit `ansible/inventory/group_vars/all/secrets.yml`:
 
 ```yaml
 secrets:
@@ -28,8 +25,8 @@ secrets:
       field: token                           # a custom field called "token"
 ```
 
-`field` is `password` (the default), `username`, `notes`, or the name of a custom field. On the next apply
-chezmoi writes `~/.config/dotfiles/secrets.zsh` with mode 600:
+`field` is `password` (the default), `username`, `notes`, or the name of a custom field. On the next run the
+dotfiles role writes `~/.config/dotfiles/secrets.zsh` with mode 600:
 
 ```sh
 export GITHUB_TOKEN='...'
@@ -39,14 +36,13 @@ export NPM_TOKEN='...'
 `.zshrc` and `.bashrc` read that file. Values with quotes or `$` in them come through unchanged. With Bitwarden
 off, nothing is fetched and no file is written.
 
-For files (an ssh key, a certificate) use an item's attachment with `bitwardenAttachmentByRef` in a template of
-your own; the chezmoi page above has an example.
+Files (an ssh key, a certificate) are not handled yet; `bw get attachment` in a task of your own would do it.
 
 ## Logging in
 
-chezmoi reads secrets while it renders templates, before any of the dotfiles' scripts have run, so the vault has
-to be open before `chezmoi init`. `bootstrap.sh --bitwarden` does that: it downloads the official `bw` CLI,
-logs in, unlocks, and passes `BW_SESSION` on to chezmoi. How it logs in depends on what you've set:
+The playbook reads secrets while it runs, so the vault has to be open before it starts. `bootstrap.sh --bitwarden`
+does that: it downloads the official `bw` CLI, logs in, unlocks, and passes `BW_SESSION` on to Ansible. How it logs
+in depends on what you've set:
 
 | Situation | What you set | What happens |
 |---|---|---|
@@ -63,13 +59,20 @@ password to unlock the vault: type it, or put it in `BW_PASSWORD` for the run.
 Don't leave `BW_PASSWORD` or the API key in your shell profile. Export them for the one command, or read them
 from somewhere safe.
 
+## Every run after that
+
+`bootstrap.sh --bitwarden` keeps `bitwarden: true` for this machine (`~/.config/dotfiles/local.yml`), and `dot apply`
+/ `dot sync` unlock the vault before they run: they ask for the master password, or use `BW_PASSWORD`, or nothing
+when `BW_SESSION` is already set. The CLI stays logged in between runs; after `bw logout`, run `bw login` once.
+
 ## Without bootstrap.sh
 
-Open the vault yourself, then run chezmoi:
+Open the vault yourself, then run the playbook (the lookups run where `ansible-playbook` runs, so also when you
+push to another machine, the vault on your laptop is used):
 
 ```sh
 export BW_SESSION=$(bw unlock --raw)          # or: bw login you@example.com --raw
-chezmoi apply
+cd ansible && ansible-playbook site.yml -l macbook -e bitwarden=true
 ```
 
 ## Apple ID for Xcode (and the two-factor code)
@@ -81,20 +84,24 @@ chezmoi apply
    login username and password. Only if Bitwarden is on and unlocked in that run
 3. otherwise `xcodes` asks
 
-They go into the environment of the one script that installs Xcode. They are never put on a command line or
+They go into the environment of the one task that installs Xcode. They are never put on a command line or
 written to a file.
 
-The two-factor code cannot be automated, `xcodes` only reads it from a prompt. What you can do:
+The two-factor code cannot be automated, `xcodes` only reads it from a prompt, and Ansible gives its tasks no
+terminal. What you can do:
 
-- **Type it.** Apple sends a 6-digit code to one of your trusted devices. Once per machine.
+- **Type it.** The run writes the install command to `~/.cache/dotfiles/xcode-install.sh`, and `bootstrap.sh` runs
+  it at the end on your terminal. Apple sends a 6-digit code to one of your trusted devices. Once per machine.
 - **Reuse a session.** Run `fastlane spaceauth -u you@example.com` once (the dotfiles install fastlane on Macs),
   enter the code there, and save the session string it prints as a custom field called `FASTLANE_SESSION` on the
   same Bitwarden item. Other machines then install Xcode with `--use-fastlane-auth` and are not asked for the code,
   until Apple expires the session (about a month, then you repeat it). Treat that string like a password: whoever
   has it is signed in as you.
 - **Skip the login.** Download the `.xip` in your browser from developer.apple.com/download/all and run with
-  `DOTFILES_XCODE_XIP=~/Downloads/Xcode_26.6.xip` (the version has to match `DOTFILES_XCODE_VERSION`, or what gets
-  picked automatically).
+  `DOTFILES_XCODE_XIP=~/Downloads/Xcode_26.6.xip` (the version has to match `--xcode`, or what gets picked
+  automatically).
+
+With a session or a `.xip` the run installs Xcode itself, also when you push to the Mac from another machine.
 
 The iOS runtime download has no session option, so it uses the login and may still ask for the code. It is
 optional anyway, see "Xcode and the iOS runtime" in [configuration.md](configuration.md).
@@ -129,10 +136,36 @@ The server is only set while the CLI is logged out (it refuses to change it othe
 already logged in to another server, run `bw logout` first, or log in by hand and let `bootstrap.sh` just unlock.
 Doing it by hand: `bw config server <url>`; `bw config server` shows the current one.
 
-chezmoi itself runs `bw` for every lookup, so after `bootstrap.sh` the CLI keeps pointing at that server. If you use
-chezmoi without `bootstrap.sh`, set the server once with `bw config server <url>` before `bw login`.
+Ansible runs `bw` for every lookup, so after `bootstrap.sh` the CLI keeps pointing at that server. Without
+`bootstrap.sh`, set the server once with `bw config server <url>` before `bw login`.
+
+## SSH agent
+
+Bitwarden can serve the SSH keys in the vault (Settings, SSH agent, in the desktop app). `~/.zshenv` points
+`SSH_AUTH_SOCK` at its socket, so `ssh` and `git` use those keys in every shell. It is not set inside an SSH session,
+where the forwarded agent is the right one. Setting `shell.bitwarden_ssh_agent` (`auto` by default) chooses the socket:
+
+| Bitwarden | `shell.bitwarden_ssh_agent` | `SSH_AUTH_SOCK` |
+|---|---|---|
+| macOS, App Store | `appstore` | `~/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock` |
+| macOS, dmg or the cask | `dmg` | `~/.bitwarden-ssh-agent.sock` |
+| Linux, deb, rpm, AppImage | `linux` | `~/.bitwarden-ssh-agent.sock` |
+| Linux, Snap | `snap` | `~/snap/bitwarden/current/.bitwarden-ssh-agent.sock` |
+| Linux, Flatpak | `flatpak` | `~/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock` |
+
+With `auto` the shell looks at what is installed when it starts: on macOS an `_MASReceipt` inside Bitwarden.app means
+the App Store version, otherwise the dmg or cask; on Linux the Flatpak data folder, the Snap folder, or `/opt/Bitwarden`
+or an existing socket (deb, rpm, AppImage). A machine without Bitwarden gets nothing set. `off` turns it off.
+
+On a Mac with `gui_apps` the same is also done with `launchctl setenv`, as Bitwarden's page describes, for apps that
+do not start from a shell (a Git client opened from the Dock) and so never read `~/.zshenv`. A LaunchAgent,
+written from `home/Library/LaunchAgents/com.dotfiles.bitwarden-ssh-agent.plist.j2`, runs it at
+every login (and the playbook loads it right away), so it survives a restart. It sets `SSH_AUTH_SOCK`, which `ssh` reads,
+and `SSH_AUTH_SOCKET`, the name Bitwarden's page uses in its `launchctl` line. Linux gets only the `~/.zshenv` part.
+`shell.bitwarden_ssh_agent: off` removes both.
 
 ## Not covered
 
-Bitwarden Secrets Manager (`bws`) and `rbw` are supported by chezmoi too, but nothing here uses them. I have
+Bitwarden Secrets Manager (`bws`) has its own Ansible lookup (`community.general.bitwarden_secrets_manager`), but
+nothing here uses it. I have
 only tested the login steps against a stand-in `bw`, not a real vault.

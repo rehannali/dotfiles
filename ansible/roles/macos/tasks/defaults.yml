@@ -1,0 +1,26 @@
+---
+- name: Defaults | Dock
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+  loop:
+    - {key: orientation, type: string, value: "{{ settings.macos.dock.orientation }}"}
+    - {key: tilesize, type: int, value: "{{ settings.macos.dock.tile_size }}"}
+    - {key: autohide, type: bool, value: "{{ settings.macos.dock.autohide }}"}
+    - {key: show-recents, type: bool, value: "{{ settings.macos.dock.show_recents }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart the Dock
+
+- name: Defaults | Finder, keyboard and trackpad
+  community.general.osx_defaults:
+    domain: "{{ item[0] }}"
+    key: "{{ item[1] }}"
+    type: "{{ item[2] }}"
+    value: "{{ item[3] }}"
+  loop: "{{ macos_defaults_list }}"
+  loop_control:
+    label: "{{ item[0] }} {{ item[1] }}"
+  notify: Restart Finder

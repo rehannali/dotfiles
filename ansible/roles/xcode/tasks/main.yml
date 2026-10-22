@@ -1,0 +1,81 @@
+---
+- name: Xcode | environment
+  ansible.builtin.set_fact:
+    xcode_env:
+      PATH: >-
+        {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:{{
+        ansible_facts.env.PATH }}
+    xcode_pending: []
+
+- name: Xcode | cache directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.env.HOME }}/.cache/dotfiles"
+    state: directory
+    mode: "0755"
+
+- name: Xcode | xcodes available?
+  ansible.builtin.command: which xcodes
+  environment: "{{ xcode_env }}"
+  register: xcode_xcodes
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+
+- name: Xcode | no xcodes
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['xcode: xcodes is not installed, no Xcode and no simulator runtime'] }}"
+  when: xcode_xcodes.rc != 0
+
+- name: Xcode | aria2 (faster downloads)
+  ansible.builtin.command: which aria2c
+  environment: "{{ xcode_env }}"
+  register: xcode_aria2
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: xcode_xcodes.rc == 0
+
+- name: Xcode | aria2 option
+  ansible.builtin.set_fact:
+    xcode_aria2_arg: "{{ ('--aria2 ' ~ (xcode_aria2.stdout | quote)) if xcode_aria2.rc | default(1) == 0 else '' }}"
+
+- name: Xcode | Apple ID
+  ansible.builtin.include_tasks: credentials.yml
+  when: xcode_xcodes.rc == 0
+
+- name: Xcode | Xcode
+  ansible.builtin.include_tasks: xcode.yml
+  when: xcode_xcodes.rc == 0 and install_xcode | bool
+
+- name: Xcode | simulator runtime
+  ansible.builtin.include_tasks: runtime.yml
+  when: xcode_xcodes.rc == 0 and install_ios_runtime | bool
+
+- name: Xcode | what is left for a terminal
+  ansible.builtin.copy:
+    dest: "{{ xcode_pending_script }}"
+    mode: "0700"
+    content: |
+      #!/usr/bin/env bash
+      # Written by Ansible (roles/xcode): these need your Apple ID's two-factor code, typed on a terminal.
+      # bootstrap.sh runs this at the end; or run it yourself.
+      set -e
+      export PATH="{{ xcode_env.PATH }}"
+      {% if bitwarden | bool %}
+      # the Apple ID from Bitwarden ({{ xcode_bitwarden_item }}) when the vault is unlocked (BW_SESSION); else xcodes asks
+      if [ -z "${XCODES_USERNAME:-}" ] && [ -n "${BW_SESSION:-}" ] && command -v bw > /dev/null 2>&1; then
+        XCODES_USERNAME="$(bw get username {{ xcode_bitwarden_item | quote }} 2> /dev/null || true)"
+        XCODES_PASSWORD="$(bw get password {{ xcode_bitwarden_item | quote }} 2> /dev/null || true)"
+        export XCODES_USERNAME XCODES_PASSWORD
+      fi
+      {% endif %}
+      {% for line in xcode_pending %}
+      {{ line }}
+      {% endfor %}
+  when: xcode_pending | length > 0
+
+- name: Xcode | nothing left for a terminal
+  ansible.builtin.file:
+    path: "{{ xcode_pending_script }}"
+    state: absent
+  when: xcode_pending | length == 0

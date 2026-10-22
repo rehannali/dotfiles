@@ -1,0 +1,66 @@
+---
+# GUI apps on Linux desktops from Flathub, per user (no root needed for the apps themselves, and the same app ids on
+# every distribution). Apps without a flatpak id in packages.yml are left out on Linux.
+- name: Flatpak | installed
+  ansible.builtin.apt:
+    name: flatpak
+    state: present
+  become: true
+  register: flatpak_pkg
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: flatpak_pkg is succeeded
+  when: pkg_managers.system == 'apt'
+
+- name: Flatpak | Flathub (for this user)
+  community.general.flatpak_remote:
+    name: flathub
+    flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+    method: user
+    state: present
+  register: flatpak_remote
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: flatpak_remote is succeeded
+  ignore_errors: true
+
+- name: Flatpak | Flathub could not be added
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['flatpak: Flathub could not be added, no Linux apps ('
+      ~ (flatpak_remote.msg | default('failed') | truncate(120)) ~ ')'] }}
+  when: flatpak_remote is failed
+
+- name: Flatpak | apps
+  community.general.flatpak:
+    name: "{{ item.flatpak }}"
+    remote: flathub
+    method: user
+    state: present
+  loop: "{{ flatpak_apps }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.flatpak }})"
+  register: flatpak_installed
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: flatpak_installed is succeeded
+  ignore_errors: true
+  when: flatpak_remote is succeeded
+
+- name: Flatpak | remove (remove.flatpak)
+  community.general.flatpak:
+    name: "{{ item }}"
+    method: user
+    state: absent
+  loop: "{{ remove.flatpak | default([]) }}"
+  register: flatpak_removed
+  ignore_errors: true
+
+- name: Flatpak | record what did not install or could not be removed
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['flatpak: ' ~ (item.item.name | default(item.item))] }}"
+  loop: >-
+    {{ ((flatpak_installed.results | default([])) + (flatpak_removed.results | default([])))
+       | selectattr('failed', 'defined') | selectattr('failed') | list }}
+  loop_control:
+    label: "{{ item.item.name | default(item.item) }}"

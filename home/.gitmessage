@@ -1,0 +1,18 @@
+
+
+# <type>(<scope>): <description>
+#
+# <body: the motivation and what changed, wrapped at 72 characters>
+#
+# <footer: BREAKING CHANGE: ..., Closes #123, Refs #123>
+#
+# type:        feat fix refactor perf style test docs build deps ci chore
+#              security release i18n a11y revert
+# scope:       optional, one lowercase noun, e.g. (auth) or (api)
+# description: imperative mood ("add", not "added"), lowercase after the
+#              colon, no trailing period; aim for 50 characters, never
+#              more than 72 in the whole subject line
+# body:        only for non-trivial changes: why and what, not the diff
+# breaking:    "!" after the type/scope, e.g. feat(api)!: ..., and a
+#              BREAKING CHANGE: footer saying how to migrate
+# Keep a blank line between subject, body and footer.

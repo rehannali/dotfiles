@@ -1,0 +1,55 @@
+---
+# The runtime has to go with the Xcode that is selected
+- name: Runtime | selected Xcode  # noqa: risky-shell-pipe - awk exits at the first match
+  ansible.builtin.shell: xcodes installed 2> /dev/null | awk '/Selected/ {print $1; exit}'
+  environment: "{{ xcode_env }}"
+  register: xcode_selected
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+
+- name: Runtime | which iOS runtime goes with Xcode {{ xcode_selected.stdout }}
+  ansible.builtin.script:
+    cmd: xcode-pick.py runtime --xcode {{ xcode_selected.stdout | quote }}
+    executable: python3
+  register: xcode_runtime_picked
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: not ios_runtime and xcode_selected.stdout | length > 0
+
+- name: Runtime | version
+  ansible.builtin.set_fact:
+    xcode_runtime: "{{ ios_runtime or (xcode_runtime_picked.stdout | default('') | trim) }}"
+
+- name: Runtime | no Xcode selected yet
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['iOS runtime: no Xcode is selected yet; it is installed on the next run'] }}"
+  when: not xcode_runtime and xcode_pending | length == 0
+
+- name: Runtime | iOS {{ xcode_runtime }}
+  when: xcode_runtime | length > 0
+  block:
+    - name: Runtime | installed already?  # noqa: risky-shell-pipe - grep -q ends early; pipefail would turn a match into a miss
+      ansible.builtin.shell: xcodes runtimes 2> /dev/null | grep -E "^iOS {{ xcode_runtime | regex_escape }}( |$)" | grep -q Installed
+      environment: "{{ xcode_env }}"
+      register: xcode_runtime_have
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      failed_when: false
+
+    - name: Runtime | install iOS {{ xcode_runtime }}
+      ansible.builtin.command: xcodes runtimes install "iOS {{ xcode_runtime }}" {{ xcode_aria2_arg }}
+      environment: "{{ xcode_env | combine(xcode_auth_env) }}"
+      changed_when: true
+      when: xcode_runtime_have.rc != 0 and xcode_unattended
+
+    - name: Runtime | needs a terminal (two-factor code)
+      ansible.builtin.set_fact:
+        xcode_pending: "{{ xcode_pending + ['xcodes runtimes install ' ~ ('iOS ' ~ xcode_runtime) | quote ~ ' ' ~ xcode_aria2_arg] }}"
+      when: xcode_runtime_have.rc != 0 and not xcode_unattended
+  rescue:
+    - name: Runtime | not installed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['iOS runtime ' ~ xcode_runtime ~ ': did not install; or open Xcode > Settings > Components'] }}

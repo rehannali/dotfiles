@@ -1,0 +1,32 @@
+---
+# Disks: an /etc/fstab line each, mounted now. `nofail` (the default opts) keeps a missing disk from stopping the boot.
+- name: Disks | mount points that are not set up yet (no src)
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: ' ~ item.path ~ ' has no src yet; run `lsblk -f` on the server and put UUID=... in its host_vars'] }}
+  loop: "{{ server_cfg.mounts | rejectattr('src', 'truthy') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Disks | /etc/fstab and mounted
+  ansible.posix.mount:
+    path: "{{ item.path }}"
+    src: "{{ item.src }}"
+    fstype: "{{ item.fstype | default('ext4') }}"
+    opts: "{{ item.opts | default('defaults,nofail,x-systemd.device-timeout=30s') }}"
+    state: mounted
+  loop: "{{ server_cfg.mounts | selectattr('src', 'truthy') | list }}"
+  loop_control:
+    label: "{{ item.path }} ({{ item.src }})"
+  become: true
+  register: server_mounted
+  ignore_errors: true
+
+- name: Disks | record what did not mount
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: could not mount ' ~ item.item.path ~ ' ('
+         ~ (item.msg | default('failed') | truncate(120)) ~ ')'] }}
+  loop: "{{ server_mounted.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item.path }}"
