@@ -122,12 +122,12 @@ all:
             office-m3:
     servers:
       hosts:
-        pi4:                             # also reachable over SSH from your laptop
-          ansible_host: pi4.local        # DNS name or IP
-          ansible_user: rehan            # the user you log in as
+        piserver:                        # also reachable over SSH from your laptop
+          ansible_host: piserver.homelab.xynlab.uk   # DNS name or IP
+          ansible_user: onikage          # the user you log in as
         hetzner:
           ansible_host: 203.0.113.10
-          ansible_user: rehan
+          ansible_user: onikage
           ansible_port: 2222             # only when SSH is not on 22
     wsl:
       hosts:
@@ -137,7 +137,7 @@ all:
         linux-laptop:
 ```
 
-The name (`macbook`, `pi4`) is what `--host` and `-l` take. It doesn't have to match the hostname, but if it does,
+The name (`macbook`, `piserver`) is what `--host` and `-l` take. It doesn't have to match the hostname, but if it does,
 `bootstrap.sh` finds it without `--host`.
 
 ### The groups
@@ -251,13 +251,41 @@ ones, `--xcode`, `--ios-runtime`, and the casks left out. `--check`, `--branch`,
 
 ### From your laptop, over SSH
 
-Good for servers: you set them up without logging in to each one.
+Good for servers: you set them up without logging in to each one. Everything runs on the server; your laptop only
+drives it.
 
-What the target machine needs:
+**1. Put the server in the inventory.** Over SSH there is no `--group`: the group a machine is in, in
+`ansible/inventory/hosts.yml`, decides what it gets. Give it the address and the user to log in as:
 
-- your SSH key in its `~/.ssh/authorized_keys`, so `ssh rehan@pi4.local` works without a password
+```yaml
+    servers:
+      hosts:
+        piserver:
+          ansible_host: piserver.homelab.xynlab.uk   # a name your DNS resolves, or an IP
+          ansible_user: onikage
+```
+
+A name works as long as your laptop can resolve it: at home from your own DNS, away from home through the VPN's split
+DNS (Tailscale, NetBird). Give the server a fixed address (a DHCP reservation) so the record never goes stale.
+
+**2. Your git name and email in the inventory.** `bootstrap.sh` asks for them on the machine itself; over SSH nothing
+is asked, and `~/.config/dotfiles/local.yml` on your laptop only applies to the laptop. Set `git_name` and
+`git_email` in `group_vars/all/main.yml` (every machine) or `host_vars/piserver.yml` (that one). Without them the
+dotfiles part stops and the report says so; the rest still runs.
+
+**3. Logging in: an SSH key (best) or a password.**
+
+- **Key:** copy it once, with the password: `ssh-copy-id onikage@piserver.homelab.xynlab.uk`. From then on
+  `ssh onikage@piserver.homelab.xynlab.uk` asks nothing. Your `~/.ssh/config` and SSH agent are used, Bitwarden's SSH
+  agent included ([bitwarden.md](bitwarden.md#ssh-agent)).
+- **Password:** add `-k` (`--ask-pass`) and Ansible asks for the SSH password once. It needs `sshpass` on your laptop
+  (Debian: `sudo apt install sshpass`; macOS: MacPorts `sudo port install sshpass`). Fine for the first run; then
+  copy your key and drop `-k`.
+
+What the server needs:
+
 - python3 (Debian, Ubuntu and Raspberry Pi OS have it)
-- sudo for that user; `-K` asks for its password once
+- sudo for that user: `-K` asks for its password once; with passwordless sudo, leave `-K` out
 
 What your laptop needs: the repo, Ansible and the collections. A laptop set up with `bootstrap.sh` has all three.
 Otherwise:
@@ -271,15 +299,19 @@ Then:
 
 ```sh
 cd ~/.dotfiles/ansible
-ansible-playbook site.yml -l pi4 -K                  # one machine
-ansible-playbook site.yml -l servers -K              # a whole group
-ansible-playbook site.yml -l pi4 --check --diff -K   # what would change
-ansible-playbook site.yml -l pi4 --tags dotfiles -K  # one part only
+ansible-playbook site.yml -l piserver -K                  # one machine
+ansible-playbook site.yml -l piserver -K -k               # the same, logging in with a password
+ansible-playbook site.yml -l servers -K                   # a whole group
+ansible-playbook site.yml -l piserver --check --diff -K   # what would change
+ansible-playbook site.yml -l piserver --tags dotfiles -K  # one part only
 ```
 
 The run clones the repo on the target (or updates it) and links the dotfiles there, so the machine ends up as if
-`bootstrap.sh` had run, `dot` included. Bitwarden lookups run on your laptop, from your unlocked vault, and only
-their results are written on the target.
+`bootstrap.sh` had run, `dot` included: later you can also run `dot apply` on the server itself. Bitwarden lookups run
+on your laptop, from your unlocked vault, and only their results are written on the target. `upgrade_on_apply`
+works the same, so running it again from the laptop upgrades the server. Xcode on a Mac over SSH has no terminal for
+a two-factor code: set `FASTLANE_SESSION` (and `XCODES_USERNAME` / `XCODES_PASSWORD`) on your laptop; they are read
+there and handed to `xcodes` on the Mac.
 
 **Macs over SSH:** run `bootstrap.sh` on the Mac once first. Over SSH the playbook does not install the Command Line
 Tools or Homebrew, so a fresh Mac would report "Homebrew not installed". After that first run, turn on Remote Login
@@ -379,7 +411,7 @@ Pushing to another machine over SSH uses the vault on your laptop. Unlock it the
 
 ```sh
 export BW_SESSION=$(bw unlock --raw)
-cd ~/.dotfiles/ansible && ansible-playbook site.yml -l pi4 -K
+cd ~/.dotfiles/ansible && ansible-playbook site.yml -l piserver -K
 ```
 
 ### Apple ID: Xcode and the App Store

@@ -33,7 +33,7 @@ From your laptop, to machines you reach over SSH (servers, a second Mac):
 ```sh
 cd ansible
 ansible-galaxy collection install -r requirements.yml
-ansible-playbook site.yml -l homeserver -K         # -K asks for the sudo password on that machine
+ansible-playbook site.yml -l piserver -K         # -K asks for the sudo password on that machine
 ansible-playbook site.yml -l servers -K            # a whole group
 ansible-playbook site.yml -l macbook --check --diff   # what would change, without changing it
 ansible-playbook site.yml -l macbook --tags dotfiles  # one part only

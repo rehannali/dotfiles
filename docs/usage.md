@@ -125,7 +125,7 @@ shows them; `dot save` them (or `git -C ~/.dotfiles stash`) and sync again. If t
 `dot save` on the second one says the push failed: `dot sync`, resolve, `dot save` again.
 
 From your laptop you can also update a machine you reach over SSH without logging in to it:
-`cd ~/.dotfiles/ansible && ansible-playbook site.yml -l homeserver -K` (it pulls the repo there first).
+`cd ~/.dotfiles/ansible && ansible-playbook site.yml -l piserver -K` (it pulls the repo there first).
 
 ## When something did not install
 
