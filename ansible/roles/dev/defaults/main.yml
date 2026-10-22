@@ -1,2 +1,2 @@
 ---
-dev_mise: "{{ ansible_facts.env.HOME }}/.local/bin/mise"
+dev_mise: "{{ '/opt/homebrew/bin/mise' if (dotfiles_os == 'darwin' and dotfiles_arch == 'arm64') else ansible_facts.env.HOME ~ '/.local/bin/mise' }}"

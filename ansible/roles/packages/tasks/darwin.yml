@@ -26,13 +26,58 @@
 - name: Homebrew | installed?
   ansible.builtin.stat:
     path: "{{ brew_prefix }}/bin/brew"
+  register: brew_check
+  when: not intel_mac
+
+# Apple Silicon gets everything from Homebrew, so it comes first. Its installer refuses root but runs sudo itself, which
+# has no terminal to ask on here: a sudoers drop-in lets this one user's sudo through without a password for the
+# install, and is always removed again. (bootstrap.sh installs it the same way, on your terminal.)
+- name: Homebrew | install it (Apple Silicon)
+  when: not intel_mac and not brew_check.stat.exists and not ansible_check_mode
+  block:
+    - name: Homebrew | let the installer use sudo, for now
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/dotfiles-homebrew-install
+        mode: "0440"
+        content: "{{ ansible_facts.user_id }} ALL=(ALL) NOPASSWD: ALL\n"
+        validate: /usr/sbin/visudo -cf %s
+      become: true
+
+    - name: Homebrew | the official installer
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        installer="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        && NONINTERACTIVE=1 /bin/bash -c "$installer"
+      args:
+        executable: /bin/bash
+        creates: "{{ brew_prefix }}/bin/brew"
+      register: brew_installer
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: brew_installer is succeeded
+  rescue:
+    - name: Homebrew | could not be installed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['homebrew: the installer failed ('
+             ~ (brew_installer.stderr_lines | default(['?']) | last | truncate(120)) ~ ')'] }}
+  always:
+    - name: Homebrew | sudo asks again
+      ansible.builtin.file:
+        path: /etc/sudoers.d/dotfiles-homebrew-install
+        state: absent
+      become: true
+
+- name: Homebrew | there now?
+  ansible.builtin.stat:
+    path: "{{ brew_prefix }}/bin/brew"
   register: brew_stat
   when: not intel_mac
 
 - name: Homebrew | missing
   ansible.builtin.set_fact:
     install_failures: >-
-      {{ install_failures | default([]) + ['homebrew: not installed at ' ~ brew_prefix ~ ' (bootstrap.sh installs it); no Homebrew packages'] }}
+      {{ install_failures | default([]) + ['homebrew: not installed at ' ~ brew_prefix ~ '; no Homebrew packages'] }}
   when: not intel_mac and not brew_stat.stat.exists
 
 - name: Homebrew packages
