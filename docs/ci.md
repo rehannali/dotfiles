@@ -9,29 +9,20 @@ requests to `main`, pushes to `main`, and when started by hand.
 The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have none, and mycask
 ([tools/mycask](../tools/mycask/README.md)) installs their tools and casks, taking over the runner's preinstalled apps.
 
-## Intel bottles
+## Intel bottles and their verification
 
-`.github/workflows/intel-bottles.yml` runs on Mondays, by hand, and when `tools/mycask/intel/formulae.txt`,
-`tools/mycask/intel/cli-map.json` or `mycask.py` change on `main`. An Ubuntu job asks `mycask formula plan
---build-deps` which formulae the Intel Macs need that have no usable Homebrew Intel bottle for the current version,
-with their dependencies and the build tools (rust, go, llvm, ...) that have none either. Nothing is built unless
-Homebrew bumped a version or the list grew. Only then a `macos-15-intel` job builds them in dependency order with
-`brew install --build-bottle`, and publishes each bottle as soon as it is built, with `index.json`, in the rolling
-release `intel-bottles` (assets nothing points at any more are deleted). Dependencies built in an earlier run are put
-back on the runner first, not compiled again. A job stops after 6 hours: no new build starts after 5h20m. The run has
-four build passes one after the other, each planning again and carrying on with what is left, so the first fill of the
-release (about 140 formulae, llvm and rust among them) can take most of a day; a formula that fails is not tried again
-in the same run. The repository is public, so mycask downloads the bottles without a token. From
-2027-08-01 the workflow stops itself: the Intel runner is gone after August 2027.
+The bottles are not built here. [rehannali/intel-bottles](https://github.com/rehannali/intel-bottles) builds them on
+`macos-15-intel` (Mondays and on demand): it reads `tools/mycask/intel/formulae.txt` and `mycask.py` from this repo,
+builds the formulae (with their dependencies and build tools like rust and go) that have no Homebrew Intel bottle for
+the current version, and publishes each bottle as soon as it is built: the files in its release `bottles`, the list
+mycask reads in `index.json` on its `main` branch. The first fill compiles about 140 formulae and takes several runs;
+after that only what Homebrew bumped is built. The Mac finds it through `mycask_bottles_url` in
+`ansible/inventory/group_vars/all/main.yml`. Until the bottle repo follows a branch that is not merged yet, set its
+repository variable `DOTFILES_REF` to that branch (`gh variable set DOTFILES_REF -R rehannali/intel-bottles -b feat/ansible`).
 
-It also runs on pushes to `feat/ansible` that touch the lists, `mycask.py`, the verify scripts or the workflow, so a
-branch is tried before it is merged.
-
-### Verification
-
-After the builds, two jobs on `macos-15-intel` (Homebrew removed, as on the Mac) install everything the Intel Macs ask
-for with mycask and check the result from mycask's receipts, not from its exit status
-(`tools/mycask/verify.py`, `verify-casks.sh`):
+`.github/workflows/mycask-verify.yml` is what this repo runs about it. On a clean `macos-15-intel` runner (Homebrew
+removed, as on the Mac) it installs everything the Intel Macs ask for with mycask and checks the result from mycask's
+receipts, not from its exit status (`tools/mycask/verify.py`, `verify-casks.sh`):
 
 - **command-line tools:** every formula in `formulae.txt` is installed with `mycask formula bundle`; then the same
   install runs again and must change nothing (dependencies already there are skipped). The check wants a receipt, the
@@ -39,11 +30,14 @@ for with mycask and check the result from mycask's receipts, not from its exit s
 - **casks:** every cask in `casks.txt`, one at a time with `--adopt`: receipt, app or binary in place, commands start;
   then it is uninstalled again to keep the runner's disk free. 25 minutes at most each.
 
-Each prints a table to the run's summary and fails the run when anything is missing. While the release is still being
-filled, the tool check fails for the formulae that have no bottle yet; that is what it is for.
+It runs when `tools/mycask` changes (pull request to `main`, push to `main` or `feat/ansible`), on Tuesdays, after the
+Monday build, and by hand. Each job prints a table to the run's summary and fails when anything is missing; the summary
+also lists the tools that still have no bottle. While the first fill is going, the tool check fails for those; that is
+what it is for. From 2027-08-01 it stops itself: the Intel runner is gone after August 2027.
 
-    gh workflow run intel-bottles.yml          # now, instead of waiting for Monday (the workflow must be on main)
-    gh release view intel-bottles              # what is published
+    gh workflow run build.yml -R rehannali/intel-bottles    # build what is missing now
+    gh workflow run mycask-verify.yml                       # verify now
+    gh release view bottles -R rehannali/intel-bottles      # what is published
 
 ## Manual runs
 
