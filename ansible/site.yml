@@ -33,6 +33,29 @@
         apps_wanted: "{{ (selected.apps + apps_extra) | rejectattr('name', 'in', apps_skip) | list }}"
       tags: [always]
 
+    # Linux desktops: an app comes from Flathub when it has a flatpak id (and flatpaks are on), else from the Snap Store,
+    # else from its vendor's apt repository (deb)
+    - name: Linux apps, Flathub first, then the Snap Store, then the vendor's apt repository
+      ansible.builtin.set_fact:
+        flatpak_apps: >-
+          {{ apps_wanted | selectattr('flatpak', 'defined') | list
+             if 'flatpak' in pkg_managers.apps | default([]) and gui_apps | bool and install_flatpaks | bool else [] }}
+        snap_apps: >-
+          {{ apps_wanted | selectattr('snap', 'defined')
+             | rejectattr('name', 'in', (apps_wanted | selectattr('flatpak', 'defined') | map(attribute='name') | list)
+               if 'flatpak' in pkg_managers.apps | default([]) and install_flatpaks | bool else [])
+             | list
+             if 'snap' in pkg_managers.apps | default([]) and gui_apps | bool and install_snaps | bool else [] }}
+      tags: [always]
+
+    - name: Linux apps from their vendor's apt repository (in neither store)
+      ansible.builtin.set_fact:
+        deb_apps: >-
+          {{ apps_wanted | selectattr('deb', 'defined')
+             | rejectattr('name', 'in', (flatpak_apps + snap_apps) | map(attribute='name') | list) | list
+             if 'deb' in pkg_managers.apps | default([]) and gui_apps | bool else [] }}
+      tags: [always]
+
     - name: No package list for this OS yet
       ansible.builtin.set_fact:
         install_failures: >-

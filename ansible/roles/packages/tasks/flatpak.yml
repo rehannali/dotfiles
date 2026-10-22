@@ -37,7 +37,7 @@
     remote: flathub
     method: user
     state: present
-  loop: "{{ apps_wanted | selectattr('flatpak', 'defined') | list }}"
+  loop: "{{ flatpak_apps }}"
   loop_control:
     label: "{{ item.name }} ({{ item.flatpak }})"
   register: flatpak_apps

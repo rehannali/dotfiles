@@ -115,7 +115,7 @@ package manager depends on the machine:
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
 | Intel Mac (no Homebrew) | MacPorts, else mise | MacPorts | casks (mycask) | mise |
-| Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak (desktops) | mise |
+| Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak, else Snap, else vendor apt repo (desktops) | mise |
 | Another Linux (Fedora, ...) | mise | not yet: reported and skipped | | mise |
 
 A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`,

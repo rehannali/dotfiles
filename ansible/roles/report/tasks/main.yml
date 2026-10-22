@@ -19,7 +19,10 @@
                     | rejectattr('arch', 'defined') | list
                     + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
                        | selectattr('arch', 'equalto', dotfiles_arch) | list))
-                   if (dotfiles_os == 'darwin' and gui_apps | bool and install_casks | bool) else []}
+                   if (dotfiles_os == 'darwin' and gui_apps | bool and install_casks | bool) else [],
+          'flatpaks': flatpak_apps | default([]) | map(attribute='flatpak') | list,
+          'snaps': snap_apps | default([]) | map(attribute='snap') | list,
+          'debs': deb_apps | default([]) | map(attribute='deb') | map(attribute='package') | list}
          | to_nice_json }}
   when: not ansible_check_mode
   failed_when: false

@@ -44,6 +44,7 @@ All in `main.yml`, `true` unless noted:
 | `install_flatpaks` | Linux GUI apps from Flathub (machines with `gui_apps`, e.g. the `linux_desktop` group) |
 | `install_app_store` | Mac App Store apps (needs an App Store that is signed in). `mac_work` sets it to `false` |
 | `macports_fallback` | Intel Mac: command-line tools from MacPorts |
+| `install_snaps` | Linux desktop: apps without a flatpak id from the Snap Store, by their `snap` name (installs snapd if missing) |
 | `upgrade_on_apply` | every run also upgrades: MacPorts, mise, Homebrew (Apple Silicon), casks (mycask on Intel). `false`: runs only install what is missing, `--tags upgrade` upgrades |
 | `macos_defaults` | the Dock (from `settings.macos.dock`), Finder and trackpad preferences |
 | `touch_id_sudo` | macOS 14+ with a Touch ID sensor: `sudo` asks for your fingerprint. Writes `/etc/pam.d/sudo_local` (survives macOS updates), with `pam_reattach` for tmux when `brew install pam-reattach` was done. A `sudo_local` that was not written by these dotfiles is left alone. Undo with `sudo rm /etc/pam.d/sudo_local` |
@@ -104,7 +105,7 @@ which manager is used:
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
   macos_x86_64: {cli: port, system: port, apps: [cask, mas]}   # no Homebrew: MacPorts, else mise; casks from mycask
-  debian: {cli: mise, system: apt, apps: [flatpak]}            # Debian, Ubuntu, Raspberry Pi OS, WSL
+  debian: {cli: mise, system: apt, apps: [flatpak, snap, deb]}   # Debian, Ubuntu, Raspberry Pi OS, WSL
 ```
 
 - **Intel Macs:** no Homebrew. A tool comes from its `port`, else from mise (`mise_intel`, `mise`, `mise_fallback`), else
@@ -113,8 +114,10 @@ platform_managers:
   shell and every mise tool and runtime; only the system packages are skipped, and the report says so. Supporting it
   fully means a `dnf:` / `pacman:` name on the system entries, a platform line here, and its install task in the
   packages role.
-- **Linux GUI apps:** an app reaches a Linux desktop when it has a `flatpak` id (Flathub). Apps without one (most
-  Mac-only apps) are left out there.
+- **Linux GUI apps:** an app reaches a Linux desktop when it has a `flatpak` id (Flathub), else a `snap` name (the
+  Snap Store; snapd is installed if missing), else a `deb` entry (the vendor's own apt repository, e.g. Brave Origin).
+  Flatpak comes first because it works the same on Debian and Ubuntu. Apps with none of these (most Mac-only apps) are
+  left out there.
 
 ### Removing packages
 
@@ -130,6 +133,7 @@ remove:
   mise: [zig]          # also dropped from the mise config
   port: [ffmpeg]       # MacPorts, Intel Macs
   flatpak: [com.spotify.Client]
+  snap: [surfshark]
 ```
 
 Exactly those are uninstalled, on every run; nothing else is touched. Look first with `--check --diff`.
@@ -325,6 +329,8 @@ PATH. The CI check is what actually tells.
 | `cask` | Homebrew cask (macOS). `appdir: true` installs it into `settings.macos.cask_appdir` instead of `/Applications` |
 | `mas` | Mac App Store id (needs an App Store that is signed in); used when there is no cask |
 | `flatpak` | Flathub id (Linux desktops) |
+| `deb` | the vendor's own apt repository (Debian / Ubuntu desktops), for an app in neither Flathub nor the Snap Store: `{package, keyring: URL of its signing key, sources: URL of its deb822 .sources file}`. The key goes to `/usr/share/keyrings`, the file to `/etc/apt/sources.list.d/<package>.sources`. Brave Origin: `{package: brave-origin, keyring: …/brave-browser-archive-keyring.gpg, sources: …/brave-browser.sources}` |
+| `snap`, `snap_classic` | Snap Store name (Linux desktops), used when the app has no `flatpak`. Only a snap from the vendor or a known maintainer: a name in the Snap Store is not proof of who publishes it (`tests/apps_check.py` shows the publisher). `snap_classic: true` for a classic-confinement snap |
 | `github`, `asset`, `app` | an app with no cask that ships only in GitHub releases (macOS): the latest release's zip matching `asset` is unpacked with `ditto`, its signature checked (intact, Developer ID, accepted by Gatekeeper) and `app` copied into `/Applications`. Installed again when a newer release is out; skipped with casks (`install_casks: false`) |
 | `arch` | `arm64`: Apple Silicon only |
 | `macbook` | `true`: MacBooks only (apps that need the laptop's hardware) |

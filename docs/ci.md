@@ -1,26 +1,38 @@
 # CI
 
 `.github/workflows/dotfiles.yml` first lints the playbook, checks the package list and renders every template for
-every kind of machine. Then it runs `bootstrap.sh --host ci --group ...` on an Ubuntu runner (as a server), a macOS
-Intel runner and a macOS Apple Silicon runner (as personal Macs), and `scripts/check-install.py` looks at what ended
-up installed. It runs for pull
+every kind of machine. Then it runs `bootstrap.sh --host ci --group ...` on an Ubuntu runner twice (as a server, and as a desktop with its
+Flathub apps), a macOS Intel runner and a macOS Apple Silicon runner (as personal Macs), and `scripts/check-install.py`
+looks at what ended up installed. Casks are checked separately, one at a time (see Casks below). It runs for pull
 requests to `main`, pushes to `main`, and when started by hand.
 
 The Intel job removes the runner's preinstalled Homebrew first: Intel Macs have none. MacPorts and mise install their
 tools, mycask ([tools/mycask](../tools/mycask/README.md)) their casks, taking over the runner's preinstalled apps.
 
-## Intel Mac casks
+## What is verified where
 
-`.github/workflows/mycask-verify.yml` checks that mycask installs every cask the Intel Macs get. On a clean
-`macos-15-intel` runner, every cask in `tools/mycask/intel/casks.txt` is installed one at a time with `--adopt`,
-checked from mycask's receipt, not its exit status (`tools/mycask/verify.py`: app or binary in place, commands start),
-and uninstalled again to keep the runner's disk free; 25 minutes at most each, a failed download is tried once more. It
-runs when `tools/mycask` changes (pull request to `main`, push to `main` or `feat/ansible`), on Tuesdays (a cask's new
-version may drop Intel), and by hand. The table in the run's summary says what is missing or broken. From 2027-08-01
-it stops itself: the Intel runner is gone after August 2027. The Intel Mac's command-line tools (MacPorts, mise) are
-checked by the `mac-intel` job of `dotfiles.yml`.
+| | Debian server | Debian desktop | Intel Mac | Apple Silicon |
+|---|---|---|---|---|
+| CLI tools, runtimes, shell, CPU (`dotfiles.yml` + `check-install.py`) | ✅ | ✅ | ✅ MacPorts, mise | ✅ Homebrew, mise |
+| GUI apps | none | ✅ Flathub, Snap, vendor apt repos (`dotfiles.yml`) | ✅ casks with mycask (`casks-verify.yml`) | ✅ casks with Homebrew (`casks-verify.yml`) |
+| Xcode | | | manual run with `xcode=install` (the `FASTLANE_SESSION` secret) | same |
+| App Store apps | | | not in CI: the App Store needs a person to sign in (two-factor code) | same |
 
-    gh workflow run mycask-verify.yml
+## Casks
+
+`.github/workflows/casks-verify.yml` checks every cask the Macs get, on both kinds of Mac: with mycask on
+`macos-15-intel`, with Homebrew on `macos-latest` (Apple Silicon). Each cask in `tools/mycask/intel/casks.txt` or
+`tools/mycask/arm64/casks.txt` (written from `packages.yml` by `tools/mycask/manifests.py`; tap casks are left out) is
+installed on its own with `--adopt`, checked by `tools/mycask/verify.py` (mycask: from its receipt; Homebrew: from
+`brew info`; app in its folder, linked commands start) and uninstalled again to keep the runner's disk free; 25
+minutes at most each, a failed download is tried once more. It runs for pull requests to `main` and pushes to `main`
+that change `tools/mycask` or the workflow, on Tuesdays (a cask's new version may break), and by hand. The table in
+each job's summary says what is missing or broken. From 2027-08-01 the Intel job stops itself: the Intel runner is gone
+after August 2027. A cask whose download is unavailable (no connection, timeout, TLS error, or an HTTP status outside 2xx, also on the
+second try) is reported as SKIP and does not fail the job: that is the vendor's server, not the cask (simpholders.com,
+October 2026).
+
+    gh workflow run casks-verify.yml
 
 ## Manual runs
 

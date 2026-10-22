@@ -14,6 +14,7 @@ gui_apps: true                   # false: command-line tools and terminal setup 
 install_casks: true              # macOS GUI apps (Homebrew casks; mycask on Intel Macs); needs gui_apps
 install_app_store: true          # Mac App Store apps (needs a signed-in App Store); needs gui_apps
 install_flatpaks: true           # Linux GUI apps from Flathub; needs gui_apps
+install_snaps: true              # Linux GUI apps without a flatpak, from the Snap Store (installs snapd if missing); needs gui_apps
 macports_fallback: true          # Intel Mac: MacPorts for the command-line tools (false: none from MacPorts)
 upgrade_on_apply: true           # every run also upgrades: MacPorts, mise, Homebrew (Apple Silicon), casks (mycask on Intel)
 mycask_adopt: false              # Intel Mac: true = mycask takes over apps already in place (first run after Homebrew)
@@ -43,6 +44,7 @@ remove:
   mise: [chezmoi]                # mise tool ids (also dropped from the mise config); chezmoi is not used
   port: []                       # MacPorts ports (Intel Macs)
   flatpak: []                    # Flathub ids (Linux desktops)
+  snap: []                       # Snap Store names (Linux desktops)
 
 # --- Network hiccups: every install is tried this many times in all, waiting install_delay seconds in between.
 # What still fails is reported at the end; the run goes on.

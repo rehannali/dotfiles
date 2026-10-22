@@ -16,6 +16,8 @@ Nothing here trusts the package lists. It asks the machine:
                      the wrong CPU (x86_64 on Apple Silicon, arm64 on Intel) is a failure.
   3. mise            Every tool in ~/.config/mise/config.toml is installed.
   4. shell           `zsh -i -c exit` starts without errors.
+  5. apps            casks (Homebrew, or mycask's receipts on an Intel Mac), Flathub apps, snaps and apps from vendor
+                     apt repositories (Linux desktops) are installed.
 
 Exit status 1 if anything failed. Warnings do not fail the run. A Markdown report goes to $GITHUB_STEP_SUMMARY when set. Needs only python3 (3.9+) and the
 standard tools `file`, `zsh`.
@@ -402,6 +404,66 @@ def check_casks_mycask(plan, wanted):
     return rows
 
 
+def check_flatpaks(plan):
+    """Linux desktops: every Flathub app this machine should have is installed."""
+    wanted = (plan or {}).get("flatpaks") or []
+    if SYSTEM != "Linux" or not wanted:
+        return []
+    if not shutil.which("flatpak"):
+        add(FAIL, "flatpaks", "flatpak", "not installed, so none of %d apps are" % len(wanted))
+        return []
+    rc, out = run(["flatpak", "list", "--app", "--columns=application"], timeout=120)
+    installed = set(out.split()) if rc == 0 else set()
+    rows = []
+    for app in wanted:
+        if app in installed:
+            rows.append((OK, app, "installed"))
+        else:
+            add(FAIL, "flatpaks", app, "not installed")
+            rows.append((FAIL, app, "not installed"))
+    add(OK, "flatpaks", "summary", "%d of %d Flathub apps installed" % (len(wanted) - len([r for r in rows if r[0] == FAIL]),
+                                                                      len(wanted)))
+    return rows
+
+
+def check_snaps(plan):
+    """Linux desktops: every Snap Store app this machine should have (the ones without a flatpak) is installed."""
+    wanted = (plan or {}).get("snaps") or []
+    if SYSTEM != "Linux" or not wanted:
+        return []
+    if not shutil.which("snap"):
+        add(FAIL, "snaps", "snapd", "not installed, so none of %d snaps are" % len(wanted))
+        return []
+    rc, out = run(["snap", "list"], timeout=120)
+    installed = {line.split()[0] for line in out.splitlines()[1:] if line.strip()} if rc == 0 else set()
+    rows = []
+    for name in wanted:
+        if name in installed:
+            rows.append((OK, name, "installed"))
+        else:
+            add(FAIL, "snaps", name, "not installed")
+            rows.append((FAIL, name, "not installed"))
+    add(OK, "snaps", "summary", "%d of %d snaps installed" % (len(wanted) - len([r for r in rows if r[0] == FAIL]),
+                                                             len(wanted)))
+    return rows
+
+
+def check_debs(plan):
+    """Linux desktops: apps from their vendor's apt repository (Brave Origin) are installed."""
+    wanted = (plan or {}).get("debs") or []
+    if SYSTEM != "Linux" or not wanted:
+        return []
+    rows = []
+    for pkg in wanted:
+        rc, out = run(["dpkg-query", "-W", "-f=${Status} ${Version}", pkg], timeout=60)
+        if rc == 0 and out.startswith("install ok installed"):
+            rows.append((OK, pkg, out.split()[-1]))
+        else:
+            add(FAIL, "debs", pkg, "not installed")
+            rows.append((FAIL, pkg, "not installed"))
+    return rows
+
+
 def check_casks(plan):
     """Casks this machine should have: installed, and the .app really sits where the cask was told to put it."""
     wanted = (plan or {}).get("casks") or []
@@ -597,6 +659,9 @@ def main():
     tool_rows = check_expected(plan) if plan else []
     runtime_rows = check_runtimes(plan)
     cask_rows = check_casks(plan)
+    flatpak_rows = check_flatpaks(plan)
+    snap_rows = check_snaps(plan)
+    deb_rows = check_debs(plan)
     arch_rows, native_total, apps = check_architecture()
     check_mise()
     check_profile(plan)
@@ -617,6 +682,12 @@ def main():
                table(["", "tool", "via", "resolved", "version / note"], tool_rows)]
     if cask_rows:
         md += ["", "## Casks (%d)" % len(cask_rows), table(["", "cask", "where", "note"], cask_rows)]
+    if flatpak_rows:
+        md += ["", "## Flathub apps (%d)" % len(flatpak_rows), table(["", "app", "state"], flatpak_rows)]
+    if snap_rows:
+        md += ["", "## Snaps (%d)" % len(snap_rows), table(["", "snap", "state"], snap_rows)]
+    if deb_rows:
+        md += ["", "## Apps from vendor apt repositories (%d)" % len(deb_rows), table(["", "package", "version"], deb_rows)]
     md += ["", "## Runtimes", table(["", "command", "resolved", "version"], runtime_rows)]
     md += ["", "## Architecture", table(["", "origin", "native files", "wrong"], arch_rows)]
 
