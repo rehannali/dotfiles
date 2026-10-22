@@ -41,8 +41,10 @@ alfred --appdir=~/Applications
 
 `verify.py` reads mycask's receipts and reports anything missing or broken, with exit status 1: a cask needs its apps
 and binaries in place, and every command it linked must start (no `dyld` / `Library not loaded` / wrong CPU).
-`verify-casks.sh` installs, checks and uninstalls each cask of a list. `.github/workflows/mycask-verify.yml` runs it
-for every cask the Intel Macs get, on a clean Intel runner (docs/ci.md).
+`verify-casks.sh` installs, checks and uninstalls each cask of a list (`CASK_TOOL=brew`: with Homebrew, and
+`verify.py --brew` checks from `brew info`). `.github/workflows/casks-verify.yml` runs it for every cask the Macs get:
+on an Intel runner with mycask, on an Apple Silicon runner with Homebrew (docs/ci.md). mycask also handles casks
+whose URL is a git repository (`only_path`, as font-source-code-pro), with a shallow sparse clone.
 
 ```sh
 python3 -I tools/mycask/verify.py --casks ~/.config/mycask/casks.txt
@@ -65,9 +67,9 @@ python3 -I tools/mycask/verify.py --casks ~/.config/mycask/casks.txt
 `packages.yml` stays the one place apps are listed. On an Intel Mac Ansible writes `~/.config/mycask/casks.txt` from
 the machine's bundles (with `--appdir` for the apps marked `appdir: true`), runs `mycask bundle` on it, and, with
 `upgrade_on_apply` (the default) or `--tags upgrade`, `mycask upgrade`. `remove.cask` in `main.yml` runs
-`mycask uninstall`. The same list for every Intel Mac in the inventory is committed as `intel/casks.txt` for CI;
-`tests/packages_check.py` fails when it no longer matches `packages.yml`, and `python3 tools/mycask/manifests.py`
-writes it again.
+`mycask uninstall`. The lists CI checks, every cask any Mac in the inventory gets, are committed as
+`intel/casks.txt` (mycask) and `arm64/casks.txt` (Homebrew on Apple Silicon); `tests/packages_check.py` fails when
+they no longer match `packages.yml`, and `python3 tools/mycask/manifests.py` writes them again.
 
 ## Moving an Intel Mac off Homebrew
 
@@ -90,4 +92,4 @@ Casks keep working through mycask and `cask.json` as long as formulae.brew.sh se
 When a cask's newest version drops Intel, mycask sees it in the app's own `Info.plist` / `lipo` output, refuses the
 update and keeps the installed version. For an app that matters, `mycask pin <token>`, or put a definition that still
 points at an Intel download in `~/.config/mycask/casks/<token>.json`. The GitHub Intel runner is gone after August
-2027: `mycask-verify.yml` stops itself from 2027-08-01.
+2027: the Intel job of `casks-verify.yml` stops itself from 2027-08-01.

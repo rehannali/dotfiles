@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Check that mycask really installed every cask a list asks for. Standard library only (macOS system Python 3.9).
+"""Check that every cask a list asks for is really installed. Standard library only (macOS system Python 3.9).
 
-    python3 -I tools/mycask/verify.py --casks tools/mycask/intel/casks.txt [--markdown FILE]
+    python3 -I tools/mycask/verify.py --casks tools/mycask/intel/casks.txt [--markdown FILE]          mycask
+    python3 -I tools/mycask/verify.py --brew --casks tools/mycask/arm64/casks.txt [--markdown FILE]   Homebrew
 
-It reads mycask's receipts, not its output, so it also catches an install that reported success and left nothing.
-A cask needs a receipt, and every app, binary and other item it placed must exist; every command it linked must start
-(a loader error such as "Library not loaded", "Bad CPU type" or "dyld" fails; a non-zero exit of --version does not).
+mycask: it reads mycask's receipts, not its output, so it also catches an install that reported success and left
+nothing; every app, binary and other item the cask placed must exist. Homebrew: `brew info --json=v2` must say the
+cask is installed, and each app must be in the folder the line names (--appdir=DIR, else /Applications) and each
+binary linked into Homebrew's bin. Both: every command a cask links must start (a loader error such as "Library not
+loaded", "Bad CPU type" or "dyld" fails; a non-zero exit of --version does not).
 
 Exit status 1 when anything is missing or broken. The report is a Markdown table (stdout, and --markdown FILE).
 """
@@ -24,11 +27,13 @@ SKIP_SMOKE = {"sudo", "reboot", "shutdown", "login", "su"}
 
 
 def entries(path):
+    """[(token, appdir or None)] of a casks.txt ("token" or "token --appdir=DIR")."""
     out = []
     for line in Path(path).read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            out.append(line.split()[0])
+        words = line.split("#", 1)[0].split()
+        if words:
+            appdir = next((w.split("=", 1)[1] for w in words[1:] if w.startswith("--appdir=")), None)
+            out.append((words[0], os.path.expanduser(appdir) if appdir else None))
     return out
 
 
@@ -83,16 +88,57 @@ def check_cask(token, rows):
     return not problems
 
 
+def check_brew_cask(token, appdir, rows):
+    """Homebrew (Apple Silicon): installed, apps in their folder, linked commands start."""
+    p = subprocess.run(["brew", "info", "--json=v2", "--cask", token], capture_output=True, text=True)
+    try:
+        meta = json.loads(p.stdout)["casks"][0]
+    except (ValueError, KeyError, IndexError):
+        rows.append((token, "cask", "FAIL", "brew info failed: %s" % (p.stderr.strip().splitlines() or ["?"])[-1][:160]))
+        return False
+    if not meta.get("installed"):
+        rows.append((token, "cask", "FAIL", "not installed"))
+        return False
+    prefix = subprocess.run(["brew", "--prefix"], capture_output=True, text=True).stdout.strip() or "/opt/homebrew"
+    problems, kinds = [], []
+    for art in meta.get("artifacts") or []:
+        if not isinstance(art, dict):
+            continue
+        for kind, args in art.items():
+            kinds.append(kind)
+            args = args if isinstance(args, list) else [args]
+            names = [a for a in args if isinstance(a, str)]
+            targets = [a["target"] for a in args if isinstance(a, dict) and a.get("target")]
+            if kind in ("app", "suite") and names:
+                name = os.path.basename(targets[0] if targets else names[0])
+                folder = appdir or "/Applications"
+                if not os.path.exists(os.path.join(folder, name)):
+                    problems.append("%s is not in %s" % (name, folder))
+            elif kind == "binary" and names:
+                link = Path(prefix) / "bin" / os.path.basename(targets[0] if targets else names[0])
+                if not link.exists():
+                    problems.append("binary %s is missing" % link)
+                else:
+                    why = starts(link)
+                    if why:
+                        problems.append("%s %s" % (link.name, why))
+    shown = sorted({k for k in kinds if k not in ("uninstall", "zap", "uninstall_postflight", "uninstall_preflight")})
+    note = "%s: %s" % (meta.get("installed"), ", ".join(shown) or "installer only")
+    rows.append((token, "cask", "FAIL" if problems else "ok", "; ".join(problems) or note))
+    return not problems
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--casks", help="file with one cask token per line (a trailing --appdir=... is ignored)")
+    ap.add_argument("--casks", help="file with one cask token per line, optionally followed by --appdir=DIR")
+    ap.add_argument("--brew", action="store_true", help="check Homebrew's casks (Apple Silicon) instead of mycask's")
     ap.add_argument("--markdown", help="also write the report to this file")
     args = ap.parse_args()
     if not args.casks:
         ap.error("pass --casks")
     rows, ok = [], True
-    for t in entries(args.casks):
-        ok &= check_cask(t, rows)
+    for token, appdir in entries(args.casks):
+        ok &= check_brew_cask(token, appdir, rows) if args.brew else check_cask(token, rows)
     bad = [r for r in rows if r[2] != "ok"]
     out = ["| | kind | status | detail |", "|---|---|---|---|"]
     out += ["| %s | %s | %s | %s |" % (n, k, s, d.replace("|", "\\|")) for n, k, s, d in sorted(rows, key=lambda r: (r[2] == "ok", r[1], r[0]))]
