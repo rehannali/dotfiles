@@ -117,7 +117,7 @@ packages:
         node: lts
         python: "3.15"   # global; a project picks another in its mise.toml
         uv: latest
-        ruby: "3.3"
+        ruby: "3.4.11"   # Intel Macs compile it (mise's prebuilt Ruby is Apple Silicon only), with MacPorts' libyaml and OpenSSL
         java: [corretto-21, corretto-17]   # first entry is the default
         go: latest
         rust: latest
@@ -155,7 +155,7 @@ packages:
         # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
         - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
         - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}
-        - {name: libyaml, kind: system, apt: libyaml-dev}   # brew: comes with ansible
+        - {name: libyaml, kind: system, brew: libyaml, apt: libyaml-dev, port: libyaml}   # Ruby's psych needs it
         - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
         - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconfig, port_links: {pkgconf: /opt/local/bin/pkg-config},
            bin: pkgconf}   # apt: comes with libharfbuzz-dev. MacPorts: pkgconfig (other ports need it, and it conflicts with pkgconf)
@@ -200,7 +200,7 @@ packages:
         - {name: ios-deploy, kind: apple, brew: ios-deploy, port: ios-deploy}
         - {name: swiftlint, kind: apple, mise: swiftlint, brew: swiftlint, port: swiftlint}
         - {name: xcodes, kind: apple, mise: xcodes, brew: xcodesorg/made/xcodes, port: xcodes, bin: xcodes}
-      gems:
+      gems:   # mise tools with the gem: backend (mise's Ruby)
         - fastlane
         - cocoapods
         - cocoapods-keys

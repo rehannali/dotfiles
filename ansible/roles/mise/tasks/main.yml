@@ -47,6 +47,10 @@
     MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
     MAKE_OPTS: -j2
     RUBY_MAKE_OPTS: -j2
+    # Intel Macs compile Ruby: MacPorts' OpenSSL and libyaml (psych), as there is no Homebrew for ruby-build to find
+    RUBY_CONFIGURE_OPTS: >-
+      {{ '--with-openssl-dir=/opt/local/libexec/openssl3 --with-libyaml-dir=/opt/local'
+         if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '' }}
   register: mise_install
   changed_when: "'installed' in mise_install.stderr"
   retries: "{{ install_retries | int - 1 }}"
