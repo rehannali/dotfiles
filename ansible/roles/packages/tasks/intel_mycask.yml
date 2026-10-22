@@ -1,44 +1,29 @@
 ---
-# Intel Mac, without Homebrew (Tier 3 since September 2026, gone on 1 September 2027): apps and command-line tools
-# come from mycask (tools/mycask). It reads Homebrew's cask and formula index itself and never compiles. A formula
-# comes from a Homebrew bottle or a bottle rehannali/intel-bottles built, dependencies first. While
-# platforms.yml has `fallbacks: false` (until August 2027) the cli map is empty, so there is no MacPorts or mise stand-in;
-# with `fallbacks: true` the blocks below install them. `mycask formula plan` decides which; it only reads, so --check
-# shows the same answer.
+# Intel Mac, without Homebrew: its GUI apps, and the command-line tools that ship as casks (claude-code, codex), come
+# from mycask (tools/mycask). It reads Homebrew's cask index itself (refreshed once a day) and installs, upgrades,
+# uninstalls and zaps casks the way Homebrew does. Command-line tools are MacPorts and mise (ports.yml, roles/mise).
 #
 #   ansible-playbook site.yml -l <mac> -e mycask_adopt=true   first run after Homebrew: take over the apps in place
-#   dot apply --tags upgrade                                   also upgrade the casks and bottles
-- name: Intel | mycask, its lists, and this Mac's casks and formulae
+- name: Intel | mycask and this Mac's casks
   ansible.builtin.set_fact:
     mycask_py: "{{ dotfiles_dir }}/tools/mycask/mycask.py"
     mycask_conf: "{{ ansible_facts.env.HOME }}/.config/mycask"
-    intel_mise_fallback: []
     mycask_casks_wanted: >-
       {{ apps_wanted | selectattr('cask', 'defined') | rejectattr('arch', 'defined') | list
          + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
             | selectattr('arch', 'equalto', dotfiles_arch) | list) }}
-    # the App Store's command line, for the mas apps (apps.yml)
-    mycask_formula_names: >-
-      {{ tool_plan.brew | mycask_formulae
-         + (['mas'] if gui_apps | bool and install_app_store | bool
-            and apps_wanted | selectattr('mas', 'defined') | rejectattr('cask', 'defined') | list | length > 0 else []) }}
 
-- name: Intel | mycask's environment
+- name: Intel | the cask lines (with --appdir for the appdir ones)
   ansible.builtin.set_fact:
-    mycask_env:
-      PATH: "/usr/local/bin:/usr/local/sbin:{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
-      MYCASK_BOTTLES_URL: "{{ mycask_bottles_url }}"
-      MYCASK_CLI_MAP: "{{ mycask_conf }}/cli-map.json"
     mycask_cask_lines: >-
       {{ mycask_casks_wanted | mycask_casks(settings.macos.cask_appdir | replace('~', ansible_facts.env.HOME)) }}
 
-- name: Intel | what mycask can't install (it reads homebrew/core and homebrew/cask only, no taps)
+- name: Intel | what mycask can't install (it reads homebrew/cask only, no taps)
   ansible.builtin.set_fact:
     install_failures: >-
       {{ install_failures | default([]) + ['mycask (Intel): taps are not supported, skipped: '
-         ~ (tool_plan.brew | mycask_unsupported(mycask_casks_wanted if install_casks | bool and gui_apps | bool else [])
-            | join(', '))] }}
-  when: tool_plan.brew | mycask_unsupported(mycask_casks_wanted if install_casks | bool and gui_apps | bool else []) | length > 0
+         ~ (mycask_casks_wanted | mycask_unsupported | join(', '))] }}
+  when: install_casks | bool and gui_apps | bool and mycask_casks_wanted | mycask_unsupported | length > 0
 
 - name: Intel | python3 (from the Command Line Tools; mycask needs nothing else)
   ansible.builtin.command: /usr/bin/python3 --version
@@ -51,32 +36,6 @@
   ansible.builtin.fail:
     msg: /usr/bin/python3 does not run; install the Command Line Tools (xcode-select --install, bootstrap.sh does it)
   when: intel_python.rc != 0
-
-- name: Intel | Homebrew still installed?
-  ansible.builtin.stat:
-    path: "{{ item }}"
-  loop: [/usr/local/bin/brew, /usr/local/Homebrew]
-  register: intel_brew
-
-- name: Intel | Homebrew is in the way
-  ansible.builtin.set_fact:
-    intel_brew_msg: >-
-      Homebrew is still installed in /usr/local ({{ intel_brew.results | selectattr('stat.exists') | map(attribute='item')
-      | join(', ') }}). mycask puts its bottles in that prefix, so remove Homebrew first; its apps stay where they are and
-      `-e mycask_adopt=true` takes them over afterwards. Uninstall it with:
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
-      then `sudo rm -rf /usr/local/Homebrew /usr/local/Caskroom` if it left them. See tools/mycask/README.md.
-  when: intel_brew.results | selectattr('stat.exists') | list | length > 0
-
-- name: Intel | stop here while Homebrew is installed
-  ansible.builtin.fail:
-    msg: "{{ intel_brew_msg }}"
-  when: intel_brew_msg is defined and not ansible_check_mode
-
-- name: Intel | (check mode) Homebrew would stop the real run
-  ansible.builtin.set_fact:
-    install_failures: "{{ install_failures | default([]) + ['mycask (Intel): ' ~ intel_brew_msg] }}"
-  when: intel_brew_msg is defined and ansible_check_mode
 
 - name: Intel | ~/.local/bin and ~/.config/mycask
   ansible.builtin.file:
@@ -94,66 +53,24 @@
     state: link
     force: true
 
-# an older version of these dotfiles wrote the mise fallbacks here; the mise role puts them in config.toml now
-- name: Intel | old mise fallback config
-  ansible.builtin.file:
-    path: "{{ ansible_facts.env.HOME }}/.config/mise/conf.d/intel-fallback.toml"
-    state: absent
-
-- name: Intel | mycask's lists, from packages.yml
+- name: Intel | mycask's list, from packages.yml
   ansible.builtin.copy:
-    dest: "{{ mycask_conf }}/{{ item.name }}"
+    dest: "{{ mycask_conf }}/casks.txt"
     mode: "0644"
-    content: "{{ item.content }}"
-  loop:
-    - name: casks.txt
-      content: "# Written by Ansible (roles/packages) from packages.yml. Edit that, not this file.\n{{ mycask_cask_lines | join('\n') }}\n"
-    - name: formulae.txt
-      content: "# Written by Ansible (roles/packages) from packages.yml. Edit that, not this file.\n{{ mycask_formula_names | join('\n') }}\n"
-    - name: cli-map.json
-      content: >-
-        {{ {'_comment': 'Written by Ansible (roles/packages) from packages.yml: port, else mise_fallback. Edit that.'}
-           | combine(tool_plan.brew | mycask_cli_map) | to_nice_json(indent=1) }}
-  loop_control:
-    label: "{{ item.name }}"
+    content: "# Written by Ansible (roles/packages) from packages.yml. Edit that, not this file.\n{{ mycask_cask_lines | join('\n') }}\n"
 
-# /usr/local the way `mycask formula setup` prepares it, done here because mycask won't run as root: the
-# directories it links into, owned by you and the admin group. Once, while there is no Cellar yet.
-- name: Intel | /usr/local prepared?
-  ansible.builtin.stat:
-    path: /usr/local/Cellar
-  register: intel_cellar
-
-- name: Intel | prepare /usr/local for bottles (mycask formula setup)
-  when: not intel_cellar.stat.exists and intel_brew_msg is not defined
-  become: true
-  vars:
-    mycask_prefix_dirs: [bin, sbin, include, lib, share, Frameworks, Cellar, opt, etc, var]
-  block:
-    # like `chown -R you:admin`: what is already in them becomes yours too, modes stay as they are
-    - name: Intel | /usr/local directories, owned by you and admin
-      ansible.builtin.file:
-        path: "/usr/local/{{ item }}"
-        state: directory
-        owner: "{{ ansible_facts.user_id }}"
-        group: admin
-        recurse: true
-      loop: "{{ mycask_prefix_dirs }}"
-
-    # like `chmod u+rwx` on the directories themselves (not recursive: that would make every file executable)
-    - name: Intel | writable by you
-      ansible.builtin.file:
-        path: "/usr/local/{{ item }}"
-        state: directory
-        mode: u+rwx
-      loop: "{{ mycask_prefix_dirs }}"
+# Files of the bottle era (mycask installed command-line tools until October 2026)
+- name: Intel | lists mycask no longer reads
+  ansible.builtin.file:
+    path: "{{ mycask_conf }}/{{ item }}"
+    state: absent
+  loop: [formulae.txt, cli-map.json]
 
 - name: Intel | apps (mycask bundle casks.txt)
-  when: gui_apps | bool and install_casks | bool and (intel_brew_msg is not defined or ansible_check_mode)
+  when: gui_apps | bool and install_casks | bool
   block:
     - name: Intel | casks not installed yet (check mode)
       ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} list
-      environment: "{{ mycask_env }}"
       register: intel_cask_list
       changed_when: false
       check_mode: false   # only looks, so --check shows what would be installed
@@ -171,7 +88,6 @@
       ansible.builtin.command: >-
         /usr/bin/python3 -I {{ mycask_py | quote }} bundle {{ '--adopt' if mycask_adopt | bool else '' }}
         {{ (mycask_conf ~ '/casks.txt') | quote }}
-      environment: "{{ mycask_env }}"
       register: intel_casks
       changed_when: intel_casks.stdout is search('(?m) installed$')
       failed_when: intel_casks.rc != 0
@@ -184,157 +100,19 @@
              | map('regex_replace', '^Error: ', '') | join('; ') | default('failed', true))] }}
       when: intel_casks is failed
 
-# the plan reads this run's map from a temp copy: in --check the one in ~/.config/mycask is not written
-- name: Intel | this run's CLI map, for the plan
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: -mycask
-  register: intel_map_dir
-  changed_when: false   # scratch space for this run, removed below
-  check_mode: false
-
-- name: Intel | write it
-  ansible.builtin.copy:
-    dest: "{{ intel_map_dir.path }}/cli-map.json"
-    content: "{{ tool_plan.brew | mycask_cli_map | to_nice_json }}"
-    mode: "0644"
-  changed_when: false
-  check_mode: false
-
-- name: Intel | mycask formula plan (read-only)
-  ansible.builtin.command:
-    argv: "{{ ['/usr/bin/python3', '-I', mycask_py, 'formula', 'plan', '--json'] + mycask_formula_names }}"
-  environment: "{{ mycask_env | combine({'MYCASK_CLI_MAP': intel_map_dir.path ~ '/cli-map.json'}) }}"
-  register: intel_plan
-  changed_when: false
-  check_mode: false   # only reads, so --check shows the plan too
-  retries: "{{ install_retries | int - 1 }}"
-  delay: "{{ install_delay }}"
-  until: intel_plan is succeeded
-
-- name: Intel | the plan, by source
-  ansible.builtin.set_fact:
-    intel_items: "{{ (intel_plan.stdout | from_json)['items'] }}"
-    intel_build: "{{ (intel_plan.stdout | from_json)['build'] | map(attribute='name') | list }}"
-
-- name: Intel | formulae (bottle = Homebrew or this repo's CI, port = MacPorts archive, mise = mise config)
-  ansible.builtin.debug:
-    msg: >-
-      {{ intel_items | map(attribute='action') | zip(intel_items | map(attribute='name'))
-         | map('join', ': ') | list }}{{ (' / CI still has to build: ' ~ (intel_build | join(' '))) if intel_build else '' }}
-
-- name: Intel | bottles (mycask formula install)
-  ansible.builtin.command:
-    argv: >-
-      {{ ['/usr/bin/python3', '-I', mycask_py, 'formula', 'install']
-         + (intel_items | selectattr('action', 'equalto', 'bottle') | map(attribute='name') | list) }}
-  environment: "{{ mycask_env }}"
-  register: intel_bottles
-  changed_when: intel_bottles.stdout is search('(?m) installed$')
-  failed_when: intel_bottles.rc != 0
-  ignore_errors: true
-  when: intel_items | selectattr('action', 'equalto', 'bottle') | list | length > 0 and intel_brew_msg is not defined
-
-- name: Intel | record bottles that did not install
-  ansible.builtin.set_fact:
-    install_failures: >-
-      {{ install_failures | default([]) + ['mycask formulae: ' ~ (intel_bottles.stderr_lines | select('match', '^Error: ')
-         | map('regex_replace', '^Error: ', '') | join('; ') | default('failed', true))] }}
-  when: intel_bottles is failed
-
-- name: Intel | formulae with no prebuilt binary yet (rehannali/intel-bottles builds them)
-  ansible.builtin.set_fact:
-    install_failures: >-
-      {{ install_failures | default([]) + ['mycask (Intel) ' ~ item.name ~ ': ' ~ item.action ~ ' '
-         ~ (item.detail | default(item.missing | default([]) | join(', ')))] }}
-  loop: "{{ intel_items | selectattr('action', 'in', ['needs-build', 'unavailable', 'unknown']) | list }}"
-  loop_control:
-    label: "{{ item.name }}"
-
-# mise_fallback tools go into the mise config (roles/mise writes and installs it), not through `mise use -g`
-- name: Intel | mise tools (installed by the mise role)
-  ansible.builtin.set_fact:
-    intel_mise_fallback: "{{ intel_mise_fallback + (intel_items | selectattr('action', 'equalto', 'mise') | map(attribute='spec') | list) }}"
-
-- name: Intel | MacPorts ports (binary archives only)
-  when: intel_items | selectattr('action', 'equalto', 'port') | list | length > 0 and macports_fallback | bool
-  block:
-    - name: Intel | MacPorts installed?
-      ansible.builtin.include_tasks: macports.yml
-      when: macports_ready is not defined
-
-    - name: Intel | MacPorts ports
-      ansible.builtin.script: port-install.sh {{ item.spec | quote }} false
-      loop: "{{ intel_items | selectattr('action', 'equalto', 'port') | list }}"
-      loop_control:
-        label: "{{ item.name }} ({{ item.spec }})"
-      become: true
-      register: intel_ports
-      changed_when: "'is already installed' not in intel_ports.stdout"
-      retries: "{{ install_retries | int - 1 }}"
-      delay: "{{ install_delay }}"
-      until: intel_ports is succeeded
-      ignore_errors: true
-      when: macports_ready | bool
-
-    - name: Intel | mise instead, where a port failed and the tool has a mise_fallback
-      ansible.builtin.set_fact:
-        intel_mise_fallback: "{{ intel_mise_fallback + [intel_fallbacks[item.item.name]] }}"
-      loop: "{{ intel_ports.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
-      loop_control:
-        label: "{{ item.item.name }}"
-      vars:
-        intel_fallbacks: "{{ tool_plan.brew | items2dict(key_name='name', value_name='mise_fallback') }}"
-      when: intel_fallbacks[item.item.name] | default('') | length > 0
-
-    - name: Intel | record ports that did not install
-      ansible.builtin.set_fact:
-        install_failures: "{{ install_failures | default([]) + ['port (Intel): ' ~ item.item.spec ~ ' for ' ~ item.item.name] }}"
-      loop: "{{ intel_ports.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
-      loop_control:
-        label: "{{ item.item.name }}"
-      vars:
-        intel_fallbacks: "{{ tool_plan.brew | items2dict(key_name='name', value_name='mise_fallback') }}"
-      when: intel_fallbacks[item.item.name] | default('') | length == 0
-
-    - name: Intel | MacPorts could not be installed
-      ansible.builtin.set_fact:
-        install_failures: >-
-          {{ install_failures | default([]) + ['port (Intel): MacPorts missing, not installed: '
-             ~ (intel_items | selectattr('action', 'equalto', 'port') | map(attribute='name') | join(', '))] }}
-      when: not macports_ready | bool
-
-- name: Intel | the plan's temp directory
-  ansible.builtin.file:
-    path: "{{ intel_map_dir.path }}"
-    state: absent
-  changed_when: false
-  check_mode: false
-
-# Only with --tags upgrade (dot apply --tags upgrade): normal runs install what is missing and leave versions alone
-- name: Intel | upgrade
-  when: "'upgrade' in ansible_run_tags and intel_brew_msg is not defined"
-  block:
+    # every run with upgrade_on_apply (or --tags upgrade): casks with a newer version. A cask whose new version
+    # dropped Intel or needs a newer macOS is kept at its version (mycask checks the app before it replaces it).
     - name: Intel | upgrade the casks (mycask upgrade)
       ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} upgrade
-      environment: "{{ mycask_env }}"
       register: intel_cask_upgrade
       changed_when: intel_cask_upgrade.stdout is search('(?m)^==> Upgrading ')
       failed_when: intel_cask_upgrade.rc != 0
       ignore_errors: true
-      when: gui_apps | bool and install_casks | bool
-
-    - name: Intel | upgrade the bottles (mycask formula upgrade)
-      ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} formula upgrade
-      environment: "{{ mycask_env }}"
-      register: intel_formula_upgrade
-      changed_when: intel_formula_upgrade.stdout is search('(?m) installed$')
-      failed_when: intel_formula_upgrade.rc != 0
-      ignore_errors: true
+      when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
 
     - name: Intel | record upgrades that failed
       ansible.builtin.set_fact:
-        install_failures: "{{ install_failures | default([]) + ['mycask upgrade: ' ~ item.stderr_lines | select('match', '^Error: ') | join('; ')] }}"
-      loop: "{{ [intel_cask_upgrade, intel_formula_upgrade] | selectattr('failed', 'defined') | selectattr('failed') | list }}"
-      loop_control:
-        label: "{{ item.cmd | default('') | join(' ') }}"
+        install_failures: >-
+          {{ install_failures | default([]) + ['mycask upgrade: ' ~ (intel_cask_upgrade.stderr_lines | select('match', '^Error: ')
+             | join('; ') | default('failed', true))] }}
+      when: intel_cask_upgrade is failed

@@ -4,21 +4,15 @@
 #   macos_x86_64   Intel Mac
 #   debian         Debian, Ubuntu, Raspberry Pi OS (Pi 4, arm64), WSL, Hetzner's images: any Debian-family Linux
 #
-#   cli     command-line tools (kind cli, and anything with a mise key):   brew | mise
+#   cli     command-line tools (kind cli, and anything with a mise key):   brew | mise | port
 #   system  libraries, daemons, big tools (kind system / apple):           brew | apt | port
 #   apps    GUI apps, in order of preference:                              cask, mas | flatpak
 #
-# On an Intel Mac there is no Homebrew: `brew` names the Homebrew formula, and mycask (tools/mycask) installs it, with
-# its dependencies first, from a Homebrew bottle or a bottle rehannali/intel-bottles built (github.com/rehannali/intel-bottles),
-# else reports it (nothing is compiled on the Mac). `cask` apps come from mycask too. Only a tool that is a tap formula
-# (fvm, graphite, xcodes) stays with mise: mycask reads no taps.
-#
-# `fallbacks: false` = no MacPorts port and no mise stand-in for a formula without a bottle, so everything comes from
-# bottles. Until August 2027 that is the plan (Homebrew still ships Intel bottles for what it built before September
-# 2026, the CI builds the rest). Set it to true in August 2027, when the Intel runner is gone: then `port` and
-# `mise_fallback` in packages.yml are used again, and `cli: mise` is the other half of that move (tools/mycask/README.md
-# has the timeline).
+# An Intel Mac has no Homebrew (Tier 3 since September 2026, dropped on 1 September 2027). Its command-line tools come
+# from MacPorts (binary archives, `port` in packages.yml) and else from mise (`mise`, `mise_intel`, `mise_fallback`);
+# mise also keeps the language runtimes. Its GUI apps, CLI casks included (claude-code, codex), come from mycask
+# (tools/mycask), which reads Homebrew's cask index without Homebrew.
 platform_managers:
   macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
-  macos_x86_64: {cli: brew, system: brew, apps: [cask, mas], fallbacks: false}
+  macos_x86_64: {cli: port, system: port, apps: [cask, mas]}
   debian: {cli: mise, system: apt, apps: [flatpak]}

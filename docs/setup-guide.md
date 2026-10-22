@@ -30,7 +30,7 @@ Two separate questions decide what a machine ends up with:
 | Platform | CLI tools | System packages | GUI apps |
 |---|---|---|---|
 | Apple Silicon Mac | Homebrew | Homebrew | casks, App Store |
-| Intel Mac | mycask: Homebrew or CI bottle (mise only for tap tools) | mycask: Homebrew or CI bottle, dependencies first (nothing is compiled on the Mac) | casks (mycask), App Store |
+| Intel Mac | MacPorts, else mise | MacPorts | casks (mycask), App Store |
 | Debian, Ubuntu, Raspberry Pi OS, WSL | mise | apt | Flathub (desktops) |
 | Other Linux (Fedora, ...) | mise | not yet: reported and skipped | |
 
@@ -379,10 +379,11 @@ List every manager that has it, by the name that manager uses. The run picks one
         - {name: jq, kind: cli, mise: jq, brew: jq, apt: jq}
 ```
 
-- `kind: cli`: a tool mise can install as a prebuilt binary. Apple Silicon uses `brew`; Intel Macs and Linux use
-  `mise`.
+- `kind: cli`: a tool mise can install as a prebuilt binary. Apple Silicon uses `brew`; Intel Macs its `port`, else
+  `mise`; Linux `mise`.
 - `kind: system`: a library, daemon or big tool that needs brew or apt (`{name: ffmpeg, kind: system, brew: ffmpeg,
-  apt: ffmpeg}`). On Intel Macs, add `port:` (MacPorts) and/or `mise_fallback:` for when Homebrew has no bottle.
+  apt: ffmpeg}`). For Intel Macs, add `port:` (MacPorts, where packages.macports.org has an Intel archive), else
+  `mise_fallback:`.
 - `kind: apple`: Apple-developer tools, macOS with GUI only.
 - `bin:` is the command it provides, when that differs from `name` (the audit checks it).
 
@@ -463,7 +464,8 @@ Set them in a group or host file for a kind of machine or one machine, or with `
 | `install_casks` | `true` | macOS apps from Homebrew casks |
 | `install_app_store` | `true` | Mac App Store apps (needs a signed-in App Store) |
 | `install_flatpaks` | `true` | Linux desktop apps from Flathub |
-| `macports_fallback` | `true` | Intel Macs: MacPorts for formulae without a bottle |
+| `macports_fallback` | `true` | Intel Macs: command-line tools from MacPorts |
+| `upgrade_on_apply` | `true` | every run also upgrades (MacPorts, mise, Homebrew, casks); `false`: only installs, `--tags upgrade` upgrades |
 | `macos_defaults` | `true` | Dock, Finder and trackpad settings |
 | `touch_id_sudo` | `true` | Touch ID for sudo (Macs with a sensor, macOS 14+) |
 | `install_xcode`, `install_ios_runtime` | `true` | Xcode and its iOS simulator runtime |

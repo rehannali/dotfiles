@@ -77,10 +77,10 @@
       retries: "{{ install_retries | int - 1 }}"
       delay: "{{ install_delay }}"
       until: mas_cli is succeeded
-      when: not intel_mac   # Intel: a bottle from mycask, in formulae.txt
+      when: not intel_mac   # Intel: the mas port (ports.yml)
 
-    - name: App Store | mas from mycask (Intel)
-      ansible.builtin.command: /usr/local/bin/mas version
+    - name: App Store | mas from MacPorts (Intel)
+      ansible.builtin.command: /opt/local/bin/mas version
       changed_when: false
       check_mode: false   # only looks, so it runs in --check too
       when: intel_mac

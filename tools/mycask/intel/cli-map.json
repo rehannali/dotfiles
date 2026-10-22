@@ -1,3 +1,0 @@
-{
- "_comment": "formula -> fallback when an Intel Mac has no usable bottle (prefer: even when it has one). Written by tools/mycask/manifests.py from packages.yml; edit that, not this file."
-}

@@ -108,26 +108,24 @@ file when it saves.
 
 ## Where packages come from
 
-Homebrew stopped building bottles for Intel Macs, so on those a normal `brew install` can mean compiling (one try
-pulled in LLVM and ran for hours). So the package manager depends on the machine:
+Homebrew stopped building bottles for Intel Macs (Tier 3 since September 2026, dropped on 1 September 2027), so the
+package manager depends on the machine:
 
 | | CLI tools | System packages | Apps | Languages |
 |---|---|---|---|---|
 | Apple Silicon | Homebrew | Homebrew | casks | mise |
-| Intel Mac (no Homebrew) | mycask: Homebrew or CI bottle (mise only for tap tools) | mycask: Homebrew or CI bottle | casks (mycask) | mise |
+| Intel Mac (no Homebrew) | MacPorts, else mise | MacPorts | casks (mycask) | mise |
 | Debian / Ubuntu (incl. Pi, WSL) | mise | apt | Flatpak (desktops) | mise |
 | Another Linux (Fedora, ...) | mise | not yet: reported and skipped | | mise |
 
 A tool is never installed by two managers. Which manager is used per platform is `inventory/group_vars/all/platforms.yml`,
 and `packages.yml` lists every tool with the name each manager knows it by.
 
-Intel Macs have no Homebrew at all: mycask installs the casks, and each formula, dependencies first (what is already
-installed is skipped), from a Homebrew bottle where one still fits, else from a bottle built on
-GitHub's Intel runner in [rehannali/intel-bottles](https://github.com/rehannali/intel-bottles) (weekly, only what changed). Until August 2027 there is
-no MacPorts or mise stand-in (`fallbacks: false` in `platforms.yml`); nothing is compiled on the Mac, and a formula
-without a bottle is reported until the CI has built it. Tap tools (fvm, graphite, xcodes) stay with mise, tap formulae
-and casks (speedtest, netbird-ui) are skipped on Intel. Ruby has no prebuilt Intel build either and is compiled once by
-mise. What happens up to and after September 2027: [tools/mycask/README.md](tools/mycask/README.md#timeline).
+On an Intel Mac a tool comes from its MacPorts `port` (binary archives; git, autoconf and automake are built, a few
+minutes), else from mise: the dev tooling (pipx, poetry, zig, fvm) and what MacPorts lacks (eza, graphite,
+git-flow-next, payload-dumper-go, ansible-core). speedtest is Ookla's own download. Apps, and the command-line tools
+that ship as casks (claude-code, codex), come from [mycask](tools/mycask/README.md), which reads Homebrew's cask index
+without Homebrew. Every run installs what is missing and upgrades the rest (`upgrade_on_apply` in `main.yml`).
 
 ## Secrets from Bitwarden
 

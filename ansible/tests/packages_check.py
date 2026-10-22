@@ -5,7 +5,7 @@
 - every group's bundles exist, and the tool_plan filter accepts what they select
 - each tool is installed by one manager at most; every cli tool by something; nothing a machine is meant to have is
   left without a manager on today's platforms (Apple Silicon, Intel Mac, Debian on x86_64 and arm64)
-- port / mise_fallback only come with a brew formula
+- port_build, port_select and port_links only come with a port; download is a URL
 - every app has a cask, an App Store id, a flatpak id or a GitHub release; flatpak ids look like ids
 - every tap formula or cask in use is listed under its tap, and every listed one is used
 """
@@ -34,16 +34,19 @@ all_tools = [t for b in bundles.values() for t in b.get("tools") or []]
 all_apps = [a for b in bundles.values() for a in b.get("apps") or []]
 
 for t in all_tools:
-    for key in ("port", "mise_fallback"):
-        if t.get(key) and not t.get("brew"):
-            bad.append(f"{t['name']}: {key} is only a fallback for a brew formula")
     if "brew_service" in t and (t["brew_service"] is not True or not t.get("brew")):
         bad.append(f"{t['name']}: brew_service is true or absent, and needs a brew formula")
     if "port_build" in t and (t["port_build"] is not True or not t.get("port")):
         bad.append(f"{t['name']}: port_build is true or absent, and needs a port")
-    if "intel_prefer" in t and (t["intel_prefer"] is not True or not (t.get("port") and not t.get("port_build"))
-                                and not t.get("mise_fallback")):
-        bad.append(f"{t['name']}: intel_prefer is true or absent, and needs a prebuilt port or a mise_fallback")
+    if "port_select" in t and (not t.get("port") or not isinstance(t["port_select"], list) or len(t["port_select"]) != 2):
+        bad.append(f"{t['name']}: port_select is [group, choice] and needs a port")
+    if "port_links" in t and (not t.get("port") or not isinstance(t["port_links"], dict)):
+        bad.append(f"{t['name']}: port_links is {{command: path}} and needs a port")
+    if "download" in t and not str(t["download"]).startswith("https://"):
+        bad.append(f"{t['name']}: download is an https URL")
+    for gone in ("intel_prefer", "prefer"):
+        if gone in t:
+            bad.append(f"{t['name']}: {gone} is no longer used")
 for a in all_apps:
     if not any(k in a for k in ("cask", "mas", "flatpak", "github")):
         bad.append(f"app {a['name']}: needs a cask, mas, flatpak or github id")
@@ -82,10 +85,6 @@ for group, platforms in GROUP_PLATFORMS.items():
             f"{k}={len(v)}" for k, v in sorted(plan.items()) if k != "unplanned") + f", apps={len(apps)}"
             + f", runtimes={len(sel['runtimes'])}")
 
-# what an Intel Mac would lose if Homebrew stopped and platforms.yml said system: port
-intel_port = tool_plan(all_tools, "macos_x86_64", {"cli": "mise", "system": "port"}, True)
-print(f"  (Intel Mac without Homebrew: port={len(intel_port['port'])}, no source for {intel_port['unplanned']})")
-
 trusted, taps = set(), {}
 for t in pk["taps"]:
     if not set(t) <= {"name", "formulae", "casks"}:
@@ -106,7 +105,7 @@ for tap, t in taps.items():
             if c not in casks and f"{tap}/{c}" not in casks]
 print(f"  taps: {len(taps)}, bundles: {len(bundles)}, tools: {len(all_tools)}, apps: {len(all_apps)}")
 
-# the Intel Mac lists for mycask that CI builds bottles from must match packages.yml
+# the Intel Mac cask list that CI verifies (mycask-verify.yml) must match packages.yml
 sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "tools", "mycask"))
 import manifests  # noqa: E402
 if manifests.main(check=True) != 0:

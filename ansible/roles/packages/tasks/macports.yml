@@ -1,5 +1,5 @@
 ---
-# MacPorts, the fallback for what Homebrew has no Intel bottle for. Installed on demand, once per run. Its installer
+# MacPorts, where an Intel Mac's command-line tools come from. Installed on demand, once per run. Its installer
 # appends a PATH line to your shell profiles, which the dotfiles manage, so those are put back afterwards.
 - name: MacPorts | installed?
   ansible.builtin.stat:

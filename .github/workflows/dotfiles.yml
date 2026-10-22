@@ -164,8 +164,8 @@ jobs:
             exit 1
           fi
 
-      # Intel Macs have no Homebrew (mycask installs their apps and tools), but the runner image comes with one in
-      # /usr/local, which mycask refuses to share. Remove it as on the real Mac, with the links it leaves dangling,
+      # Intel Macs have no Homebrew (MacPorts and mise install their tools, mycask their apps), but the runner image comes
+      # with one in /usr/local, whose commands would hide the planned ones. Remove it as on the real Mac, with its links,
       # so this run installs every tool and cask the way the Mac does.
       - name: Remove Homebrew (Intel runner)
         if: matrix.id == 'mac-intel'
