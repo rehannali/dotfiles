@@ -1,22 +1,13 @@
 name: mycask-verify
 
-# Checks that mycask really installs everything the Intel Macs ask for. The bottles it needs are built in
-# rehannali/intel-bottles (index.json in its main branch, files in its release); this repo only tests what the Mac does
-# with them. On a clean macos-15-intel runner without Homebrew, as on the Mac:
+# Checks that mycask really installs every cask the Intel Macs ask for (GUI apps, and the command-line tools that ship
+# as casks: claude-code, codex). On a clean macos-15-intel runner, every cask in tools/mycask/intel/casks.txt is installed
+# one at a time (verify-casks.sh), checked from mycask's receipt by tools/mycask/verify.py (app or binary in place,
+# commands start), and uninstalled again to keep the runner's disk free. A table in the run's summary says what is
+# missing or broken, and the run fails. The command-line tools (MacPorts, mise) are checked by dotfiles.yml.
 #
-#   command-line tools  every formula in tools/mycask/intel/formulae.txt is installed with `mycask formula bundle`; a
-#                       second install must change nothing (dependencies already there are skipped); then
-#                       tools/mycask/verify.py checks each from mycask's receipts: keg, links, dependencies, and that
-#                       every linked command starts (no missing library, right CPU)
-#   casks               every cask in tools/mycask/intel/casks.txt, one at a time (verify-casks.sh): receipt, app or
-#                       binary in place, commands start; then uninstalled again to keep the runner's disk free
-#
-# A table in the run's summary says what is missing or broken, and the run fails. While intel-bottles is still building
-# the first set, the tool check fails for the formulae that have no bottle yet; the plan at the top of its summary
-# lists them.
-#
-# Runs when the mycask code or lists change (pull request to main, push to main or feat/ansible), once a week after the
-# bottles are rebuilt, and by hand. macos-15-intel is gone after August 2027: from 2027-08-01 it stops itself.
+# Runs when the mycask code or list changes (pull request to main, push to main or feat/ansible), once a week (a cask's
+# new version may drop Intel), and by hand. macos-15-intel is gone after August 2027: from 2027-08-01 it stops itself.
 
 on:
   pull_request:
@@ -30,7 +21,7 @@ on:
       - tools/mycask/**
       - .github/workflows/mycask-verify.yml
   schedule:
-    - cron: "23 5 * * 2"   # Tuesdays, a day after intel-bottles builds
+    - cron: "23 5 * * 2"   # Tuesdays
   workflow_dispatch:
 
 concurrency:
@@ -54,81 +45,6 @@ jobs:
             echo "::notice::macos-15-intel is gone after August 2027; nothing to verify on it."
             echo "stop=true" >> "$GITHUB_OUTPUT"
           fi
-
-  # Every command-line tool the Intel Macs ask for, installed by mycask on a runner without Homebrew, from the bottles
-  # as they are now. Then the same install again: it must change nothing (dependencies already there are skipped). The check
-  # reads mycask's receipts: keg, links, dependencies, and that each command starts (no missing library, right CPU).
-  verify-formulae:
-    name: verify command-line tools (mycask, macos-15-intel)
-    needs: guard
-    if: needs.guard.outputs.stop != 'true'
-
-    runs-on: macos-15-intel
-    timeout-minutes: 90
-    env:
-      MYCASK_BOTTLES_URL: ${{ vars.MYCASK_BOTTLES_URL || 'https://raw.githubusercontent.com/rehannali/intel-bottles/main/index.json' }}
-      MYCASK_CLI_MAP: ${{ github.workspace }}/tools/mycask/intel/cli-map.json
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
-
-      # Intel Macs have no Homebrew and mycask refuses to share /usr/local with it (same step as dotfiles.yml)
-      - name: Remove Homebrew
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/uninstall.sh" https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh
-          NONINTERACTIVE=1 /bin/bash "$RUNNER_TEMP/uninstall.sh" --force
-          sudo rm -rf /usr/local/Homebrew /usr/local/Caskroom /usr/local/Cellar /usr/local/var/homebrew
-          for d in bin sbin opt lib include share etc; do
-            [ -d "/usr/local/$d" ] && sudo find -L "/usr/local/$d" -maxdepth 4 -type l -exec rm -f {} + || true
-          done
-          if [ -e /usr/local/bin/brew ]; then echo "::error::brew is still there"; exit 1; fi
-
-      # `formula setup` asks for sudo itself; mycask refuses to run as root
-      - name: mycask formula setup
-        run: /usr/bin/python3 -I tools/mycask/mycask.py formula setup
-
-      # What mycask can not install yet, because neither Homebrew nor intel-bottles has a bottle for its current version
-      - name: Which tools still have no bottle (mycask formula plan)
-        run: |
-          /usr/bin/python3 -I tools/mycask/mycask.py formula plan --tag sequoia --file tools/mycask/intel/formulae.txt --json > "$RUNNER_TEMP/plan.json" 2> /dev/null || true
-          {
-            echo "### Without a bottle yet"
-            jq -r 'if ((.build // []) | length) == 0 then "none: every tool has a bottle" else ([.build[].name] | join(" ")) end' "$RUNNER_TEMP/plan.json"
-            echo
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
-      # A tool that cannot be installed is reported here and again, with the reason, in the check below
-      - name: Install every tool (mycask formula bundle)
-        run: |
-          /usr/bin/python3 -I tools/mycask/mycask.py formula bundle tools/mycask/intel/formulae.txt 2>&1 | tee "$RUNNER_TEMP/install.log" || true
-          grep -E '^Error: ' "$RUNNER_TEMP/install.log" || true
-
-      - name: Install again, nothing may change
-        run: |
-          /usr/bin/python3 -I tools/mycask/mycask.py formula bundle tools/mycask/intel/formulae.txt 2>&1 | tee "$RUNNER_TEMP/again.log" || true
-          if grep -E ' installed$' "$RUNNER_TEMP/again.log"; then
-            echo "::error::a second install installed something again; dependencies already there must be skipped"
-            exit 1
-          fi
-
-      - name: Check what was installed
-        run: |
-          echo "### Command-line tools" >> "$GITHUB_STEP_SUMMARY"
-          /usr/bin/python3 -I tools/mycask/verify.py --formulae tools/mycask/intel/formulae.txt --markdown "$RUNNER_TEMP/formulae.md" || rc=$?
-          cat "$RUNNER_TEMP/formulae.md" >> "$GITHUB_STEP_SUMMARY"
-          exit "${rc:-0}"
-
-      - name: Keep the logs
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: verify-formulae
-          path: |
-            ${{ runner.temp }}/install.log
-            ${{ runner.temp }}/again.log
-            ${{ runner.temp }}/formulae.md
-          if-no-files-found: ignore
-          retention-days: 14
 
   # Every cask the Intel Macs ask for, installed by mycask one at a time and checked from its receipt (app or binary in
   # place, commands start), then uninstalled again to leave the runner's small disk free. See verify-casks.sh.

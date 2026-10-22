@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""Check that mycask really installed everything a list asks for. Standard library only (macOS system Python 3.9).
+"""Check that mycask really installed every cask a list asks for. Standard library only (macOS system Python 3.9).
 
-    python3 -I tools/mycask/verify.py --formulae tools/mycask/intel/formulae.txt
     python3 -I tools/mycask/verify.py --casks tools/mycask/intel/casks.txt [--markdown FILE]
 
 It reads mycask's receipts, not its output, so it also catches an install that reported success and left nothing.
-
-  formula   has a receipt; its keg exists; every link it made exists; every command it links into bin/ starts
-            (a loader error such as "Library not loaded", "Bad CPU type" or "dyld" fails; a non-zero exit of --version
-            does not); its runtime dependencies have receipts too
-  cask      has a receipt; every app, binary and other item it placed exists; every command it linked starts
+A cask needs a receipt, and every app, binary and other item it placed must exist; every command it linked must start
+(a loader error such as "Library not loaded", "Bad CPU type" or "dyld" fails; a non-zero exit of --version does not).
 
 Exit status 1 when anything is missing or broken. The report is a Markdown table (stdout, and --markdown FILE).
 """
@@ -21,8 +17,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(os.environ.get("MYCASK_ROOT", "~/.local/share/mycask")).expanduser()
-FPREFIX = Path(os.environ.get("MYCASK_FORMULA_PREFIX", "/usr/local")).expanduser()
-CELLAR = FPREFIX / "Cellar"
 LOADER_ERRORS = ("dyld", "Library not loaded", "Bad CPU type", "cannot execute", "Exec format error",
                  "image not found", "no suitable image")
 # commands that must not be started to look at them (they open a UI, wait for input or change the system)
@@ -66,36 +60,6 @@ def starts(exe):
     return ""
 
 
-def check_formula(name, rows):
-    rec = load(ROOT / "formula-receipts" / ("%s.json" % name))
-    if rec is None:
-        rows.append((name, "formula", "FAIL", "not installed (no receipt)"))
-        return False
-    problems = []
-    if rec.get("source") in ("homebrew", "ci"):
-        keg = CELLAR / name / str(rec.get("pkg_version"))
-        if not keg.is_dir():
-            problems.append("keg %s is missing" % keg)
-        links = rec.get("links") or []
-        gone = [l for l in links if not os.path.lexists(l) or not os.path.exists(l)]
-        if gone:
-            problems.append("%d of %d links are broken (%s)" % (len(gone), len(links), gone[0]))
-        for l in links:
-            p = Path(l)
-            if p.parent == FPREFIX / "bin" and os.path.exists(l):
-                why = starts(p)
-                if why:
-                    problems.append("%s %s" % (p.name, why))
-        for dep in rec.get("deps") or []:
-            if load(ROOT / "formula-receipts" / ("%s.json" % dep)) is None:
-                problems.append("dependency %s is not installed" % dep)
-        note = "%s via %s, %d links" % (rec.get("pkg_version"), rec.get("source"), len(links))
-    else:
-        note = "via %s (%s)" % (rec.get("source"), rec.get("spec"))
-    rows.append((name, "formula", "FAIL" if problems else "ok", "; ".join(problems) or note))
-    return not problems
-
-
 def check_cask(token, rows):
     rec = load(ROOT / "receipts" / ("%s.json" % token))
     if rec is None:
@@ -121,16 +85,13 @@ def check_cask(token, rows):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--formulae", help="file with one formula per line")
     ap.add_argument("--casks", help="file with one cask token per line (a trailing --appdir=... is ignored)")
     ap.add_argument("--markdown", help="also write the report to this file")
     args = ap.parse_args()
-    if not (args.formulae or args.casks):
-        ap.error("pass --formulae and/or --casks")
+    if not args.casks:
+        ap.error("pass --casks")
     rows, ok = [], True
-    for n in entries(args.formulae) if args.formulae else []:
-        ok &= check_formula(n, rows)
-    for t in entries(args.casks) if args.casks else []:
+    for t in entries(args.casks):
         ok &= check_cask(t, rows)
     bad = [r for r in rows if r[2] != "ok"]
     out = ["| | kind | status | detail |", "|---|---|---|---|"]
