@@ -83,8 +83,9 @@ def tool_plan(tools, platform, managers, gui_apps=True):
 
         if via:
             bin_ = t.get("bin", "" if kind == "system" else t["name"])
+            # a port tool may end up from mise (its port did not install): the audit accepts that copy
             plan["expect"].append({"name": t["name"], "kind": kind, "via": via, "bin": bin_,
-                                   "mise_fallback": str(t.get("mise_fallback", "")) if via == "port" else ""})
+                                   "mise_fallback": plan["port_fallback"].get(ident, "") if via == "port" else ""})
     return plan
 
 
