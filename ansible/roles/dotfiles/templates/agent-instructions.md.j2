@@ -30,20 +30,59 @@ Write multi-line messages with a heredoc or several `-m` flags so the blank line
 
 ### Conventional Commits (default)
 
+Follow Conventional Commits 1.0.0. Base the message only on the actual diff: do not invent context, issue numbers or
+motivations. Plain text: no emojis, no markdown formatting, no code fences.
+
 ```
-<type>(<scope>): <description>
+type(scope): description
 
-<body>
+[optional body]
 
-<footer>
+[optional footer(s)]
 ```
 
-- type: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci`, `build`.
-- scope: optional, the area changed, e.g. `feat(auth):`, `fix(ansible):`.
-- description: imperative mood ("add", not "added"), lowercase start, no trailing period, subject line under 72
-  characters.
-- body: when the diff is non-trivial, a paragraph on the motivation and what changed. Wrap at 72 characters.
-- footer: `BREAKING CHANGE: <what breaks>` (and `!` after the type/scope, e.g. `feat(api)!:`), `Fixes #123`.
+Types (pick the single best fit; if the diff mixes unrelated changes, use the type of the dominant change):
+
+- `feat`: new user-facing feature or capability
+- `fix`: bug fix
+- `refactor`: code change that neither fixes a bug nor adds a feature
+- `perf`: performance improvement
+- `style`: formatting or whitespace only, no logic change
+- `test`: adding or correcting tests
+- `docs`: documentation only
+- `build`: build system or tooling changes (excluding dependency updates)
+- `deps`: dependency updates only (version bumps, lockfile changes)
+- `ci`: CI/CD configuration changes
+- `chore`: maintenance that doesn't touch src or tests
+- `security`: fixes for vulnerabilities or security hardening
+- `release`: version bumps and changelog commits
+- `i18n`: translation or localization changes
+- `a11y`: accessibility improvements
+- `revert`: reverts a previous commit
+
+Subject line:
+
+- Target 50 characters or fewer; never more than 72, including type and scope.
+- Imperative mood ("add", not "added" or "adds").
+- Lowercase after the colon, no trailing period.
+- Say what the change does, not how or which files.
+
+Scope:
+
+- Optional; use it when the change clearly targets one module, feature or layer.
+- Lowercase, a single noun (`auth`, `api`, `ui`, `networking`).
+- Leave it out when the change spans many areas.
+
+Body (only for non-trivial changes; skip it for small, self-explanatory ones):
+
+- Separated from the subject by a blank line, wrapped at 72 characters.
+- Explain the motivation (why) and the high-level change (what); don't restate the diff line by line.
+
+Footers:
+
+- Breaking change: `!` after the type/scope and a footer `BREAKING CHANGE: <what changed and how to migrate>`.
+- Issue references only when they appear in the diff or branch context: `Closes #123` or `Refs #123`.
+- Revert: the body says `This reverts commit <hash>.`
 
 ### Simple
 
