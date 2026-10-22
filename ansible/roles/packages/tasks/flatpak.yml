@@ -40,10 +40,10 @@
   loop: "{{ flatpak_apps }}"
   loop_control:
     label: "{{ item.name }} ({{ item.flatpak }})"
-  register: flatpak_apps
+  register: flatpak_installed
   retries: "{{ install_retries | int - 1 }}"
   delay: "{{ install_delay }}"
-  until: flatpak_apps is succeeded
+  until: flatpak_installed is succeeded
   ignore_errors: true
   when: flatpak_remote is succeeded
 
@@ -60,7 +60,7 @@
   ansible.builtin.set_fact:
     install_failures: "{{ install_failures | default([]) + ['flatpak: ' ~ (item.item.name | default(item.item))] }}"
   loop: >-
-    {{ ((flatpak_apps.results | default([])) + (flatpak_removed.results | default([])))
+    {{ ((flatpak_installed.results | default([])) + (flatpak_removed.results | default([])))
        | selectattr('failed', 'defined') | selectattr('failed') | list }}
   loop_control:
     label: "{{ item.item.name | default(item.item) }}"
