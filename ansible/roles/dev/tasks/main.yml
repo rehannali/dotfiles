@@ -5,7 +5,7 @@
   ansible.builtin.set_fact:
     dev_env:
       PATH: >-
-        {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:{{
+        {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:{{
         ansible_facts.env.PATH }}
 
 - name: Dev | Ruby gems (macOS)
