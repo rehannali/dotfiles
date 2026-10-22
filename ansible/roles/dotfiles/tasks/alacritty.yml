@@ -6,12 +6,14 @@
     state: directory
     mode: "0755"
 
+# curl and tar, not unarchive: unarchive wants GNU tar on macOS, which only Homebrew provided
 - name: Dotfiles | alacritty themes ({{ dotfiles_alacritty_theme_commit[:7] }})
-  ansible.builtin.unarchive:
-    src: https://github.com/alacritty/alacritty-theme/archive/{{ dotfiles_alacritty_theme_commit }}.tar.gz
-    dest: "{{ ansible_facts.env.HOME }}/.config/alacritty/themes"
-    remote_src: true
-    extra_opts: [--strip-components=1]
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    curl -fsSL --retry 3 https://github.com/alacritty/alacritty-theme/archive/{{ dotfiles_alacritty_theme_commit }}.tar.gz
+    | tar -xzf - --strip-components=1 -C {{ (ansible_facts.env.HOME ~ '/.config/alacritty/themes') | quote }}
+  args:
+    executable: /bin/bash
     creates: "{{ ansible_facts.env.HOME }}/.config/alacritty/themes/themes"
   register: dotfiles_themes
   retries: "{{ install_retries | int - 1 }}"
