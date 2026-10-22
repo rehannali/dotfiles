@@ -105,11 +105,11 @@ for tap, t in taps.items():
             if c not in casks and f"{tap}/{c}" not in casks]
 print(f"  taps: {len(taps)}, bundles: {len(bundles)}, tools: {len(all_tools)}, apps: {len(all_apps)}")
 
-# the Intel Mac cask list that CI verifies (mycask-verify.yml) must match packages.yml
+# the cask lists that CI verifies (casks-verify.yml) must match packages.yml
 sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "tools", "mycask"))
 import manifests  # noqa: E402
 if manifests.main(check=True) != 0:
-    bad.append("tools/mycask/intel/ does not match packages.yml (run python3 tools/mycask/manifests.py)")
+    bad.append("tools/mycask/*/casks.txt do not match packages.yml (run python3 tools/mycask/manifests.py)")
 
 for b in bad:
     print("FAIL:", b)

@@ -1,5 +1,5 @@
 # Written by tools/mycask/manifests.py from ansible/inventory/group_vars/all/packages.yml: every Mac group,
-# as an Intel Mac. Edit packages.yml and run the script again, not this file.
+# as an Intel Mac (mycask). Edit packages.yml and run the script again, not this file.
 adobe-creative-cloud --appdir=~/Applications
 alfred --appdir=~/Applications
 android-file-transfer --appdir=~/Applications

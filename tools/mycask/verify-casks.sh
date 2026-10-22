@@ -1,11 +1,14 @@
 #!/bin/bash
-# Install every cask in a list with mycask, one at a time, check each from its receipt (verify.py), and uninstall it
-# again, so a runner with a small disk can go through about 90 apps. Used by .github/workflows/mycask-verify.yml.
+# Install every cask in a list, one at a time, check each (verify.py), and uninstall it again, so a runner with a
+# small disk can go through about 90 apps. Used by .github/workflows/casks-verify.yml.
 #
-#   verify-casks.sh tools/mycask/intel/casks.txt report.md
+#   verify-casks.sh tools/mycask/intel/casks.txt report.md                    with mycask (Intel Mac)
+#   CASK_TOOL=brew verify-casks.sh tools/mycask/arm64/casks.txt report.md     with Homebrew (Apple Silicon)
 #
 # A line is "token" or "token --appdir=DIR" (as in mycask bundle). Apps already on the runner are taken over (--adopt).
-# Each cask gets MYCASK_CASK_TIMEOUT seconds (default 1500). Exit status 1 when any cask failed; the report is Markdown.
+# Each cask gets MYCASK_CASK_TIMEOUT seconds (default 1500). A cask whose download is unavailable (no connection, timeout,
+# TLS error, or an HTTP status outside 2xx), also on a second try, is SKIPPED: the vendor's server, not the cask or the
+# installer. Exit status 1 when any cask failed; the report is Markdown.
 set -u
 
 list="${1:?usage: verify-casks.sh casks.txt report.md}"
@@ -14,7 +17,18 @@ here="$(cd "$(dirname "$0")" && pwd)"
 mycask_py="${MYCASK_PY:-$here/mycask.py}"
 verify_py="${VERIFY_PY:-$here/verify.py}"
 limit="${MYCASK_CASK_TIMEOUT:-1500}"
+tool="${CASK_TOOL:-mycask}"
+case "$tool" in
+  mycask) install=(/usr/bin/python3 -I "$mycask_py" install) uninstall=(/usr/bin/python3 -I "$mycask_py" uninstall) check=() ;;
+  brew) install=(brew install --cask) uninstall=(brew uninstall --cask) check=(--brew) ;;
+  *) echo "CASK_TOOL is mycask or brew, not $tool" >&2; exit 2 ;;
+esac
 work="$(mktemp -d)"
+# mycask: "command failed (N): curl ..."; Homebrew: "Download failed ..." / "curl: (N)". curl's N: 6 resolve, 7 connect,
+# 18 partial, 22 HTTP status >= 400, 28 timeout, 35 TLS, 52 empty reply, 56 receive error
+download_failed() {
+  grep -qE 'command failed \((6|7|18|22|28|35|52|56)\): curl|curl: \((6|7|18|22|28|35|52|56)\)|Download failed' "$1"
+}
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$HOME/Applications"
@@ -22,6 +36,7 @@ mkdir -p "$HOME/Applications"
 : > "$work/errors"
 total=0
 bad=0
+skipped=0
 
 while IFS= read -r line; do
   line="${line%%#*}"
@@ -35,28 +50,36 @@ while IFS= read -r line; do
   total=$((total + 1))
 
   echo "::group::$token"
-  echo "$token" > "$work/one.txt"
+  printf '%s\n' "$token ${opts[*]+${opts[*]}}" > "$work/one.txt"
   log="$work/$token.log"
   # perl: macOS has no timeout(1); alarm kills the install when it hangs (an installer waiting for input)
-  for _ in 1 2; do
-    perl -e 'alarm shift; exec @ARGV' "$limit" /usr/bin/python3 -I "$mycask_py" install --adopt ${opts[@]+"${opts[@]}"} "$token" > "$log" 2>&1
+  for attempt in 1 2; do
+    perl -e 'alarm shift; exec @ARGV' "$limit" "${install[@]}" --adopt ${opts[@]+"${opts[@]}"} "$token" > "$log" 2>&1
     rc=$?
     # one more try after a failed download (a slow or reset connection), never after anything else
-    if [ "$rc" -eq 0 ] || ! grep -q 'curl .*' "$log" || ! grep -q 'command failed (' "$log"; then break; fi
+    if [ "$rc" -eq 0 ] || ! download_failed "$log" || [ "$attempt" -eq 2 ]; then break; fi
     echo "download failed, trying $token once more"
   done
+  tail -n 5 "$log"
+  if [ "$rc" -ne 0 ] && download_failed "$log"; then
+    why="$(grep -m1 -E '^Error:|Download failed|curl: \(' "$log" | cut -c1-200 || true)"
+    echo "| $token | cask | SKIP | download unavailable (vendor server): ${why//|/\\|} |" >> "$work/rows"
+    echo "::warning::$token: download unavailable, skipped"
+    skipped=$((skipped + 1))
+    echo "::endgroup::"
+    continue
+  fi
   if [ "$rc" -ne 0 ]; then
     why="$(grep -m1 '^Error:' "$log" || true)"
     echo "| $token | install | ${why:-exit status $rc} |" >> "$work/errors"
   fi
-  tail -n 5 "$log"
 
-  /usr/bin/python3 -I "$verify_py" --casks "$work/one.txt" > "$work/check.txt" 2>&1 || bad=$((bad + 1))
+  /usr/bin/python3 -I "$verify_py" ${check[@]+"${check[@]}"} --casks "$work/one.txt" > "$work/check.txt" 2>&1 || bad=$((bad + 1))
   grep -E "^\| $token \|" "$work/check.txt" >> "$work/rows" || echo "| $token | cask | FAIL | verify.py gave no result |" >> "$work/rows"
   grep -E "^\| $token \|" "$work/check.txt" || cat "$work/check.txt"
 
   # leave the disk free for the next one; not --zap, nothing of the user's is involved on a runner
-  /usr/bin/python3 -I "$mycask_py" uninstall "$token" > /dev/null 2>&1 || true
+  "${uninstall[@]}" "$token" > /dev/null 2>&1 || true
   echo "::endgroup::"
 done < "$list"
 
@@ -64,9 +87,10 @@ done < "$list"
   echo "| | kind | status | detail |"
   echo "|---|---|---|---|"
   grep -F '| FAIL |' "$work/rows" || true
-  grep -vF '| FAIL |' "$work/rows" || true
+  grep -F '| SKIP |' "$work/rows" || true
+  grep -vF -e '| FAIL |' -e '| SKIP |' "$work/rows" || true
   echo
-  echo "$((total - bad)) of $total casks verified, $bad failed"
+  echo "$((total - bad - skipped)) of $total casks verified, $bad failed, $skipped skipped (download unavailable)"
   if [ -s "$work/errors" ]; then
     echo
     echo "Install errors:"
