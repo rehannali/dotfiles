@@ -1,0 +1,32 @@
+---
+# A Linux server with disks, Docker and network services (a homelab box). Nothing happens unless the machine has
+# `server:` in its host_vars or group_vars; host_vars/piserver.yml is the example. Every key is optional:
+#
+# server:
+#   mounts:                 # disks, kept in /etc/fstab and mounted; `nofail` so a missing disk never stops the boot
+#     - path: /mnt/kingston2tb
+#       src: UUID=...       # `lsblk -f` on the server; empty = not set up yet (reported, nothing mounted)
+#       fstype: ext4
+#       opts: defaults,nofail,x-systemd.device-timeout=30s
+#   docker:                 # Docker Engine from Docker's apt repository
+#     data_root: /mnt/kingston2tb/docker              # Docker's own data
+#     containerd_root: /mnt/kingston2tb/containerd    # images and containers (the image store since Docker 29)
+#     services_dir: /mnt/kingston2tb/docker-services  # one folder per service (compose files); owned by you
+#     log_max_size: 10m     # json-file logs, per container: files of this size ...
+#     log_max_file: 3       # ... and this many of them
+#   cloudflared: true       # Cloudflare Tunnel's client, from Cloudflare's apt repository
+#   netbird: true           # NetBird's client and daemon, from NetBird's apt repository
+#   speedtest: true         # Ookla's speedtest, their own build for this CPU
+server_defaults:
+  mounts: []
+  docker: {}
+  cloudflared: false
+  netbird: false
+  speedtest: false
+server_docker_defaults:
+  data_root: /var/lib/docker
+  containerd_root: /var/lib/containerd
+  services_dir: ""
+  log_max_size: 10m
+  log_max_file: 3
+server_speedtest_version: "1.2.0"

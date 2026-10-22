@@ -317,6 +317,42 @@ there and handed to `xcodes` on the Mac.
 Tools or Homebrew, so a fresh Mac would report "Homebrew not installed". After that first run, turn on Remote Login
 (System Settings, General, Sharing) and you can push to it like a server.
 
+### A server with disks and Docker (piserver)
+
+A machine with `server:` in its host_vars also gets its disks in `/etc/fstab`, Docker Engine with its data on a disk,
+and cloudflared, NetBird and Ookla's speedtest (roles/server; every key in
+[configuration.md](configuration.md#a-server-disks-and-docker)). `host_vars/piserver.yml` is the Raspberry Pi 4. From a
+freshly flashed Ubuntu Server:
+
+1. **Flash** with Raspberry Pi Imager: user `you`, hostname `piserver`, SSH on with your public key.
+2. **DNS:** `piserver.example.lan` points at its address (a DHCP reservation keeps it fixed).
+3. **The disk:** `ssh you@piserver.example.lan lsblk -f` shows the 2 TB disk's `FSTYPE` and `UUID`; put
+   them in `host_vars/piserver.yml` (`src: UUID=...`, `fstype:`). Without a UUID the disk is not mounted, the Docker
+   config is not written, and the report says so.
+4. **Run it** from the laptop: `ansible-playbook site.yml -l piserver -K`.
+
+What it sets up:
+
+| | |
+|---|---|
+| `/mnt/kingston2tb` | in `/etc/fstab` by UUID, with `nofail`: a missing disk never stops the boot |
+| Docker data | `data-root` `/mnt/kingston2tb/docker`, and containerd's root `/mnt/kingston2tb/containerd`, where images and containers live since Docker 29 (data-root alone would leave them on the SD card) |
+| services | `/mnt/kingston2tb/docker-services`, one folder per service, owned by you |
+| logs | json-file, at most 3 files of 10 MB per container |
+| boot | Docker and containerd start only once the disk is mounted |
+| you | in the `docker` group (from the next login) |
+
+If the disk is missing during a run, the Docker config is left as it is and the run says so: a server is never
+switched to empty folders on the SD card. A second run changes nothing.
+
+Once, by hand (these need a secret you get from Cloudflare / NetBird):
+
+```sh
+sudo cloudflared service install <tunnel token>        # Cloudflare dashboard, Zero Trust, Networks, Tunnels
+sudo netbird up --setup-key <setup key>               # NetBird dashboard, Setup Keys
+speedtest --accept-license --accept-gdpr               # Ookla asks once
+```
+
 ### Afterwards: `dot`
 
 | Command | Does |
