@@ -661,10 +661,50 @@ def extract(f, kind, dest, name):
         shutil.copy2(f, Path(dest) / name)
 
 
+def is_git(meta):
+    """A cask whose URL is a git repository (url "...git", branch:/only_path:, e.g. font-source-code-pro)."""
+    using = str((meta.get("url_specs") or {}).get("using") or "").lstrip(":")
+    return str(meta.get("url") or "").endswith(".git") or using == "git"
+
+
+def stage_git(meta, staged):
+    """Homebrew's git strategy: a shallow clone (only `only_path` of it, when the cask names one) whose files become
+    the staged files."""
+    if not shutil.which("git"):
+        raise CaskError(f"{meta['token']} comes from a git repository and needs git (Command Line Tools)")
+    specs = meta.get("url_specs") or {}
+    only = str(specs.get("only_path") or "").strip("/")
+    ensure_dir(CACHE)
+    tmp = Path(tempfile.mkdtemp(prefix="git-", dir=CACHE))
+    repo = tmp / "repo"
+    try:
+        log(f"Cloning {meta['url']}" + (f" ({only})" if only else ""))
+        cmd = ["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none"] + (["--sparse"] if only else [])
+        ref = specs.get("branch") or specs.get("tag")
+        if ref:
+            cmd += ["--branch", str(ref)]
+        run(cmd + [meta["url"], repo])
+        if specs.get("revision"):
+            run(["git", "-C", repo, "fetch", "--quiet", "--depth", "1", "origin", str(specs["revision"])])
+            run(["git", "-C", repo, "checkout", "--quiet", "FETCH_HEAD"])
+        if only:
+            run(["git", "-C", repo, "sparse-checkout", "set", only])
+        src = repo / only if only else repo
+        if not src.is_dir():
+            raise CaskError(f"{only or meta['url']} not found in the repository")
+        shutil.copytree(src, staged, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def stage(meta, staged):
     if exists(staged):
         remove(staged)
     staged.mkdir(parents=True)
+    if is_git(meta):
+        stage_git(meta, staged)
+        (staged / ".mycask-container").write_text("git")
+        return staged
     f, name = download(meta)
     container = meta.get("container") or {}
     ctype = str(container.get("type") or "").lstrip(":")
