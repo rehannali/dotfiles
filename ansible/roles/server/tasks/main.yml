@@ -1,0 +1,49 @@
+---
+# A Linux server (Debian / Ubuntu): disks in /etc/fstab, Docker Engine on them, cloudflared, NetBird, speedtest.
+# Only for machines with `server:` in their host_vars / group_vars (defaults/main.yml has every key).
+- name: Server | this machine's settings
+  ansible.builtin.set_fact:
+    server_cfg: "{{ server_defaults | combine(server | default({}), recursive=true) }}"
+
+- name: Server | Docker settings
+  ansible.builtin.set_fact:
+    server_docker: "{{ server_docker_defaults | combine(server_cfg.docker) }}"
+    server_docker_on: "{{ server_cfg.docker | length > 0 }}"
+
+- name: Server | disks
+  ansible.builtin.include_tasks: mounts.yml
+  when: server_cfg.mounts | length > 0
+
+- name: Server | Docker
+  ansible.builtin.include_tasks: docker.yml
+  when: server_docker_on | bool
+
+- name: Server | cloudflared (Cloudflare's apt repository)
+  ansible.builtin.include_tasks: apt_repo.yml
+  vars:
+    repo:
+      name: cloudflared
+      key_url: https://pkg.cloudflare.com/cloudflare-main.gpg
+      key_file: cloudflare-main.gpg
+      uris: https://pkg.cloudflare.com/cloudflared
+      suites: any
+      components: main
+      packages: [cloudflared]
+  when: server_cfg.cloudflared | bool
+
+- name: Server | NetBird (NetBird's apt repository)
+  ansible.builtin.include_tasks: apt_repo.yml
+  vars:
+    repo:
+      name: netbird
+      key_url: https://pkgs.netbird.io/debian/public.key
+      key_file: netbird.asc
+      uris: https://pkgs.netbird.io/debian
+      suites: stable
+      components: main
+      packages: [netbird]
+  when: server_cfg.netbird | bool
+
+- name: Server | speedtest (Ookla)
+  ansible.builtin.include_tasks: speedtest.yml
+  when: server_cfg.speedtest | bool

@@ -55,6 +55,38 @@ All in `main.yml`, `true` unless noted:
 | `install_retries`, `install_delay` | `3` tries, `10` seconds apart, for every install and download |
 | `dotfiles_dir` | where the repo lives on the machine, `~/.dotfiles` |
 
+## A server: disks and Docker
+
+A Linux machine with `server:` in its host_vars or group_vars gets roles/server (`host_vars/piserver.yml` is the
+example; `--tags server` runs only this part). Every key is optional:
+
+```yaml
+server:
+  mounts:
+    - path: /mnt/kingston2tb
+      src: UUID=...          # `lsblk -f` on the server; empty = not mounted yet (reported)
+      fstype: ext4
+      opts: defaults,nofail,x-systemd.device-timeout=30s
+  docker:
+    data_root: /mnt/kingston2tb/docker
+    containerd_root: /mnt/kingston2tb/containerd
+    services_dir: /mnt/kingston2tb/docker-services
+    log_max_size: 10m
+    log_max_file: 3
+  cloudflared: true
+  netbird: true
+  speedtest: true
+```
+
+| Key | Does |
+|---|---|
+| `mounts` | an `/etc/fstab` line each (`ansible.posix.mount`), mounted now |
+| `docker` | Docker Engine (docker-ce, containerd.io, buildx, compose) from Docker's apt repository. `/etc/docker/daemon.json` gets `data-root` and the json-file log limits; `/etc/containerd/config.toml` gets containerd's `root` (the image store since Docker 29); systemd waits for the disk (`RequiresMountsFor`). With the disk not mounted, none of this is written and it is reported |
+| `cloudflared`, `netbird` | from Cloudflare's and NetBird's apt repositories (signing key in `/etc/apt/keyrings`, a deb822 `.sources` file); the tunnel token and the setup key are entered once by hand (setup-guide) |
+| `speedtest` | Ookla's build for this CPU in `/usr/local/bin` (`server_speedtest_version` in roles/server/defaults upgrades it) |
+
+With `upgrade_on_apply`, the apt packages are kept at their newest version.
+
 ## Packages per kind of machine: bundles
 
 `packages.yml` holds everything, grouped in **bundles**. A kind of machine says which bundles it gets in its group

@@ -127,6 +127,18 @@
           ansible.builtin.set_fact:
             install_failures: "{{ install_failures + ['dev: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
 
+    - name: Server (disks, Docker, cloudflared, NetBird, speedtest)
+      tags: [server]
+      when: server is defined and dotfiles_os == 'linux'
+      block:
+        - name: Server
+          ansible.builtin.import_role:
+            name: server
+      rescue:
+        - name: Server did not finish
+          ansible.builtin.set_fact:
+            install_failures: "{{ install_failures + ['server: ' ~ (ansible_failed_result.msg | default('failed'))] }}"
+
     - name: MacOS (defaults, Touch ID)
       tags: [macos]
       when: dotfiles_os == 'darwin'
