@@ -1,8 +1,11 @@
 #!/bin/sh
 # port-install.sh PORT BUILD UPGRADE
-# Installs a MacPorts port from binary archives only, or, with UPGRADE=true, upgrades it when it is installed and
-# outdated. BUILD=true (port_build in packages.yml): the port itself may be compiled, but only after every dependency
-# came from a binary archive, so a missing archive further down never starts a long chain of builds.
+# Installs a MacPorts port, or, with UPGRADE=true, upgrades it when it is installed and outdated.
+#   BUILD=false  binary archives only
+#   BUILD=true   (port_build in packages.yml) the port itself may be compiled, but only after every dependency came
+#                from a binary archive, so a missing archive further down never starts a long chain of builds
+#   BUILD=any    MacPorts builds whatever has no archive for this macOS (the second try, for a port with no mise
+#                replacement)
 # Prints "is already installed" or "is up to date" when there was nothing to do.
 set -eu
 port=/opt/local/bin/port
@@ -16,6 +19,9 @@ else
   action=install
 fi
 
+if [ "$build" = any ]; then
+  exec $port -N "$action" "$name"
+fi
 if [ "$build" = true ]; then
   deps=$($port -q echo rdepof:"$name" | awk '{print $1}')
   # shellcheck disable=SC2086  # one word per port

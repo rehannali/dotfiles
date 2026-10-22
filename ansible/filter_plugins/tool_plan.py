@@ -13,7 +13,7 @@ without a package list yet, e.g. Fedora): system tools are left out and reported
 With `system: port` (an Intel Mac, which has no Homebrew) a tool without a port takes its mise_fallback, else its
 `download` (a .tgz put in ~/.local/bin), else it is reported in `unplanned`. `port_build` lets MacPorts compile the
 port itself (its dependencies still come as binary archives); such ports are also listed in `port_build`,
-`port_fallback` maps a port to its mise_fallback, `port_select` holds the [group, choice] pairs to `port select`, and
+`port_fallback` maps a port to what replaces it when it does not install (its mise_fallback, else its mise id), `port_select` holds the [group, choice] pairs to `port select`, and
 `port_links` the commands to link into ~/.local/bin. `mise_intel` picks another mise id on Intel Macs.
 Exactly one manager per tool, so nothing is ever installed twice.
 """
@@ -70,8 +70,10 @@ def tool_plan(tools, platform, managers, gui_apps=True):
             if via == "port":
                 if t.get("port_build") is True:
                     plan["port_build"].append(ident)
-                if t.get("mise_fallback"):
-                    plan["port_fallback"][ident] = str(t["mise_fallback"])
+                # when the port does not install (no archive for this macOS): its mise_fallback, else its mise id
+                fallback = t.get("mise_fallback") or mise_id()
+                if fallback:
+                    plan["port_fallback"][ident] = str(fallback)
                 if t.get("port_select"):
                     plan["port_select"].append(list(t["port_select"]))
                 plan["port_links"].update(t.get("port_links") or {})
