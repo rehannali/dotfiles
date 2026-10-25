@@ -1,0 +1,28 @@
+---
+# A swap file (a Raspberry Pi has little memory), in /etc/fstab
+- name: Swap | /swapfile ({{ server_cfg.swap_size }})
+  ansible.builtin.shell: |
+    set -eu
+    fallocate -l {{ server_cfg.swap_size | quote }} /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+  args:
+    creates: /swapfile
+  become: true
+
+- name: Swap | in /etc/fstab and on
+  ansible.posix.mount:
+    path: none
+    src: /swapfile
+    fstype: swap
+    opts: sw
+    state: present
+  become: true
+
+- name: Swap | on now
+  ansible.builtin.shell: set -o pipefail; swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
+  args:
+    executable: /bin/bash
+  become: true
+  register: swap_on
+  changed_when: false

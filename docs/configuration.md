@@ -58,34 +58,25 @@ All in `main.yml`, `true` unless noted:
 ## A server: disks and Docker
 
 A Linux machine with `server:` in its host_vars or group_vars gets roles/server (`host_vars/piserver.yml` is the
-example; `--tags server` runs only this part). Every key is optional:
-
-```yaml
-server:
-  mounts:
-    - path: /mnt/kingston2tb
-      src: UUID=...          # `lsblk -f` on the server; empty = not mounted yet (reported)
-      fstype: ext4
-      opts: defaults,nofail,x-systemd.device-timeout=30s
-  docker:
-    data_root: /mnt/kingston2tb/docker
-    containerd_root: /mnt/kingston2tb/containerd
-    services_dir: /mnt/kingston2tb/docker-services
-    log_max_size: 10m
-    log_max_file: 3
-  cloudflared: true
-  netbird: true
-  speedtest: true
-```
+example; `--tags server` runs only this part). Every key is optional; `roles/server/defaults/main.yml` explains each.
 
 | Key | Does |
 |---|---|
-| `mounts` | an `/etc/fstab` line each (`ansible.posix.mount`), mounted now |
-| `docker` | Docker Engine (docker-ce, containerd.io, buildx, compose) from Docker's apt repository. `/etc/docker/daemon.json` gets `data-root` and the json-file log limits; `/etc/containerd/config.toml` gets containerd's `root` (the image store since Docker 29); systemd waits for the disk (`RequiresMountsFor`). With the disk not mounted, none of this is written and it is reported |
-| `cloudflared`, `netbird` | from Cloudflare's and NetBird's apt repositories (signing key in `/etc/apt/keyrings`, a deb822 `.sources` file); the tunnel token and the setup key are entered once by hand (setup-guide) |
-| `speedtest` | Ookla's build for this CPU in `/usr/local/bin` (`server_speedtest_version` in roles/server/defaults upgrades it) |
+| `mounts` | an `/etc/fstab` line each (`ansible.posix.mount`), mounted now. `src: UUID=...` from `lsblk -f` |
+| `swap_size` | a `/swapfile` of that size, in fstab |
+| `ssh` | `port`, `password_authentication`: `/etc/ssh/sshd_config.d/10-dotfiles.conf`, checked with `sshd -t`, applied at the end of the run (so the run keeps its connection); then the inventory needs `ansible_port` |
+| `authorized_keys` | public keys allowed to log in as you |
+| `docker` | Docker Engine (docker-ce, containerd.io, buildx, compose) from Docker's apt repository. `data_root`, `containerd_root` (the image store since Docker 29), `services_dir`, `log_opts` (daemon.json `log-opts`). systemd waits for the disk (`RequiresMountsFor`); with the disk not mounted the config is not written and it is reported; each run checks that Docker answers from the disk |
+| `cloudflared`, `netbird` | from Cloudflare's and NetBird's apt repositories; the tunnel and the network with their secret |
+| `speedtest` | Ookla's build for this CPU in `/usr/local/bin` |
+| `nextdns` | NextDNS's CLI and `/etc/nextdns.conf`: `listen`, `forwarders`, and any other nextdns.conf key; the profile id is a secret |
+| `samba` | Samba with `shares` (`name`, `path`, `comment`, `read_only`), each a managed block in smb.conf, checked with `testparm` |
+| `glances` | Glances' web dashboard (pipx), a service on port 61208 |
 
-With `upgrade_on_apply`, the apt packages are kept at their newest version.
+Personal values and secrets come from `private.<host>` (the Bitwarden item `dotfiles private`,
+[bitwarden.md](bitwarden.md#private-values)); for one run an environment variable on the machine running the playbook
+wins (`SERVER_CLOUDFLARED_TOKEN`, `SERVER_NETBIRD_SETUP_KEY`, `SERVER_NEXTDNS_PROFILE`, `SERVER_SAMBA_PASSWORD`). Ansible
+never prints them. With `upgrade_on_apply`, the apt packages and Glances are kept at their newest version.
 
 ## Packages per kind of machine: bundles
 

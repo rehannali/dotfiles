@@ -85,9 +85,7 @@
     docker_daemon:
       data-root: "{{ docker_data_root }}"
       log-driver: json-file
-      log-opts:
-        max-size: "{{ server_docker.log_max_size }}"
-        max-file: "{{ server_docker.log_max_file | string }}"
+      log-opts: "{{ server_docker.log_opts }}"
   become: true
   when: docker_disk_ok | bool
   notify: Restart docker

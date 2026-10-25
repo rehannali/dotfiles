@@ -123,8 +123,8 @@ all:
     servers:
       hosts:
         piserver:                        # also reachable over SSH from your laptop
-          ansible_host: piserver.example.lan   # DNS name or IP
-          ansible_user: you          # the user you log in as
+          ansible_host: server.example.lan   # DNS name or IP (or "{{ private.piserver.host }}", see below)
+          ansible_user: you              # the user you log in as
         hetzner:
           ansible_host: 203.0.113.10
           ansible_user: you
@@ -261,7 +261,7 @@ drives it.
     servers:
       hosts:
         piserver:
-          ansible_host: piserver.example.lan   # a name your DNS resolves, or an IP
+          ansible_host: server.example.lan   # a name your DNS resolves, or an IP
           ansible_user: you
 ```
 
@@ -275,8 +275,8 @@ dotfiles part stops and the report says so; the rest still runs.
 
 **3. Logging in: an SSH key (best) or a password.**
 
-- **Key:** copy it once, with the password: `ssh-copy-id you@piserver.example.lan`. From then on
-  `ssh you@piserver.example.lan` asks nothing. Your `~/.ssh/config` and SSH agent are used, Bitwarden's SSH
+- **Key:** copy it once, with the password: `ssh-copy-id you@server.example.lan`. From then on
+  `ssh you@server.example.lan` asks nothing. Your `~/.ssh/config` and SSH agent are used, Bitwarden's SSH
   agent included ([bitwarden.md](bitwarden.md#ssh-agent)).
 - **Password:** add `-k` (`--ask-pass`) and Ansible asks for the SSH password once. It needs `sshpass` on your laptop
   (Debian: `sudo apt install sshpass`; macOS: MacPorts `sudo port install sshpass`). Fine for the first run; then
@@ -319,39 +319,64 @@ Tools or Homebrew, so a fresh Mac would report "Homebrew not installed". After t
 
 ### A server with disks and Docker (piserver)
 
-A machine with `server:` in its host_vars also gets its disks in `/etc/fstab`, Docker Engine with its data on a disk,
-and cloudflared, NetBird and Ookla's speedtest (roles/server; every key in
-[configuration.md](configuration.md#a-server-disks-and-docker)). `host_vars/piserver.yml` is the Raspberry Pi 4. From a
-freshly flashed Ubuntu Server:
+A machine with `server:` in its host_vars gets roles/server (every key in
+[configuration.md](configuration.md#a-server-disks-and-docker)). `host_vars/piserver.yml` is the Raspberry Pi 4, with
+the settings of its old install (taken from a backup in October 2026): the 2 TB disk, SSH on its own port, your public
+keys, Docker's data and log options, NextDNS as the network's resolver, a Samba share, Glances, cloudflared, NetBird
+and speedtest.
 
-1. **Flash** with Raspberry Pi Imager: user `you`, hostname `piserver`, SSH on with your public key.
-2. **DNS:** `piserver.example.lan` points at its address (a DHCP reservation keeps it fixed).
-3. **The disk:** `ssh you@piserver.example.lan lsblk -f` shows the 2 TB disk's `FSTYPE` and `UUID`; put
-   them in `host_vars/piserver.yml` (`src: UUID=...`, `fstype:`). Without a UUID the disk is not mounted, the Docker
-   config is not written, and the report says so.
-4. **Run it** from the laptop: `ansible-playbook site.yml -l piserver -K`.
+**Public template, private values.** This repo is public, so `host_vars/piserver.yml` and `hosts.yml` hold only the
+layout. Its address, user, SSH port, disk UUID, LAN address, public keys, DNS forwarders and the secrets are
+`{{ private.piserver.* }}`, read at run time from the Bitwarden item `dotfiles private`
+([bitwarden.md](bitwarden.md#private-values); the layout is in `ansible/private.example.yml`).
+
+**Fresh OS or a repaired one: the same run.** It only adds what is missing and puts each config back to what host_vars
+says.
+
+1. **Flash** (if you do) with Raspberry Pi Imager: your user, hostname `piserver`, SSH with your public key. The 2 TB
+   disk keeps its UUID, so it is found again without changes.
+2. **DNS:** the server's name (`private.piserver.host`) points at its address (a DHCP reservation keeps it).
+3. **Unlock Bitwarden** on the laptop, so the run can read `dotfiles private`:
+   `export BW_SESSION=$(bw unlock --raw)` (or run through `dot` with `bitwarden: true`).
+4. **Run it** from the laptop. A freshly flashed OS still has SSH on port 22; the first run moves it to the private port:
+
+   ```sh
+   ansible-playbook site.yml -l piserver -K -e ansible_port=22   # first run on a fresh OS
+   ansible-playbook site.yml -l piserver -K                      # every run after that
+   ```
+
+**Secrets** are keys of `private.piserver` too; for one run, an environment variable on the laptop wins. A missing one
+only skips its step, and the report says what to do:
+
+| Key in `dotfiles private` | Variable | What | Without it |
+|---|---|---|---|
+| `cloudflared_token` | `SERVER_CLOUDFLARED_TOKEN` | the tunnel token (Cloudflare, Zero Trust, Networks, Tunnels) | `sudo cloudflared service install <token>` |
+| `netbird_setup_key` | `SERVER_NETBIRD_SETUP_KEY` | a setup key (NetBird, Setup Keys) | `sudo netbird up --setup-key <key>` |
+| `nextdns_profile` | `SERVER_NEXTDNS_PROFILE` | your NextDNS profile id (my.nextdns.io, the id in the URL) | NextDNS is installed, not set up |
+| `samba_password` | `SERVER_SAMBA_PASSWORD` | your Samba password, set once | `sudo smbpasswd -a <you>` |
 
 What it sets up:
 
 | | |
 |---|---|
 | `/mnt/kingston2tb` | in `/etc/fstab` by UUID, with `nofail`: a missing disk never stops the boot |
+| swap | a 2 GB `/swapfile` |
+| SSH | the private port, your public keys; `password_authentication: true` as before (set it to false once your key works) |
 | Docker data | `data-root` `/mnt/kingston2tb/docker`, and containerd's root `/mnt/kingston2tb/containerd`, where images and containers live since Docker 29 (data-root alone would leave them on the SD card) |
-| services | `/mnt/kingston2tb/docker-services`, one folder per service, owned by you |
-| logs | json-file, at most 3 files of 10 MB per container |
-| boot | Docker and containerd start only once the disk is mounted |
-| you | in the `docker` group (from the next login) |
+| Docker logs | json-file, as before: 10 files of 20 MB per container, compressed, non-blocking |
+| services | `/mnt/kingston2tb/docker-services`, one folder per service, owned by you; you are in the `docker` group |
+| NextDNS | listens on `localhost:53` and the server's LAN address, forwards your own zones (`nextdns_forwarders`) to your DNS servers |
+| Samba | the PiNAS share (`/mnt/kingston2tb`), for you |
+| Glances | the web dashboard on port 61208 |
+| cloudflared, NetBird, speedtest | installed; the tunnel and the network joined when their secret is given |
 
 If the disk is missing during a run, the Docker config is left as it is and the run says so: a server is never
-switched to empty folders on the SD card. A second run changes nothing.
+switched to empty folders on the SD card. A second run changes nothing. Ookla asks once to accept its licence:
+`speedtest --accept-license --accept-gdpr`.
 
-Once, by hand (these need a secret you get from Cloudflare / NetBird):
-
-```sh
-sudo cloudflared service install <tunnel token>        # Cloudflare dashboard, Zero Trust, Networks, Tunnels
-sudo netbird up --setup-key <setup key>               # NetBird dashboard, Setup Keys
-speedtest --accept-license --accept-gdpr               # Ookla asks once
-```
+**Not covered yet:** the old install had a `docker-update-hosts` service (it wrote the containers' names into
+`/etc/hosts`, which NextDNS answers from with `use-hosts`); its script was in `/usr/local/bin`, which the backup does
+not include.
 
 ### Afterwards: `dot`
 

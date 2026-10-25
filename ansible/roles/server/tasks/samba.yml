@@ -1,0 +1,54 @@
+---
+# Samba with the shares in server.samba.shares, each a managed block in /etc/samba/smb.conf (the rest of the file is
+# Ubuntu's). Users need a Samba password: SERVER_SAMBA_PASSWORD sets yours, else `sudo smbpasswd -a <you>` once.
+- name: Samba | installed
+  ansible.builtin.apt:
+    name: samba
+    state: "{{ 'latest' if (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) else 'present' }}"
+    update_cache: true
+  become: true
+
+- name: Samba | shares
+  ansible.builtin.blockinfile:
+    path: /etc/samba/smb.conf
+    marker: "# {mark} dotfiles share {{ item.name }}"
+    block: |
+      [{{ item.name }}]
+        comment = {{ item.comment | default(item.name) }}
+        path = {{ item.path }}
+        browsable = yes
+        read only = {{ 'yes' if item.read_only | default(false) else 'no' }}
+        guest ok = no
+        valid users = {{ ansible_facts.user_id }}
+        create mask = 0755
+        directory mask = 0755
+    validate: testparm -s %s
+  loop: "{{ server_cfg.samba.shares | default([]) }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.path }})"
+  become: true
+  notify: Restart samba
+
+- name: Samba | your password (SERVER_SAMBA_PASSWORD)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # only when this user has no Samba password yet; change it with: sudo smbpasswd <you>
+    if pdbedit -u {{ ansible_facts.user_id | quote }} > /dev/null 2>&1; then exit 0; fi
+    printf '%s\n%s\n' "$PW" "$PW" | smbpasswd -s -a {{ ansible_facts.user_id | quote }}
+    echo added
+  args:
+    executable: /bin/bash
+  environment:
+    PW: "{{ server_secrets.samba_password }}"
+  become: true
+  no_log: true
+  register: samba_pw
+  changed_when: "'added' in samba_pw.stdout"
+  when: server_secrets.samba_password | length > 0 and not ansible_check_mode
+
+- name: Samba | no password given
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: Samba has no password for ' ~ ansible_facts.user_id
+         ~ ' unless one was set before: sudo smbpasswd -a ' ~ ansible_facts.user_id ~ ' (or SERVER_SAMBA_PASSWORD)'] }}
+  when: not server_secrets.samba_password

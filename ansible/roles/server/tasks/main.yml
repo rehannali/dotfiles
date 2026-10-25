@@ -10,9 +10,16 @@
     server_docker: "{{ server_docker_defaults | combine(server_cfg.docker) }}"
     server_docker_on: "{{ server_cfg.docker | length > 0 }}"
 
+- name: Server | secrets for this run (environment or Bitwarden)
+  ansible.builtin.include_tasks: secrets.yml
+
 - name: Server | disks
   ansible.builtin.include_tasks: mounts.yml
   when: server_cfg.mounts | length > 0
+
+- name: Server | swap
+  ansible.builtin.include_tasks: swap.yml
+  when: server_cfg.swap_size | length > 0
 
 - name: Server | Docker
   ansible.builtin.include_tasks: docker.yml
@@ -31,6 +38,22 @@
       packages: [cloudflared]
   when: server_cfg.cloudflared | bool
 
+# the tunnel: `cloudflared service install <token>` writes and starts cloudflared.service, once
+- name: Server | cloudflared tunnel
+  ansible.builtin.command:
+    argv: [cloudflared, service, install, "{{ server_secrets.cloudflared_token }}"]
+    creates: /etc/systemd/system/cloudflared.service
+  become: true
+  no_log: true
+  when: server_cfg.cloudflared | bool and server_secrets.cloudflared_token | length > 0 and not ansible_check_mode
+
+- name: Server | cloudflared without a tunnel token
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: cloudflared runs no tunnel yet: cloudflared_token in the private values (or '
+         ~ 'SERVER_CLOUDFLARED_TOKEN), or by hand: sudo cloudflared service install <token>'] }}
+  when: server_cfg.cloudflared | bool and not server_secrets.cloudflared_token
+
 - name: Server | NetBird (NetBird's apt repository)
   ansible.builtin.include_tasks: apt_repo.yml
   vars:
@@ -44,6 +67,49 @@
       packages: [netbird]
   when: server_cfg.netbird | bool
 
+# the daemon as a service, then joining the network with the setup key (only while it is not connected)
+- name: Server | NetBird service and network
+  ansible.builtin.shell: |
+    set -uo pipefail
+    [ -e /etc/systemd/system/netbird.service ] || netbird service install
+    systemctl is-active -q netbird || netbird service start
+    if [ -n "$SETUP_KEY" ] && ! netbird status 2> /dev/null | grep -q '^Management: Connected'; then
+      netbird up --setup-key "$SETUP_KEY" && echo joined
+    fi
+  environment:
+    SETUP_KEY: "{{ server_secrets.netbird_setup_key }}"
+  args:
+    executable: /bin/bash
+  become: true
+  no_log: true
+  register: netbird_up
+  changed_when: "'joined' in netbird_up.stdout"
+  when: server_cfg.netbird | bool and not ansible_check_mode
+
+- name: Server | NetBird without a setup key
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: NetBird has not joined (unless it was before): netbird_setup_key in the private '
+         ~ 'values (or SERVER_NETBIRD_SETUP_KEY), or by hand: sudo netbird up --setup-key <key>'] }}
+  when: server_cfg.netbird | bool and not server_secrets.netbird_setup_key
+
 - name: Server | speedtest (Ookla)
   ansible.builtin.include_tasks: speedtest.yml
   when: server_cfg.speedtest | bool
+
+- name: Server | NextDNS (this machine as a DNS resolver)
+  ansible.builtin.include_tasks: nextdns.yml
+  when: server_cfg.nextdns | length > 0
+
+- name: Server | Samba
+  ansible.builtin.include_tasks: samba.yml
+  when: server_cfg.samba | length > 0
+
+- name: Server | Glances
+  ansible.builtin.include_tasks: glances.yml
+  when: server_cfg.glances | bool
+
+# last: a new SSH port is applied by a handler at the end of the run (Docker flushes the handlers earlier on)
+- name: Server | SSH
+  ansible.builtin.include_tasks: ssh.yml
+  when: server_cfg.ssh | length > 0 or server_cfg.authorized_keys | length > 0
