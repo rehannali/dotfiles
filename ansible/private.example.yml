@@ -1,0 +1,19 @@
+# The layout of the private values: the notes of the Bitwarden item "dotfiles private" (a secure note), read at run
+# time by ansible/vars_plugins/private.py into the variable `private`. Example values only; the real ones are never in
+# this repo. Top-level keys are inventory host names; templates use them as {{ private.<host>.<key> }}.
+# docs/bitwarden.md, "Private values", says how to create the item and how a run unlocks it.
+piserver:
+  host: piserver.example.lan          # what SSH connects to (ansible_host)
+  user: you                           # ansible_user
+  ssh_port: 2222                      # sshd's port, set by roles/server, and ansible_port
+  lan_ip: 192.168.1.10                # its own address: NextDNS listens there too
+  disk_uuid: 00000000-0000-0000-0000-000000000000   # `lsblk -f` on the server
+  authorized_keys:                    # public keys allowed to log in
+    - ssh-ed25519 AAAA... you@laptop
+  nextdns_forwarders:                 # "domain=ip:port": a zone to your own DNS server
+    - home.example.lan=192.168.1.1:53
+  # secrets (roles/server); empty = that step is skipped and the run says how to do it by hand
+  cloudflared_token: ""               # Cloudflare, Zero Trust, Networks, Tunnels
+  netbird_setup_key: ""               # NetBird, Setup Keys
+  nextdns_profile: ""                 # my.nextdns.io, the id in the URL
+  samba_password: ""                  # your Samba password, set once

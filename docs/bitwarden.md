@@ -139,6 +139,43 @@ Doing it by hand: `bw config server <url>`; `bw config server` shows the current
 Ansible runs `bw` for every lookup, so after `bootstrap.sh` the CLI keeps pointing at that server. Without
 `bootstrap.sh`, set the server once with `bw config server <url>` before `bw login`.
 
+## Private values
+
+The repo is public, so personal and secret values are not in it: the files hold templates
+(`{{ private.piserver.ssh_port }}`), and the values come from one Bitwarden item at run time. `private` is filled by
+`ansible/vars_plugins/private.py` from:
+
+1. the file `~/.config/dotfiles/private.yml` (or `DOTFILES_PRIVATE_FILE`), if it exists: outside the repo, mode 600,
+   for a machine without Bitwarden
+2. else the notes of the Bitwarden item `dotfiles private` (or `DOTFILES_PRIVATE_ITEM`), a YAML document, with
+   `bw get notes` from the unlocked vault (`BW_SESSION`)
+
+It is read once per run, and only for the hosts a run uses: a host whose inventory refers to `private` stops with a
+message saying how to unlock when neither is there; no other host is affected. The layout, with example values, is
+`ansible/private.example.yml`: top-level keys are host names (`piserver: {host, user, ssh_port, ...}`).
+
+**Create or update the item** (once; the Bitwarden app works too: a secure note named `dotfiles private`, the YAML as
+its notes). From a YAML file of your own, outside the repo:
+
+```sh
+export BW_SESSION=$(bw unlock --raw)
+bw get template item | jq --rawfile notes ~/private.yml \
+  '.type = 2 | .secureNote = {type: 0} | .name = "dotfiles private" | .notes = $notes' | bw encode | bw create item
+bw sync                                   # after changing it in the app or the web vault
+shred -u ~/private.yml                    # or rm: it is in the vault now
+```
+
+To change a value later, edit the note in the Bitwarden app (or `bw get item "dotfiles private"`, change `.notes`,
+`bw encode | bw edit item <id>`).
+
+**At run time** the vault has to be unlocked:
+
+- on the machine itself: `bootstrap.sh --bitwarden` (API key: `BW_CLIENTID`, `BW_CLIENTSECRET`; master password:
+  `BW_PASSWORD` or typed), or `dot` with `bitwarden: true`, which unlocks first
+- from the laptop over SSH: `export BW_SESSION=$(bw unlock --raw)`, then `ansible-playbook ... -l piserver -K`
+
+Ansible never prints the values (the secret steps use `no_log`); do not `debug: var=private`.
+
 ## SSH agent
 
 Bitwarden can serve the SSH keys in the vault (Settings, SSH agent, in the desktop app). `~/.zshenv` points
