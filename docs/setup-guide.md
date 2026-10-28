@@ -327,7 +327,7 @@ and speedtest.
 
 **Public template, private values.** This repo is public, so `host_vars/piserver.yml` and `hosts.yml` hold only the
 layout. Its address, user, SSH port, disk UUID, LAN address, public keys, DNS forwarders and the secrets are
-`{{ private.piserver.* }}`, read at run time from the item `piserver` in the Bitwarden folder `dotfiles private`
+`{{ private.piserver.* }}`, read at run time from the Bitwarden item `dotfiles.piserver`
 ([bitwarden.md](bitwarden.md#private-values); the layout is in `ansible/private.example.yml`).
 
 **Fresh OS or a repaired one: the same run.** It only adds what is missing and puts each config back to what host_vars
@@ -336,7 +336,7 @@ says.
 1. **Flash** (if you do) with Raspberry Pi Imager: your user, hostname `piserver`, SSH with your public key. The 2 TB
    disk keeps its UUID, so it is found again without changes.
 2. **DNS:** the server's name (`private.piserver.host`) points at its address (a DHCP reservation keeps it).
-3. **Unlock Bitwarden** on the laptop, so the run can read the folder `dotfiles private`:
+3. **Unlock Bitwarden** on the laptop, so the run can read the item `dotfiles.piserver`:
    `export BW_SESSION=$(bw unlock --raw)` (or run through `dot` with `bitwarden: true`).
 4. **Run it** from the laptop. A freshly flashed OS still has SSH on port 22; the first run moves it to the private port:
 
@@ -348,7 +348,7 @@ says.
 **Secrets** are keys of `private.piserver` too; for one run, an environment variable on the laptop wins. A missing one
 only skips its step, and the report says what to do:
 
-| Field of the `piserver` item | Variable | What | Without it |
+| Field of `dotfiles.piserver` | Variable | What | Without it |
 |---|---|---|---|
 | `cloudflared_token` | `SERVER_CLOUDFLARED_TOKEN` | the tunnel token (Cloudflare, Zero Trust, Networks, Tunnels) | `sudo cloudflared service install <token>` |
 | `netbird_setup_key` | `SERVER_NETBIRD_SETUP_KEY` | a setup key (NetBird, Setup Keys) | `sudo netbird up --setup-key <key>` |

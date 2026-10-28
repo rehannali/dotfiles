@@ -1,7 +1,7 @@
 # The layout of the private values, read at run time by ansible/vars_plugins/private.py into the variable `private`.
 # Example values only; the real ones are never in this repo. Templates use them as {{ private.<host>.<key> }}.
-# In Bitwarden: the folder "dotfiles private", one item per host named like the host (piserver), one custom field
-# per key (name ssh_port, value 2222); a list is the same field name once per element. Secrets are hidden fields.
+# In Bitwarden: one item per host, named "dotfiles.<host>" ("dotfiles.piserver"), one custom field per key (name
+# ssh_port, value 2222); a list is the same field name once per element; secrets are hidden fields.
 # `python3 ansible/vars_plugins/private.py import <this layout, your values>` fills it (docs/bitwarden.md).
 piserver:
   host: piserver.example.lan          # what SSH connects to (ansible_host)

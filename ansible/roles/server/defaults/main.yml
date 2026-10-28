@@ -28,7 +28,7 @@
 #     shares: [{name: PiNAS, path: /mnt/kingston2tb}]
 #   glances: true           # Glances' web dashboard (pipx), a service on port 61208
 #
-# Secrets and personal values never go in the repo: they are `private.<host>` (the Bitwarden folder "dotfiles private",
+# Secrets and personal values never go in the repo: they are `private.<host>` (the Bitwarden item "dotfiles.<host>",
 # read by vars_plugins/private.py; layout in ansible/private.example.yml), or for one run the environment:
 #   cloudflared_token   SERVER_CLOUDFLARED_TOKEN   tunnel token (Cloudflare dashboard, Zero Trust, Networks, Tunnels)
 #   netbird_setup_key   SERVER_NETBIRD_SETUP_KEY   setup key (NetBird dashboard, Setup Keys)

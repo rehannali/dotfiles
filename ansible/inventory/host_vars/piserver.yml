@@ -1,8 +1,8 @@
 ---
 # piserver: the Raspberry Pi 4 homelab server (Ubuntu Server, arm64), as its old install was set up (Oct 2026).
 # Its 2 TB disk holds Docker and every service; it is also the network's NextDNS resolver and a Samba share.
-# Personal and secret values are not in this public repo: `private.piserver.*` comes from the item piserver in the
-# Bitwarden folder "dotfiles private" at run time (docs/bitwarden.md, "Private values"; the layout is in ansible/private.example.yml).
+# Personal and secret values are not in this public repo: `private.piserver.*` comes from the Bitwarden item
+# "dotfiles.piserver" at run time (docs/bitwarden.md, "Private values"; the layout is in ansible/private.example.yml).
 # Set up from the laptop: ansible-playbook site.yml -l piserver -K   (docs/setup-guide.md, "A server with disks and Docker")
 # A freshly flashed OS still has SSH on port 22: the first run takes -e ansible_port=22, and moves SSH to the private port.
 server:

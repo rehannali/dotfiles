@@ -147,24 +147,27 @@ The repo is public, so personal and secret values are not in it: the files hold 
 
 1. the file `~/.config/dotfiles/private.yml` (or `DOTFILES_PRIVATE_FILE`), if it exists: outside the repo, mode 600,
    for a machine without Bitwarden; the layout, with example values, is `ansible/private.example.yml`
-2. else the Bitwarden folder `dotfiles private` (or `DOTFILES_PRIVATE_FOLDER`) in the unlocked vault (`BW_SESSION`)
+2. else Bitwarden, from the unlocked vault (`BW_SESSION`): one item per host, named `dotfiles.<host>` like
+   `host_vars/<host>.yml` (the prefix is `DOTFILES_PRIVATE_PREFIX`), in any folder; a `dotfiles` folder keeps them
+   together
 
-In Bitwarden every value is its own field:
+Each value is its own custom field of the item, so an edit to one cannot break another:
 
 | Bitwarden | Ansible |
 |---|---|
-| folder `dotfiles private` | `private` |
-| item `piserver` (a secure note) | `private.piserver` |
+| item `dotfiles.piserver` (a secure note) | `private.piserver` |
 | custom field `ssh_port`, value `2222` | `private.piserver.ssh_port` = `"2222"` |
 | field `authorized_keys` added twice | a list of two keys |
 | a boolean field | `true` / `false` |
 
-Secrets (`cloudflared_token`, `netbird_setup_key`, `nextdns_profile`, `samba_password`) are best hidden fields. A
-missing or empty field is the same as an empty value. One run reads the folder once (`bw list items --folderid`),
-and only for the hosts it uses: a host whose inventory refers to `private` stops with a message saying how to unlock
-when neither source is there; no other host is affected.
+Only fields are read; the item's notes are yours, for comments.
 
-**Fill it from a file** (once, or again after changing the file: existing items get the file's fields). Write your
+Secrets (`cloudflared_token`, `netbird_setup_key`, `nextdns_profile`, `samba_password`) are best hidden fields. A
+missing or empty field is the same as an empty value. One run reads the items once (`bw list items --search dotfiles.`),
+and only for the hosts it uses: a host whose inventory refers to `private` stops with a message saying how to unlock,
+or which item to create; no other host is affected.
+
+**Fill it from a file** (once, or again after changing the file: an existing item gets the file's fields). Write your
 values in the layout of `ansible/private.example.yml`, outside the repo, then:
 
 ```sh
@@ -173,15 +176,17 @@ uv run --no-project --with pyyaml python3 ansible/vars_plugins/private.py import
 shred -u ~/private.yml                    # or rm: it is in the vault now
 ```
 
-It creates the folder, one secure note per host with one field per key (secrets as hidden fields, lists as repeated
-fields), and prints `created piserver (12 fields)`. Later, change a value in the Bitwarden app: open the item, edit
-the field (or add one: Custom fields, New field); then `bw sync` on the machine that runs the playbook.
+It creates `dotfiles.<host>` for each host with one field per key (secrets as hidden fields, lists as repeated
+fields) and prints `created dotfiles.piserver (12 fields)`. Later, change a value in the Bitwarden app: open the item,
+edit the field (or add one: Custom fields, New field); then `bw sync` on the machine that runs the playbook.
 
 **At run time** the vault has to be unlocked:
 
 - on the machine itself: `bootstrap.sh --bitwarden` (API key: `BW_CLIENTID`, `BW_CLIENTSECRET`; master password:
   `BW_PASSWORD` or typed), or `dot` with `bitwarden: true`, which unlocks first
 - from the laptop over SSH: `export BW_SESSION=$(bw unlock --raw)`, then `ansible-playbook ... -l piserver -K`
+- unattended: with `BW_PASSWORD` set and no `BW_SESSION`, the run unlocks the vault itself (the CLI must be logged in
+  once: `bw login --apikey` with `BW_CLIENTID` / `BW_CLIENTSECRET`), then syncs, so a value changed in the app is used
 
 Ansible never prints the values (the secret steps use `no_log`); do not `debug: var=private`.
 

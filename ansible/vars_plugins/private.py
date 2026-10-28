@@ -5,14 +5,16 @@ The repo holds templates only: `{{ private.piserver.ssh_port }}`. This vars plug
 
   1. the file DOTFILES_PRIVATE_FILE (default ~/.config/dotfiles/private.yml), if it exists: outside the repo, mode 600;
      for a machine without Bitwarden. Its layout is ansible/private.example.yml
-  2. else Bitwarden, from the unlocked vault (BW_SESSION: bootstrap.sh --bitwarden and dot unlock it): the folder
-     DOTFILES_PRIVATE_FOLDER (default "dotfiles private") holds one item per host, named like the host, and each value
-     is a custom field of that item: name ssh_port, value 2222. A name used more than once is a list
-     (authorized_keys, one field per key); a boolean field is true / false; every other value is a string.
+  2. else Bitwarden, from the unlocked vault (BW_SESSION: bootstrap.sh --bitwarden and dot unlock it; without it, a
+     master password in BW_PASSWORD unlocks the vault here, for this run only): one item per
+     host, named DOTFILES_PRIVATE_PREFIX + host (default "dotfiles.piserver", like host_vars/piserver.yml), in any
+     folder. Each value is a custom field: name ssh_port, value 2222. A name used more than once is a list
+     (authorized_keys, one field per key); a boolean field is true / false; every other value is a string. The
+     item's notes are not read: they are yours, for comments.
 
 Neither there: `private` is an empty dict, and only what refers to it fails, with a message saying how to unlock.
 
-Fill Bitwarden from a YAML file in that layout (creates the folder and the items, updates the fields of existing ones):
+Fill Bitwarden from a YAML file in that layout (creates the items, replaces the fields of existing ones):
 
   python3 ansible/vars_plugins/private.py import ~/private.yml
 """
@@ -35,7 +37,7 @@ DOCUMENTATION = """
     name: private
     short_description: personal and secret values from Bitwarden (or a private file outside the repo)
     description: Loads a mapping of host to values into the variable `private`, from DOTFILES_PRIVATE_FILE or the
-      custom fields of the items in a Bitwarden folder.
+      custom fields of one Bitwarden item per host.
     options:
       stage:
         default: task
@@ -51,8 +53,8 @@ SECRET_SUFFIXES = ("_token", "_key", "_password", "_secret", "_profile")
 _CACHE = {}
 
 
-def _folder_name():
-    return os.environ.get("DOTFILES_PRIVATE_FOLDER", "dotfiles private")
+def _prefix():
+    return os.environ.get("DOTFILES_PRIVATE_PREFIX", "dotfiles.")
 
 
 def _bw(*args, stdin=None):
@@ -66,15 +68,19 @@ def _bw(*args, stdin=None):
     return out.stdout
 
 
-def _folder_id(create=False):
-    name = _folder_name()
-    ids = [f["id"] for f in json.loads(_bw("list", "folders", "--search", name)) if f.get("name") == name]
-    if ids:
-        return ids[0]
-    if not create:
-        raise AnsibleError("private: Bitwarden has no folder %r. Fill it from a YAML file: python3 "
-                           "ansible/vars_plugins/private.py import <file> (docs/bitwarden.md, 'Private values')" % name)
-    return json.loads(_bw("create", "folder", _bw("encode", stdin=json.dumps({"name": name}))))["id"]
+def _unlock():
+    """BW_SESSION, or a session from `bw unlock --passwordenv BW_PASSWORD` (the vault must be logged in: bw login)."""
+    if not os.environ.get("BW_SESSION") and os.environ.get("BW_PASSWORD"):
+        os.environ["BW_SESSION"] = _bw("unlock", "--passwordenv", "BW_PASSWORD", "--raw").strip()
+    return bool(os.environ.get("BW_SESSION"))
+
+
+def _host_items():
+    """{host: item} for the items named prefix + host."""
+    prefix = _prefix()
+    items = json.loads(_bw("list", "items", "--search", prefix.strip()))
+    return {item["name"][len(prefix):]: item for item in items
+            if item.get("name", "").startswith(prefix) and len(item["name"]) > len(prefix)}
 
 
 def fields_to_values(fields):
@@ -120,10 +126,13 @@ def load_private():
         source = path
         if not isinstance(data, dict):
             raise AnsibleError("private: %s is not a YAML mapping" % path)
-    elif os.environ.get("BW_SESSION"):
-        items = json.loads(_bw("list", "items", "--folderid", _folder_id()))
-        data = {item["name"]: fields_to_values(item.get("fields")) for item in items}
-        source = "Bitwarden folder %r" % _folder_name()
+    elif _unlock():
+        try:
+            _bw("sync")   # the newest values; offline, the local copy
+        except AnsibleError:
+            pass
+        data = {host: fields_to_values(item.get("fields")) for host, item in _host_items().items()}
+        source = "Bitwarden"
     else:
         source = None
     _CACHE["data"] = data
@@ -132,27 +141,26 @@ def load_private():
 
 
 def import_file(path):
-    """Create or update one item per host in the Bitwarden folder, from a YAML file in the private.example.yml layout."""
-    if not os.environ.get("BW_SESSION"):
-        raise SystemExit("private: unlock Bitwarden first: export BW_SESSION=$(bw unlock --raw)")
+    """Create or update one item per host (prefix + host), from a YAML file in the private.example.yml layout."""
+    if not _unlock():
+        raise SystemExit("private: unlock Bitwarden first: export BW_SESSION=$(bw unlock --raw), or BW_PASSWORD")
     with open(os.path.expanduser(path)) as fh:
         data = yaml.safe_load(fh) or {}
     _bw("sync")
-    folder = _folder_id(create=True)
-    existing = {item["name"]: item for item in json.loads(_bw("list", "items", "--folderid", folder))}
+    existing = _host_items()
     for host, values in data.items():
         fields = values_to_fields(values or {})
         if host in existing:
             item = json.loads(_bw("get", "item", existing[host]["id"]))
             item["fields"] = fields
             _bw("edit", "item", item["id"], _bw("encode", stdin=json.dumps(item)))
-            print("updated %s (%d fields)" % (host, len(fields)))
+            print("updated %s%s (%d fields)" % (_prefix(), host, len(fields)))
         else:
             item = json.loads(_bw("get", "template", "item"))
-            item.update({"type": 2, "secureNote": {"type": 0}, "name": host, "notes": None, "login": None,
-                         "folderId": folder, "fields": fields})
+            item.update({"type": 2, "secureNote": {"type": 0}, "name": _prefix() + host, "notes": None,
+                         "login": None, "fields": fields})
             _bw("create", "item", _bw("encode", stdin=json.dumps(item)))
-            print("created %s (%d fields)" % (host, len(fields)))
+            print("created %s%s (%d fields)" % (_prefix(), host, len(fields)))
 
 
 def _uses_private(value):
@@ -173,15 +181,19 @@ class VarsModule(BaseVarsPlugin):
     def get_vars(self, loader, path, entities, cache=True):
         super().get_vars(loader, path, entities)
         data = load_private()
-        if not _CACHE.get("source"):
-            for entity in entities if isinstance(entities, list) else [entities]:
-                if _uses_private(getattr(entity, "vars", {})):
-                    raise AnsibleError(
-                        "%s needs the private values (Bitwarden folder %r), but Bitwarden is locked and there is no %s. "
-                        "Unlock it: export BW_SESSION=$(bw unlock --raw), or run through bootstrap.sh --bitwarden / dot "
-                        "with bitwarden on (docs/bitwarden.md, 'Private values')."
-                        % (entity.name, _folder_name(),
-                           os.environ.get("DOTFILES_PRIVATE_FILE", "~/.config/dotfiles/private.yml")))
+        for entity in entities if isinstance(entities, list) else [entities]:
+            if entity.name in data or not _uses_private(getattr(entity, "vars", {})):
+                continue
+            if not _CACHE.get("source"):
+                raise AnsibleError(
+                    "%s needs the private values (Bitwarden item %r), but Bitwarden is locked and there is no %s. "
+                    "Unlock it: export BW_SESSION=$(bw unlock --raw) or BW_PASSWORD, or run through "
+                    "bootstrap.sh --bitwarden / dot with bitwarden on (docs/bitwarden.md, 'Private values')."
+                    % (entity.name, _prefix() + entity.name,
+                       os.environ.get("DOTFILES_PRIVATE_FILE", "~/.config/dotfiles/private.yml")))
+            raise AnsibleError("%s needs the private values, but %s has none for it: create the Bitwarden item %r "
+                               "(or run bw sync after creating it), docs/bitwarden.md, 'Private values'."
+                               % (entity.name, _CACHE["source"], _prefix() + entity.name))
         return {"private": data, "private_source": _CACHE.get("source") or ""}
 
 
