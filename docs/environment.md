@@ -90,7 +90,7 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --home -
 | `--branch NAME` | | clone / update that branch |
 | `--source PATH` | `DOTFILES_SOURCE` | use that checkout (`dotfiles_update=false`) |
 | | `DOTFILES_REPO` | `owner/name` to clone, default `rehannali/dotfiles` |
-| | `DOTFILES_DIR` | where to clone it, default `~/.dotfiles` |
+| | `DOTFILES_DIR` | where the repo is (cloned there if missing); default: the checkout `bootstrap.sh` runs from, else `~/.dotfiles` |
 | | `DOTFILES_ANSIBLE_ARGS` | more `ansible-playbook` options, word-split |
 
 ### Credentials

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# dot: everyday use of the dotfiles on this machine (linked from ~/.dotfiles/home/.local/bin/dot).
+# dot: everyday use of the dotfiles on this machine (~/.local/bin/dot, a link into your checkout of the repo).
 #
 #   dot                 same as dot apply
-#   dot apply [ARGS]    set this machine up from ~/.dotfiles as it is, without pulling (ARGS go to ansible-playbook,
+#   dot apply [ARGS]    set this machine up from the checkout as it is, without pulling (ARGS go to ansible-playbook,
 #                       e.g. --tags dotfiles, --tags packages, -e install_casks=false)
 #   dot sync [ARGS]     pull the latest from GitHub, then apply: how another machine's changes arrive here
 #   dot check [ARGS]    what apply would change, without changing anything (--check --diff)
-#   dot save [MESSAGE]  commit everything changed in ~/.dotfiles and push it, for the other machines to sync
-#   dot status          this machine's host and group, its saved choices, what is changed / not pushed in ~/.dotfiles
+#   dot save [MESSAGE]  commit everything changed in the checkout and push it, for the other machines to sync
+#   dot status          this machine's host and group, its saved choices, what is changed / not pushed in the checkout
 #   dot audit           check what is installed against what this machine should have
 #   dot remember 'KEY: VALUE' ...
 #                       keep a setting for this machine on every run, e.g. 'gui_apps: false' (no arguments: ask
@@ -22,8 +22,21 @@
 # Keychain / Secret Service (dotfiles-secret), else BW_PASSWORD, else it asks.
 set -euo pipefail
 
-REPO="${DOTFILES_DIR:-$HOME/.dotfiles}"
 MACHINE_FILE="$HOME/.config/dotfiles/machine"
+# the repo: DOTFILES_DIR, else where the last run applied it from (the machine file), else the checkout this script
+# lives in (~/.local/bin/dot is a link into it), else ~/.dotfiles
+repo_of_self() {
+  local self="${BASH_SOURCE[0]}" target
+  while [ -L "$self" ]; do
+    target="$(readlink "$self")"
+    case "$target" in /*) self="$target" ;; *) self="$(dirname "$self")/$target" ;; esac
+  done
+  (cd "$(dirname "$self")/../../.." 2> /dev/null && [ -f ansible/site.yml ] && pwd) || true
+}
+REPO="${DOTFILES_DIR:-}"
+[ -n "$REPO" ] || [ ! -f "$MACHINE_FILE" ] || REPO="$(sed -n 's/^DOTFILES_DIR=//p' "$MACHINE_FILE")"
+[ -n "$REPO" ] && [ -d "$REPO/ansible" ] || REPO="$(repo_of_self)"
+[ -n "$REPO" ] || REPO="$HOME/.dotfiles"
 LOCAL_VARS="$HOME/.config/dotfiles/local.yml"
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 
@@ -153,7 +166,7 @@ playbook() {
   inventory
   bitwarden_unlock "$@"   # first: with the vault open, the name and email come from it and are not asked
   ask_name_email
-  # dotfiles_update=false: apply ~/.dotfiles as it is (dot sync pulls first)
+  # dotfiles_update=false: apply the checkout as it is (dot sync pulls first)
   local args=("${inv[@]}" -c local -e "dotfiles_dir=$REPO" -e dotfiles_update=false)
   # sudo for the steps that need it: Ansible asks once if it can't use an already unlocked sudo
   if [ "$(id -u)" -ne 0 ] && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then

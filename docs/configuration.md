@@ -53,7 +53,7 @@ All in `main.yml`, `true` unless noted:
 | `login_shell_zsh` | make zsh (Homebrew's or MacPorts' when there is one) the login shell |
 | `bitwarden` | `false` by default: fetch `secrets.yml` (and the Apple ID) from Bitwarden, see [bitwarden.md](bitwarden.md) |
 | `install_retries`, `install_delay` | `3` tries, `10` seconds apart, for every install and download |
-| `dotfiles_dir` | where the repo lives on the machine, `~/.dotfiles` |
+| `dotfiles_dir` | where the repo lives on the machine: the checkout the playbook runs from; `~/.dotfiles` on a machine reached over SSH |
 
 ## A server: disks and Docker
 
@@ -207,8 +207,8 @@ Android Studio and the Android SDK are not installed; Flutter needs them for And
 
 `home/` is laid out exactly like your home directory:
 
-- a plain file is **linked** from `~/.dotfiles/home/...`, so editing `~/.zshrc` edits the checkout. Commit and
-  push from `~/.dotfiles`; other machines pick it up on their next run.
+- a plain file is **linked** from `<checkout>/home/...`, so editing `~/.zshrc` edits the checkout. Commit and
+  push from there (`dot save`); other machines pick it up on their next run.
 - a `.j2` file is a template (Jinja): it needs a setting, your name, or the OS. It is written without the `.j2`.
   Edit it in the repo, then run `--tags dotfiles`.
 - a `.keep` file only makes sure its directory exists.

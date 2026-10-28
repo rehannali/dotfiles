@@ -1,8 +1,9 @@
 # Using it
 
-The short version: the repo lives in `~/.dotfiles` on every machine, `dot` applies it, `dot save` sends your changes
-to GitHub, `dot sync` brings them to another machine. How the setup is put together, and how to describe your
-machines, is in [setup-guide.md](setup-guide.md).
+The short version: the repo lives in a checkout on every machine (wherever you cloned it; `~/.dotfiles` when bootstrap
+cloned it, `dot cd` prints it), `dot` applies it, `dot save` sends your changes to GitHub, `dot sync` brings them to
+another machine. How the setup is put together, and how to describe your machines, is in
+[setup-guide.md](setup-guide.md).
 
 ## A new machine
 
@@ -14,17 +15,17 @@ curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.s
 `--host new-mac --group mac_work` (or `mac_personal`, `servers`, `wsl`), and add it to `hosts.yml` afterwards so it
 keeps its group. Everything `bootstrap.sh` asks and does is in the [README](../README.md#install).
 
-From then on the machine has `~/.dotfiles` (the repo) and the `dot` command.
+From then on the machine has the checkout and the `dot` command.
 
 ## Every day: `dot`
 
 | Command | Does |
 |---|---|
-| `dot` or `dot apply` | set this machine up from `~/.dotfiles` as it is now (no `git pull`) |
+| `dot` or `dot apply` | set this machine up from the checkout as it is now (no `git pull`) |
 | `dot apply --tags dotfiles` | only one part: `dotfiles`, `packages`, `shell`, `mise`, `dev`, `macos`, `xcode` |
 | `dot check` | show what `dot apply` would change, change nothing |
 | `dot sync` | `git pull`, then apply: picks up what you changed on another machine |
-| `dot save "message"` | commit everything you changed in `~/.dotfiles` and push it |
+| `dot save "message"` | commit everything you changed in the checkout and push it |
 | `dot status` | which machine and group this is, its saved choices, what is changed or not pushed yet |
 | `dot remember 'gui_apps: false'` | keep a setting for this machine on every run (see below) |
 | `dot audit` | check that everything this machine should have is there, from the right manager, and starts |
@@ -55,15 +56,15 @@ With `bitwarden` on, `dot` unlocks the vault before it runs (it asks for the mas
 
 ## Changing a dotfile
 
-Plain files in `home/` are **linked**: `~/.zshrc` *is* `~/.dotfiles/home/.zshrc`. Edit it where you like, it takes
+Plain files in `home/` are **linked**: `~/.zshrc` *is* `<checkout>/home/.zshrc`. Edit it where you like, it takes
 effect in the next shell, then `dot save "zsh: new alias"`.
 
 Templates (`home/**/*.j2`: `.gitconfig`, `.zshenv`, `.zprofile`, wezterm fonts and domains, alacritty, the secrets
-file) are written, not linked, because they need your name, a setting or the OS. Edit the `.j2` in `~/.dotfiles`,
+file) are written, not linked, because they need your name, a setting or the OS. Edit the `.j2` in the checkout,
 then `dot apply --tags dotfiles`, then `dot save`. Editing `~/.gitconfig` directly works until the next apply, which
 writes the template again (the old file is kept next to it as a timestamped `~/.gitconfig.<...>~` backup).
 
-A **new** dotfile: put it in `~/.dotfiles/home/` at the same path it has in your home directory
+A **new** dotfile: put it in `<checkout>/home/` at the same path it has in your home directory
 (`home/.config/foo/config.toml`), `dot apply --tags dotfiles` links it (a file already in its place is moved to
 `~/.dotfiles-backup/<time>/` first), `dot save`. To keep one off some machines: `dotfiles_skip_extra: [.config/foo]`
 in that group's or host's vars.
@@ -121,11 +122,11 @@ machine B:                                     dot sync             (pull + appl
 ```
 
 `dot sync` refuses to pull over uncommitted changes on that machine that conflict with incoming ones: `dot status`
-shows them; `dot save` them (or `git -C ~/.dotfiles stash`) and sync again. If two machines changed the same file,
+shows them; `dot save` them (or `git -C "$(dot cd)" stash`) and sync again. If two machines changed the same file,
 `dot save` on the second one says the push failed: `dot sync`, resolve, `dot save` again.
 
 From your laptop you can also update a machine you reach over SSH without logging in to it:
-`cd ~/.dotfiles/ansible && ansible-playbook site.yml -l piserver -K` (it pulls the repo there first).
+`cd "$(dot cd)"/ansible && ansible-playbook site.yml -l piserver -K` (on piserver the run pulls its own checkout first).
 
 ## When something did not install
 

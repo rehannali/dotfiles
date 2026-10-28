@@ -60,7 +60,11 @@ install_retries: 3
 install_delay: 10
 
 # --- Where the repo lives on the machine. The dotfiles in home/ are linked from here, so editing ~/.zshrc edits
-# the checkout (commit and push from there). bootstrap.sh clones it here too.
+# the checkout (commit and push from there). Setting up the machine the playbook runs on: the checkout it runs from,
+# wherever you cloned it (bootstrap.sh and dot pass it too). A machine reached over SSH: ~/.dotfiles there, cloned
+# by the run; set dotfiles_dir in its host_vars for another place.
 dotfiles_repo: https://github.com/rehannali/dotfiles.git
 dotfiles_branch: main
-dotfiles_dir: "{{ ansible_facts.env.HOME }}/.dotfiles"
+dotfiles_dir: >-
+  {{ (playbook_dir ~ '/..') | realpath if (ansible_connection | default('ssh')) == 'local'
+     else ansible_facts.env.HOME ~ '/.dotfiles' }}

@@ -94,7 +94,7 @@ jobs:
         working-directory: ansible
         run: ansible-playbook -i localhost, -c local tests/render.yml
       - name: shellcheck
-        run: shellcheck bootstrap.sh home/.local/bin/dot ansible/roles/packages/files/*.sh tools/mycask/verify-casks.sh
+        run: shellcheck bootstrap.sh home/.local/bin/dot home/.local/bin/dotfiles-secret home/.config/shell/bitwarden.sh ansible/roles/packages/files/*.sh tools/mycask/verify-casks.sh
 
   # Picks the machines: everything on PR/push, one or all on a manual run.
   plan:

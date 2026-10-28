@@ -50,7 +50,7 @@ The report at the end says where each one is: `OK: GH_TOKEN exported in ~/.zlogi
 ## Without Bitwarden: ~/.config/dotfiles/env
 
 ```sh
-cp ~/.dotfiles/ansible/env.example ~/.config/dotfiles/env
+cp "$(dot cd)"/ansible/env.example ~/.config/dotfiles/env   # dot cd: where your checkout is
 chmod 600 ~/.config/dotfiles/env
 $EDITOR ~/.config/dotfiles/env            # NAME=value lines
 dot apply                                  # or bootstrap.sh on a new machine (create the file first)

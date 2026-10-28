@@ -15,8 +15,9 @@
 #      Done here, with the real terminal and visible output, so a failure stops with its reason.
 #   3. with --bitwarden (or BW_CLIENTID + BW_CLIENTSECRET / BW_PASSWORD / BW_SESSION set): logs in to Bitwarden and
 #      unlocks the vault; the playbook reads this machine's values and secrets from it (docs/bitwarden.md)
-#   4. clones the repo to ~/.dotfiles (or updates it), installs Ansible (with uv, into its own Python), and runs
-#      ansible/site.yml for this machine. Everything that could not be installed is listed at the end.
+#   4. updates the repo: DOTFILES_DIR, else the checkout this script runs from, else ~/.dotfiles (cloned there when
+#      missing); installs Ansible (with uv, into its own Python), and runs ansible/site.yml for this machine.
+#      Everything that could not be installed is listed at the end.
 #   5. if Xcode needs your Apple ID's two-factor code, runs that step last, on your terminal
 #
 # What it needs to know, it asks at the start (with a terminal), then runs on its own:
@@ -57,9 +58,9 @@
 #   --source PATH       use a local checkout instead of cloning (it is not pulled) (DOTFILES_SOURCE)
 #   -h, --help          this text
 #
-# Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_DIR (where the repo is
-# cloned, default ~/.dotfiles), DOTFILES_SKIP_CASKS (casks to leave out, space separated), DOTFILES_ANSIBLE_ARGS
-# (extra ansible-playbook options), and for Bitwarden
+# Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_DIR (where the repo is,
+# default the checkout bootstrap.sh runs from, else ~/.dotfiles), DOTFILES_SKIP_CASKS (casks to leave out, space
+# separated), DOTFILES_ANSIBLE_ARGS (extra ansible-playbook options), and for Bitwarden
 # BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is not asked) and BW_SESSION
 # (an already unlocked vault). Every variable, by scenario: docs/environment.md
 set -euo pipefail
@@ -112,6 +113,15 @@ done
 
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
+
+# where the repo is: --source, else DOTFILES_DIR, else the checkout this script was started from (./bootstrap.sh in
+# your clone, wherever it is), else ~/.dotfiles (curl | bash: cloned there)
+SELF_DIR=""
+if [ -f "${BASH_SOURCE[0]:-}" ]; then
+  SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  [ -f "$SELF_DIR/ansible/site.yml" ] || SELF_DIR=""
+fi
+DEFAULT_DIR="${DOTFILES_DIR:-${SELF_DIR:-$HOME/.dotfiles}}"
 case "$GROUP" in home) GROUP=mac_personal ;; office) GROUP=mac_work ;; esac   # DOTFILES_GROUP=home / office too
 
 # Bitwarden credentials in the environment (API key, master password or an unlocked session) mean --bitwarden
@@ -128,7 +138,7 @@ ask() {   # ask "question" "suggestion" -> the answer, or the suggestion on Ente
   printf '%s' "${answer:-$2}"
 }
 hosts_yml() {   # the inventory, from --source, an existing checkout, or the repo on GitHub
-  local dir="${SOURCE:-${DOTFILES_DIR:-$HOME/.dotfiles}}"
+  local dir="${SOURCE:-$DEFAULT_DIR}"
   if [ -f "$dir/ansible/inventory/hosts.yml" ]; then cat "$dir/ansible/inventory/hosts.yml"
   else curl -fsSL "https://raw.githubusercontent.com/$REPO/${BRANCH:-HEAD}/ansible/inventory/hosts.yml" 2> /dev/null || true
   fi
@@ -377,7 +387,7 @@ bw_remember() {
 export PATH="$WORK_TMP:$PATH"   # the Bitwarden CLI, when it was downloaded
 
 # 4. the repo and Ansible
-REPO_DIR="${SOURCE:-${DOTFILES_DIR:-$HOME/.dotfiles}}"
+REPO_DIR="${SOURCE:-$DEFAULT_DIR}"
 if [ -n "$SOURCE" ]; then
   [ -d "$SOURCE/ansible" ] || die "--source $SOURCE is not a checkout of the dotfiles repo"
 elif [ -d "$REPO_DIR/.git" ]; then

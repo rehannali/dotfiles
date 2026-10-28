@@ -49,13 +49,14 @@ Mac: turn on Remote Login and install the Command Line Tools first; `bootstrap.s
    Intel Macs get no Homebrew (Tier 3, dropped in September 2027): [mycask](tools/mycask/README.md), in the
    repo, installs their apps and tools. Linux: makes sure `git` and `curl` are there
 3. with `--bitwarden`: logs in to Bitwarden and unlocks the vault
-4. clones this repo to `~/.dotfiles` (or updates it), installs Ansible with uv (its own Python, nothing in the
-   system's), and runs `ansible/site.yml` for this machine
+4. uses the checkout it runs from (or clones this repo to `~/.dotfiles` when run with curl; `DOTFILES_DIR` for another
+   place), installs Ansible with uv (its own Python, nothing in the system's), and runs `ansible/site.yml` for this
+   machine
 5. if Xcode needs your Apple ID's two-factor code, runs that last, on your terminal
 
 Every option is in `bootstrap.sh --help`; every variable, by scenario, in [docs/environment.md](docs/environment.md).
 
-Afterwards the machine has the repo in `~/.dotfiles` and a `dot` command: `dot` applies it, `dot sync` pulls and
+Afterwards the machine has the repo (wherever you cloned it; `dot cd` prints the path) and a `dot` command: `dot` applies it, `dot sync` pulls and
 applies, `dot save` commits and pushes, `dot check` shows what would change. The options you gave `bootstrap.sh`
 (name, email, `--cli`, `--no-xcode`, ...) are kept in `~/.config/dotfiles/local.yml`, so every later `dot` run uses
 them. See [docs/usage.md](docs/usage.md).
@@ -99,7 +100,7 @@ goes on. Run it again once the cause is fixed: only what is missing is installed
 ## Dotfiles
 
 `home/` is laid out exactly like your home directory. A plain file there (`home/.zshrc`, `home/.config/nvim/...`) is
-**linked**, so editing `~/.zshrc` edits the checkout in `~/.dotfiles`: commit and push from there. A file ending in
+**linked**, so editing `~/.zshrc` edits your checkout: commit and push from there. A file ending in
 `.j2` is a template (it needs your name, a setting or the OS): edit it in the repo, then
 `ansible-playbook site.yml -l <host> --tags dotfiles`. A file that was in the way of a link is moved to
 `~/.dotfiles-backup/<time>/` first, nothing is lost. GUI-only configs (alacritty, wezterm, karabiner, hyper) stay

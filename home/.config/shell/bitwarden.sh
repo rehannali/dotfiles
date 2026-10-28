@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # bw: the Bitwarden CLI, unlocked on first use in this shell with the login bootstrap.sh kept in the macOS Keychain /
 # Linux Secret Service (dotfiles-secret). The session stays in this shell only; `bw lock` ends it. Without a kept
 # login this is plain bw. Read by ~/.zshrc and ~/.bashrc.

@@ -41,6 +41,7 @@
     mode: "0644"
     content: |
       DOTFILES_HOST={{ inventory_hostname }}
+      DOTFILES_DIR={{ dotfiles_dir }}
       DOTFILES_GROUP={{ (group_names | intersect(['mac_personal', 'mac_work', 'servers', 'wsl', 'linux_desktop']) | first) | default('') }}
   when: not ansible_check_mode
 

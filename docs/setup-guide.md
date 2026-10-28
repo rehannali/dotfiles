@@ -225,11 +225,12 @@ In order, it:
 2. installs what Ansible can't install itself: on macOS, the Command Line Tools, and Homebrew on Apple Silicon
    (Intel Macs get none: MacPorts and mise install their tools, mycask their apps); on Linux, git and curl
 3. with `--bitwarden`, logs in to Bitwarden and unlocks the vault
-4. clones the repo to `~/.dotfiles`, installs Ansible with uv (its own Python), keeps your options in
-   `~/.config/dotfiles/local.yml`, and runs the playbook on this machine (`-c local`, no SSH)
+4. uses the checkout it runs from (with curl: clones to `~/.dotfiles`, or `DOTFILES_DIR`), installs Ansible with uv
+   (its own Python), keeps your options in `~/.config/dotfiles/local.yml`, and runs the playbook on this machine
+   (`-c local`, no SSH)
 5. if Xcode needs your Apple ID's two-factor code, runs that last, on your terminal
 
-Afterwards the machine has `~/.dotfiles` and the `dot` command, and `bootstrap.sh` is not needed again. Every option
+Afterwards the machine has the checkout (`dot cd` prints where) and the `dot` command, and `bootstrap.sh` is not needed again. Every option
 is in `bootstrap.sh --help` and [environment.md](environment.md). The ones you will use most:
 
 | Option | Does |
@@ -289,13 +290,13 @@ Otherwise:
 
 ```sh
 uv tool install --python 3.13 ansible-core
-cd ~/.dotfiles/ansible && ansible-galaxy collection install -r requirements.yml
+cd "$(dot cd)"/ansible && ansible-galaxy collection install -r requirements.yml
 ```
 
 Then:
 
 ```sh
-cd ~/.dotfiles/ansible
+cd "$(dot cd)"/ansible
 ansible-playbook site.yml -l piserver -K                  # one machine
 ansible-playbook site.yml -l piserver -K -k               # the same, logging in with a password
 ansible-playbook site.yml -l servers -K                   # a whole group
@@ -380,7 +381,7 @@ not include.
 
 | Command | Does |
 |---|---|
-| `dot` / `dot apply` | apply `~/.dotfiles` as it is now (no pull) |
+| `dot` / `dot apply` | apply the checkout as it is now (no pull) |
 | `dot sync` | `git pull`, then apply: picks up what another machine pushed |
 | `dot check` | what apply would change (`--check --diff`) |
 | `dot save "msg"` | commit and push your changes |
@@ -470,7 +471,7 @@ Pushing to another machine over SSH uses the vault on your laptop. Unlock it the
 
 ```sh
 export BW_SESSION=$(bw unlock --raw)
-cd ~/.dotfiles/ansible && ansible-playbook site.yml -l piserver -K
+cd "$(dot cd)"/ansible && ansible-playbook site.yml -l piserver -K
 ```
 
 ### Apple ID: Xcode and the App Store
@@ -558,7 +559,7 @@ remove:
 ### Check before you apply
 
 ```sh
-cd ~/.dotfiles/ansible
+cd "$(dot cd)"/ansible
 python tests/packages_check.py   # one manager per tool; what each group gets on each platform
 python tests/apps_check.py       # every cask, formula, App Store, Flathub and apt id exists
 dot check                        # what this machine would change
@@ -570,7 +571,7 @@ Then `dot apply`, then `dot save "add jq"`, then `dot sync` on the other machine
 
 `home/` is laid out exactly like your home directory.
 
-- **Plain files** are **linked**: `~/.zshrc` is `~/.dotfiles/home/.zshrc`, so editing either edits the repo. Then
+- **Plain files** are **linked**: `~/.zshrc` is `<checkout>/home/.zshrc`, so editing either edits the repo. Then
   `dot save`.
 - **`*.j2` files** are **templates**, written from your settings: `.gitconfig`, `.zshenv`, `.zprofile`, the
   alacritty and wezterm configs, the secrets file. Edit the `.j2` in the repo, then `dot apply --tags dotfiles`.
@@ -605,7 +606,7 @@ Set them in a group or host file for a kind of machine or one machine, or with `
 | `tools_extra`, `tools_skip`, `apps_extra`, `apps_skip` | `[]` | single entries on top of the bundles, or left out |
 | `remove` | empty lists | uninstalled on every run |
 | `install_retries`, `install_delay` | `3`, `10` | tries per install and seconds between them |
-| `dotfiles_repo`, `dotfiles_branch`, `dotfiles_dir` | this repo, `main`, `~/.dotfiles` | where the checkout comes from and lives |
+| `dotfiles_repo`, `dotfiles_branch`, `dotfiles_dir` | this repo, `main`, the checkout the playbook runs from (`~/.dotfiles` over SSH) | where the checkout comes from and lives |
 | `dotfiles_skip_extra` | `[]` | dotfiles (paths under `~`) a machine does not get |
 
 ### Settings: git, fonts, terminal, Dock, shell
