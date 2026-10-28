@@ -12,6 +12,9 @@ The repo holds templates only: `{{ private.piserver.ssh_port }}`. This vars plug
      (authorized_keys, one field per key); a boolean field is true / false; every other value is a string. The
      item's notes are not read: they are yours, for comments.
 
+The item "dotfiles.all" holds what every machine shares (git_name). Each host also gets `private_host`: the values of
+"dotfiles.all" with its own item's on top, so a template needs no host name: {{ private_host.git_email }}.
+
 Neither there: `private` is an empty dict, and only what refers to it fails, with a message saying how to unlock.
 
 Fill Bitwarden from a YAML file in that layout (creates the items, replaces the fields of existing ones):
@@ -194,7 +197,11 @@ class VarsModule(BaseVarsPlugin):
             raise AnsibleError("%s needs the private values, but %s has none for it: create the Bitwarden item %r "
                                "(or run bw sync after creating it), docs/bitwarden.md, 'Private values'."
                                % (entity.name, _CACHE["source"], _prefix() + entity.name))
-        return {"private": data, "private_source": _CACHE.get("source") or ""}
+        result = {"private": data, "private_source": _CACHE.get("source") or ""}
+        hosts = [e for e in (entities if isinstance(entities, list) else [entities]) if type(e).__name__ == "Host"]
+        if len(hosts) == 1:
+            result["private_host"] = {**(data.get("all") or {}), **(data.get(hosts[0].name) or {})}
+        return result
 
 
 if __name__ == "__main__":

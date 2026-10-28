@@ -44,6 +44,10 @@
       DOTFILES_GROUP={{ (group_names | intersect(['mac_personal', 'mac_work', 'servers', 'wsl', 'linux_desktop']) | first) | default('') }}
   when: not ansible_check_mode
 
+- name: Report | are the private values and secrets in place
+  ansible.builtin.include_tasks: secrets.yml
+  when: not ansible_check_mode
+
 - name: Report | everything was done
   ansible.builtin.debug:
     msg: "{{ inventory_hostname }}: everything was installed."

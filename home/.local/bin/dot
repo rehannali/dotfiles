@@ -86,8 +86,13 @@ host_vars() { ansible-inventory "${inv[@]}" --host "$host" 2> /dev/null || true;
 ask_name_email() {
   local vars value suggestion key label lines=()
   vars="$(host_vars)"
+  # with Bitwarden in use, a name / email the inventory takes from the vault (private_host) is not asked here
+  local from_vault=false
+  if [ -n "${BW_SESSION:-}${BW_PASSWORD:-}" ] || grep -q '"bitwarden": true' <<< "$vars"; then from_vault=true; fi
   for key in git_name git_email; do
-    grep -q "\"$key\": \"\"" <<< "$vars" || continue
+    if ! grep -q "\"$key\": \"\"" <<< "$vars"; then
+      grep -q "\"$key\": \"{{ private_host" <<< "$vars" && [ "$from_vault" = false ] || continue
+    fi
     if [ "$key" = git_name ]; then label="Your name, for git commits"; suggestion="$(git config --global user.name || true)"
     else label="Your email, for git commits"; suggestion="$(git config --global user.email || true)"
     fi

@@ -1,8 +1,17 @@
 # The layout of the private values, read at run time by ansible/vars_plugins/private.py into the variable `private`.
-# Example values only; the real ones are never in this repo. Templates use them as {{ private.<host>.<key> }}.
+# Example values only; the real ones are never in this repo. Templates use them as {{ private.<host>.<key> }}, or
+# {{ private_host.<key> }}: this machine's values on top of `all`, the ones every machine shares.
 # In Bitwarden: one item per host, named "dotfiles.<host>" ("dotfiles.piserver"), one custom field per key (name
 # ssh_port, value 2222); a list is the same field name once per element; secrets are hidden fields.
 # `python3 ansible/vars_plugins/private.py import <this layout, your values>` fills it (docs/bitwarden.md).
+all:
+  git_name: Your Name
+  apple_id_item: Apple ID             # the Bitwarden login item with your Apple ID (name or id), for Xcode
+macbook:
+  git_email: you@example.com
+  GITHUB_TOKEN: ""                    # UPPER_CASE: exported in ~/.config/dotfiles/secrets.zsh (gh, git, mise use it)
+office-mac:
+  git_email: you@company.example
 piserver:
   host: piserver.example.lan          # what SSH connects to (ansible_host)
   user: you                           # ansible_user

@@ -58,5 +58,6 @@ settings_defaults:
 
   apple:
     # Bitwarden item with your Apple ID (username and password), used by xcodes when Bitwarden is on. An optional
-    # custom field FASTLANE_SESSION lets it skip the two-factor code, see docs/bitwarden.md.
-    bitwarden_item: Apple ID
+    # custom field FASTLANE_SESSION lets it skip the two-factor code, see docs/bitwarden.md. The field apple_id_item
+    # of dotfiles.all / dotfiles.<host> (the item's name or id) wins, so the vault says which of your Apple logins it is.
+    bitwarden_item: "{{ private_host.apple_id_item | default('Apple ID') }}"

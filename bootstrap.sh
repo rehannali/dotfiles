@@ -13,7 +13,8 @@
 #      Macs get no Homebrew: MacPorts and mise their tools, mycask (tools/mycask) their apps. Linux: makes sure git
 #      and curl exist (apt).
 #      Done here, with the real terminal and visible output, so a failure stops with its reason.
-#   3. with --bitwarden: logs in to Bitwarden and unlocks the vault (the playbook reads secrets from it)
+#   3. with --bitwarden (or BW_CLIENTID + BW_CLIENTSECRET / BW_PASSWORD / BW_SESSION set): logs in to Bitwarden and
+#      unlocks the vault; the playbook reads this machine's values and secrets from it (docs/bitwarden.md)
 #   4. clones the repo to ~/.dotfiles (or updates it), installs Ansible (with uv, into its own Python), and runs
 #      ansible/site.yml for this machine. Everything that could not be installed is listed at the end.
 #   5. if Xcode needs your Apple ID's two-factor code, runs that step last, on your terminal
@@ -109,6 +110,12 @@ done
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
 
+# Bitwarden credentials in the environment (API key, master password or an unlocked session) mean --bitwarden
+if [ -z "${DOTFILES_BITWARDEN:-}" ] \
+    && { [ -n "${BW_CLIENTID:-}" ] && [ -n "${BW_CLIENTSECRET:-}" ] || [ -n "${BW_SESSION:-}${BW_PASSWORD:-}" ]; }; then
+  export DOTFILES_BITWARDEN=true
+fi
+
 # 0. what it needs to know: asked now, so everything after this runs without you
 interactive() { [ "${DOTFILES_YES:-}" != true ] && ( : < /dev/tty ) 2> /dev/null; }
 ask() {   # ask "question" "suggestion" -> the answer, or the suggestion on Enter
@@ -145,7 +152,10 @@ if [ -z "$GROUP" ] && ! hosts_yml | grep -qE "^[[:space:]]+$HOST:[[:space:]]*(#.
   fi
 fi
 
-if [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
+# with Bitwarden, the name and email come from the vault (fields git_name / git_email of dotfiles.all or
+# dotfiles.<host>, docs/bitwarden.md); the run says so if they are not there
+if [ "${DOTFILES_BITWARDEN:-}" = true ]; then :
+elif [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
   suggestion="$(git config --global user.name 2> /dev/null || true)"
   if interactive; then
     answer=""
@@ -155,7 +165,8 @@ if [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
   fi
   [ -z "$answer" ] || ASKED+=("git_name: $(printf '"%s"' "${answer//\"/\\\"}")")
 fi
-if [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
+if [ "${DOTFILES_BITWARDEN:-}" = true ]; then :
+elif [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
   suggestion="$(git config --global user.email 2> /dev/null || true)"
   if interactive; then
     answer=""

@@ -97,8 +97,8 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host m
 |---|---|---|
 | `XCODES_USERNAME`, `XCODES_PASSWORD` | Apple ID for `xcodes` | otherwise the Bitwarden item named in `settings.apple.bitwarden_item` (when Bitwarden is on), otherwise `xcodes` asks on the terminal step |
 | `FASTLANE_SESSION` | Apple login without the two-factor code | used with `xcodes --use-fastlane-auth`. Make one with `fastlane spaceauth` or the `apple-session` workflow |
-| `BW_CLIENTID`, `BW_CLIENTSECRET` | Bitwarden API key login | both set means `DOTFILES_BW_METHOD=apikey` is picked automatically |
-| `BW_PASSWORD` | master password, so it is not asked | export for one command only |
+| `BW_CLIENTID`, `BW_CLIENTSECRET` | Bitwarden API key login | both set means `DOTFILES_BW_METHOD=apikey` is picked automatically, and Bitwarden is on (as `--bitwarden`) |
+| `BW_PASSWORD` | master password, so it is not asked | export for one command only; also unlocks the vault for a plain `ansible-playbook` run |
 | `BW_SESSION` | an unlocked vault | `bootstrap.sh` sets it; the playbook's Bitwarden lookups use it |
 | `DOTFILES_BW_METHOD` | `apikey`, `sso`, `password` | default: `apikey` if the two API variables are set, else `password` |
 | `DOTFILES_BW_EMAIL` | Bitwarden login email | default `--email`, else asked |

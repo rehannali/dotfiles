@@ -9,11 +9,46 @@ applying. It uses Ansible's `community.general.bitwarden` lookup, which calls th
 bootstrap.sh --bitwarden            # or DOTFILES_BITWARDEN=true; kept for this machine
 ```
 
-or for good: `bitwarden: true` in `ansible/inventory/group_vars/all/main.yml`, or only for a group or host.
+It is on by itself when `BW_CLIENTID` + `BW_CLIENTSECRET`, `BW_PASSWORD` or `BW_SESSION` is set, and whenever a run
+reads the vault. Unattended, a new machine needs only these three:
+
+```sh
+export BW_CLIENTID=... BW_CLIENTSECRET=...   # web vault: Account settings, Security, Keys, View API key
+export BW_PASSWORD=...                        # the master password, for this command only
+export DOTFILES_BW_SERVER=https://vault.example.com   # a self-hosted server (once, before the first login)
+bootstrap.sh --yes
+```
+
+## A Mac's values, and checking they are in place
+
+Each machine's values are the custom fields of its Bitwarden item (more under [Private values](#private-values)):
+
+| Item | Fields |
+|---|---|
+| `dotfiles.all` | what every machine shares: `git_name`, `apple_id_item` (which login item is your Apple ID, by name or id) |
+| `dotfiles.macbook`, `dotfiles.macbook-intel` | `git_email`, and tokens: `GITHUB_TOKEN`, `NPM_TOKEN`, ... |
+| `dotfiles.office-mac` | `git_email` (the work one), work tokens |
+| `Apple ID`, or the item `apple_id_item` names | username and password for Xcode, see below |
+
+A host's own field wins over the same one in `dotfiles.all`. `git_name` / `git_email` become the git identity
+(bootstrap stops asking for them). Every field named like an environment variable (UPPER_CASE) is exported in
+`~/.config/dotfiles/secrets.zsh`, so adding a token is adding a field, no repo change. `GITHUB_TOKEN` there is
+what `gh`, git (through gh's credential helper) and mise's GitHub downloads use.
+
+At the end of every run the report checks each of them and prints OK or MISSING, never a value:
+
+- git `user.name` / `user.email` are the vault's
+- `secrets.zsh` has mode 600, and each variable read back from it has the vault's value
+- GitHub accepts `GITHUB_TOKEN` (`gh auth status`)
+- the Bitwarden SSH agent answers and has keys
+- the `Apple ID` item can be read (when Xcode is installed)
+
+What is missing is listed with the rest of the report under "NOT done".
 
 ## Say which secrets you want
 
-Edit `ansible/inventory/group_vars/all/secrets.yml`:
+The simplest is a field on the machine's item (above). For a secret that lives in an item of its own, edit
+`ansible/inventory/group_vars/all/secrets.yml`:
 
 ```yaml
 secrets:
