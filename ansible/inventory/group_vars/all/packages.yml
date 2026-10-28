@@ -86,7 +86,7 @@ packages:
       tools:
         - {name: atuin, kind: cli, mise: atuin, mise_intel: "cargo:atuin", brew: atuin, port: atuin, apt: atuin}
         - {name: bat, kind: cli, mise: bat, brew: bat, port: bat, apt: bat}
-        - {name: btop, kind: cli, mise: btop, brew: btop, port: btop, apt: btop}
+        - {name: btop, kind: cli, mise: btop, brew: btop, port: btop, port_build: true, apt: btop}   # Intel: archive often missing, mise one Linux-only: built
         - {name: bitwarden-cli, kind: cli, mise: bitwarden, brew: bitwarden-cli, port: bitwarden-cli, bin: bw}
         - {name: dust, kind: cli, mise: dust, brew: dust, port: dust}
         - {name: eza, kind: cli, mise: eza, mise_intel: "cargo:eza", brew: eza, apt: eza}   # Intel: no MacPorts archive, mise builds it
