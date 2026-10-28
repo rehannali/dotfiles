@@ -18,7 +18,7 @@ a machine gets) are variables, not code, see [docs/configuration.md](docs/config
 On the machine itself, one command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64
 ```
 
 `--host` is the machine's name in `ansible/inventory/hosts.yml`; that decides what it gets. Leave it out and the
@@ -35,8 +35,8 @@ cd ansible
 ansible-galaxy collection install -r requirements.yml
 ansible-playbook site.yml -l piserver -K         # -K asks for the sudo password on that machine
 ansible-playbook site.yml -l servers -K            # a whole group
-ansible-playbook site.yml -l macbook --check --diff   # what would change, without changing it
-ansible-playbook site.yml -l macbook --tags dotfiles  # one part only
+ansible-playbook site.yml -l macbook-arm64 --check --diff   # what would change, without changing it
+ansible-playbook site.yml -l macbook-arm64 --tags dotfiles  # one part only
 ```
 
 A machine you push to needs `ansible_host` / `ansible_user` in the inventory, your SSH key, and python3 (on a

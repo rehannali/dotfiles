@@ -3,7 +3,8 @@
   ansible.builtin.assert:
     that: [git_name | length > 0, git_email | length > 0]
     fail_msg: >-
-      git_name and git_email are empty: add the fields git_name / git_email to the Bitwarden item dotfiles.all or
+      {{ ['git_name', 'git_email'] | zip([git_name, git_email]) | rejectattr('1') | map(attribute='0') | join(' and ') }}
+      empty: add the fields git_name / git_email to the Bitwarden item dotfiles.all or
       dotfiles.{{ inventory_hostname }} (docs/bitwarden.md), set them in the inventory, or pass bootstrap.sh
       --name/--email. No dotfiles were written.
     quiet: true

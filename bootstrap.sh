@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command to set up a machine (macOS Apple Silicon / Intel, Debian-based Linux, WSL2) with Ansible:
 #
-#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook
+#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64
 #
 # --host is this machine's name in ansible/inventory/hosts.yml (default: its hostname); that decides what it gets.
 # A machine that is not in the inventory yet: add --group mac_personal | mac_work | servers | wsl (default:

@@ -4,14 +4,16 @@
 # In Bitwarden: one item per host, named "dotfiles.<host>" ("dotfiles.piserver"), one custom field per key (name
 # ssh_port, value 2222); a list is the same field name once per element; secrets are hidden fields.
 # `python3 ansible/vars_plugins/private.py import <this layout, your values>` fills it (docs/bitwarden.md).
+# Keys are inventory hosts or groups: a host gets all, then its groups (macs, then mac_personal), then its own.
 all:
   git_name: Your Name
-  apple_id_item: Apple ID             # the Bitwarden login item with your Apple ID (name or id), for Xcode
-macbook:
+mac_personal:                         # every personal Mac, Intel or Apple Silicon
   git_email: you@example.com
+  apple_id_item: Apple ID             # the Bitwarden login item with your Apple ID (name or id), for Xcode
   GITHUB_TOKEN: ""                    # UPPER_CASE: exported in ~/.config/dotfiles/secrets.zsh (gh, git, mise use it)
-office-mac:
+mac_work:                             # the office Mac
   git_email: you@company.example
+  apple_id_item: none                 # no Apple ID from Bitwarden here
 piserver:
   host: piserver.example.lan          # what SSH connects to (ansible_host)
   user: you                           # ansible_user

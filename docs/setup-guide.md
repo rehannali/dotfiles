@@ -115,7 +115,7 @@ all:
       children:
         mac_personal:
           hosts:
-            macbook:                     # set up on the machine itself (bootstrap.sh / dot)
+            macbook-arm64:                     # set up on the machine itself (bootstrap.sh / dot)
         mac_work:
           hosts:
             office-intel:
@@ -137,7 +137,7 @@ all:
         linux-laptop:
 ```
 
-The name (`macbook`, `piserver`) is what `--host` and `-l` take. It doesn't have to match the hostname, but if it does,
+The name (`macbook-arm64`, `piserver`) is what `--host` and `-l` take. It doesn't have to match the hostname, but if it does,
 `bootstrap.sh` finds it without `--host`.
 
 ### The groups
@@ -218,7 +218,7 @@ There are three ways to run it. Each runs the same playbook, `ansible/site.yml`.
 ### On the machine itself (Mac, Linux, WSL)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook \
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64 \
   --name "Rehan Ali" --email rehan@example.com
 ```
 

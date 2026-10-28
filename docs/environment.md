@@ -49,14 +49,14 @@ Do not put passwords or tokens in your shell profile.
 Examples:
 
 ```sh
-# no questions, no Xcode, no App Store, a Mac that is in the inventory as macbook
-bash bootstrap.sh --host macbook --name "Ada Lovelace" --email ada@example.com --no-xcode --no-appstore
+# no questions, no Xcode, no App Store, a Mac that is in the inventory as macbook-arm64
+bash bootstrap.sh --host macbook-arm64 --name "Ada Lovelace" --email ada@example.com --no-xcode --no-appstore
 
 # a server that is not in the inventory yet
 bash bootstrap.sh --host pi --group servers --name "Ada Lovelace" --email ada@example.com
 
 # a specific Xcode, Apple ID from the environment for this one command
-XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host macbook --xcode 26.6
+XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host macbook-arm64 --xcode 26.6
 ```
 
 ## Reference

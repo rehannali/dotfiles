@@ -61,7 +61,7 @@
       # bootstrap.sh runs this at the end; or run it yourself.
       set -e
       export PATH="{{ xcode_env.PATH }}"
-      {% if bitwarden | bool %}
+      {% if bitwarden | bool and xcode_bitwarden_item not in ['', 'none'] %}
       # the Apple ID from Bitwarden ({{ xcode_bitwarden_item }}) when the vault is unlocked (BW_SESSION); else xcodes asks
       if [ -z "${XCODES_USERNAME:-}" ] && [ -n "${BW_SESSION:-}" ] && command -v bw > /dev/null 2>&1; then
         XCODES_USERNAME="$(bw get username {{ xcode_bitwarden_item | quote }} 2> /dev/null || true)"

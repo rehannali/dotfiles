@@ -12,8 +12,10 @@ The repo holds templates only: `{{ private.piserver.ssh_port }}`. This vars plug
      (authorized_keys, one field per key); a boolean field is true / false; every other value is a string. The
      item's notes are not read: they are yours, for comments.
 
-The item "dotfiles.all" holds what every machine shares (git_name). Each host also gets `private_host`: the values of
-"dotfiles.all" with its own item's on top, so a template needs no host name: {{ private_host.git_email }}.
+Items can also be named after an inventory group: "dotfiles.all" for what every machine shares (git_name),
+"dotfiles.mac_personal" / "dotfiles.mac_work" for a kind of machine. Each host gets `private_host`: the fields of
+dotfiles.all, then of its groups (outer ones first: macs, then mac_personal), then of its own item, a later one
+winning; so a template needs no host name: {{ private_host.git_email }}.
 
 Neither there: `private` is an empty dict, and only what refers to it fails, with a message saying how to unlock.
 
@@ -200,7 +202,11 @@ class VarsModule(BaseVarsPlugin):
         result = {"private": data, "private_source": _CACHE.get("source") or ""}
         hosts = [e for e in (entities if isinstance(entities, list) else [entities]) if type(e).__name__ == "Host"]
         if len(hosts) == 1:
-            result["private_host"] = {**(data.get("all") or {}), **(data.get(hosts[0].name) or {})}
+            groups = sorted(hosts[0].get_groups(), key=lambda g: g.depth)   # all, macs, mac_personal
+            merged = {}
+            for name in [g.name for g in groups] + [hosts[0].name]:
+                merged.update(data.get(name) or {})
+            result["private_host"] = merged
         return result
 
 

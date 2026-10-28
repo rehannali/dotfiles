@@ -21,19 +21,21 @@ bootstrap.sh --yes
 
 ## A Mac's values, and checking they are in place
 
-Each machine's values are the custom fields of its Bitwarden item (more under [Private values](#private-values)):
+Each machine's values are the custom fields of Bitwarden items named after the inventory (more under
+[Private values](#private-values)). A machine reads `dotfiles.all`, then its groups', then its own; a later one wins:
 
 | Item | Fields |
 |---|---|
-| `dotfiles.all` | what every machine shares: `git_name`, `apple_id_item` (which login item is your Apple ID, by name or id) |
-| `dotfiles.macbook`, `dotfiles.macbook-intel` | `git_email`, and tokens: `GITHUB_TOKEN`, `NPM_TOKEN`, ... |
-| `dotfiles.office-mac` | `git_email` (the work one), work tokens |
-| `Apple ID`, or the item `apple_id_item` names | username and password for Xcode, see below |
+| `dotfiles.all` | what every machine shares: `git_name` |
+| `dotfiles.mac_personal` | every personal Mac, Intel or Apple Silicon: `git_email`, `apple_id_item`, tokens (`GITHUB_TOKEN`, ...) |
+| `dotfiles.mac_work` | the office Mac: `git_email` (the work one), `apple_id_item: none` or its own, work tokens |
+| `dotfiles.<host>` | only what one machine needs on its own (piserver's address, disk, secrets) |
 
-A host's own field wins over the same one in `dotfiles.all`. `git_name` / `git_email` become the git identity
-(bootstrap stops asking for them). Every field named like an environment variable (UPPER_CASE) is exported in
-`~/.config/dotfiles/secrets.zsh`, so adding a token is adding a field, no repo change. `GITHUB_TOKEN` there is
-what `gh`, git (through gh's credential helper) and mise's GitHub downloads use.
+`git_name` / `git_email` become the git identity (bootstrap stops asking for them). `apple_id_item` is the login item
+xcodes signs in with, by name or id (an id when several items share a name); `none` = no Apple ID from Bitwarden.
+Every field named like an environment variable (UPPER_CASE) is exported in `~/.config/dotfiles/secrets.zsh`, so
+adding a token is adding a field, no repo change. `GITHUB_TOKEN` there is what `gh`, git (through gh's credential
+helper) and mise's GitHub downloads use.
 
 At the end of every run the report checks each of them and prints OK or MISSING, never a value:
 
@@ -107,7 +109,7 @@ push to another machine, the vault on your laptop is used):
 
 ```sh
 export BW_SESSION=$(bw unlock --raw)          # or: bw login you@example.com --raw
-cd ansible && ansible-playbook site.yml -l macbook -e bitwarden=true
+cd ansible && ansible-playbook site.yml -l macbook-arm64 -e bitwarden=true
 ```
 
 ## Apple ID for Xcode (and the two-factor code)
@@ -182,8 +184,8 @@ The repo is public, so personal and secret values are not in it: the files hold 
 
 1. the file `~/.config/dotfiles/private.yml` (or `DOTFILES_PRIVATE_FILE`), if it exists: outside the repo, mode 600,
    for a machine without Bitwarden; the layout, with example values, is `ansible/private.example.yml`
-2. else Bitwarden, from the unlocked vault (`BW_SESSION`): one item per host, named `dotfiles.<host>` like
-   `host_vars/<host>.yml` (the prefix is `DOTFILES_PRIVATE_PREFIX`), in any folder; a `dotfiles` folder keeps them
+2. else Bitwarden, from the unlocked vault (`BW_SESSION`): items named `dotfiles.<host>` like
+   `host_vars/<host>.yml`, or `dotfiles.<group>` like `group_vars/<group>.yml` (merged as above) (the prefix is `DOTFILES_PRIVATE_PREFIX`), in any folder; a `dotfiles` folder keeps them
    together
 
 Each value is its own custom field of the item, so an edit to one cannot break another:
