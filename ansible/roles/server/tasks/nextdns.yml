@@ -17,7 +17,7 @@
   ansible.builtin.set_fact:
     install_failures: >-
       {{ install_failures | default([]) + ['server: NextDNS is installed but not set up: nextdns_profile in the private values '
-         ~ '(Bitwarden "dotfiles private") or SERVER_NEXTDNS_PROFILE, then run again'] }}
+         ~ '(Bitwarden folder "dotfiles private") or SERVER_NEXTDNS_PROFILE, then run again'] }}
   when: not server_secrets.nextdns_profile
 
 - name: NextDNS | /etc/nextdns.conf

@@ -73,7 +73,7 @@ example; `--tags server` runs only this part). Every key is optional; `roles/ser
 | `samba` | Samba with `shares` (`name`, `path`, `comment`, `read_only`), each a managed block in smb.conf, checked with `testparm` |
 | `glances` | Glances' web dashboard (pipx), a service on port 61208 |
 
-Personal values and secrets come from `private.<host>` (the Bitwarden item `dotfiles private`,
+Personal values and secrets come from `private.<host>` (the item `<host>` in the Bitwarden folder `dotfiles private`,
 [bitwarden.md](bitwarden.md#private-values)); for one run an environment variable on the machine running the playbook
 wins (`SERVER_CLOUDFLARED_TOKEN`, `SERVER_NETBIRD_SETUP_KEY`, `SERVER_NEXTDNS_PROFILE`, `SERVER_SAMBA_PASSWORD`). Ansible
 never prints them. With `upgrade_on_apply`, the apt packages and Glances are kept at their newest version.

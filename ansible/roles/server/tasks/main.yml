@@ -5,7 +5,7 @@
   ansible.builtin.set_fact:
     server_cfg: "{{ server_defaults | combine(server | default({}), recursive=true) }}"
 
-- name: Server | this machine's private values (Bitwarden "dotfiles private", or none)
+- name: Server | this machine's private values (Bitwarden folder "dotfiles private", or none)
   ansible.builtin.set_fact:
     server_private_values: "{{ (private | default({})).get(inventory_hostname) | default({}, true) }}"
   no_log: true
