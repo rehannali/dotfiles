@@ -1,0 +1,42 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
+- name: Restart containerd
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: restarted
+  become: true
+  failed_when: false   # not installed yet on the very first run: the package starts it with this config
+
+- name: Restart docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  become: true
+  failed_when: false
+
+- name: Restart samba
+  ansible.builtin.systemd_service:
+    name: smbd
+    state: restarted
+  become: true
+
+- name: Restart glances
+  ansible.builtin.systemd_service:
+    name: glances
+    state: restarted
+    daemon_reload: true
+  become: true
+
+# Ubuntu 24.04 starts sshd from ssh.socket, whose port comes from sshd_config through a generator: reload systemd and
+# restart the socket. Runs at the very end, so this run keeps its connection.
+- name: Restart ssh  # noqa: command-instead-of-module - daemon-reload, then ssh.socket only where it is enabled
+  ansible.builtin.shell: |
+    systemctl daemon-reload
+    if systemctl is-enabled -q ssh.socket 2> /dev/null; then systemctl restart ssh.socket; fi
+    systemctl restart ssh
+  become: true
+  changed_when: true

@@ -1,0 +1,33 @@
+# The layout of the private values, read at run time by ansible/vars_plugins/private.py into the variable `private`.
+# Example values only; the real ones are never in this repo. Templates use them as {{ private.<host>.<key> }}, or
+# {{ private_host.<key> }}: this machine's values on top of `all`, the ones every machine shares.
+# In Bitwarden: one item per host, named "dotfiles.<host>" ("dotfiles.piserver"), one custom field per key (name
+# ssh_port, value 2222); a list is the same field name once per element; secrets are hidden fields.
+# `python3 ansible/vars_plugins/private.py import <this layout, your values>` fills it (docs/bitwarden.md).
+# Keys are inventory hosts or groups: a host gets all, then its groups (macs, then mac_personal), then its own.
+all:
+  git_name: Your Name
+mac_personal:                         # every personal Mac, Intel or Apple Silicon
+  git_email: you@example.com
+  apple_id_item: Apple ID             # the Bitwarden login item with your Apple ID (name or id), for Xcode
+  GITHUB_TOKEN: ""                    # UPPER_CASE: exported in ~/.config/dotfiles/secrets.zsh (gh, git, mise use it)
+mac_work:                             # the office Mac
+  git_email: you@company.example
+  apple_id_item: none                 # no Apple ID from Bitwarden here
+piserver:
+  host: piserver.example.lan          # what SSH connects to (ansible_host)
+  user: you                           # ansible_user
+  ssh_port: 2222                      # sshd's port, set by roles/server, and ansible_port
+  lan_ip: 192.168.1.10                # its own address: NextDNS listens there too
+  disk_uuid: 00000000-0000-0000-0000-000000000000   # `lsblk -f` on the server
+  authorized_keys:                    # public keys allowed to log in
+    - ssh-ed25519 AAAA... you@laptop
+  nextdns_forwarders:                 # "domain=ip:port": a zone to your own DNS server
+    - home.example.lan=192.168.1.1:53
+  # secrets (roles/server); empty = that step is skipped and the run says how to do it by hand
+  cloudflared_token: ""               # Cloudflare, Zero Trust, Networks, Tunnels
+  netbird_setup_key: ""               # NetBird, Setup Keys
+  netbird_management_url: ""          # a self-hosted NetBird: https://netbird.example.lan (empty: NetBird's cloud)
+  netbird_admin_url: ""               # its dashboard, if it differs (optional)
+  nextdns_profile: ""                 # my.nextdns.io, the id in the URL
+  samba_password: ""                  # your Samba password, set once

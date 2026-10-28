@@ -1,0 +1,82 @@
+# Written by tools/mycask/manifests.py from ansible/inventory/group_vars/all/packages.yml: every Mac group,
+# as an Intel Mac (mycask). Edit packages.yml and run the script again, not this file.
+adobe-creative-cloud --appdir=~/Applications
+alfred --appdir=~/Applications
+android-file-transfer --appdir=~/Applications
+android-platform-tools --appdir=~/Applications
+balenaetcher --appdir=~/Applications
+bitwarden --appdir=~/Applications
+brave-origin --appdir=~/Applications
+bruno --appdir=~/Applications
+chatgpt --appdir=~/Applications
+claude --appdir=~/Applications
+claude-code
+clop
+codex
+discord --appdir=~/Applications
+easyfind --appdir=~/Applications
+ente-auth --appdir=~/Applications
+figma --appdir=~/Applications
+firefox --appdir=~/Applications
+font-cascadia-code
+font-cascadia-code-pl
+font-caskaydia-cove-nerd-font
+font-fira-code
+font-fira-code-nerd-font
+font-hack-nerd-font
+font-jetbrains-mono-nerd-font
+font-meslo-lg-nerd-font
+font-sauce-code-pro-nerd-font
+font-source-code-pro
+forel
+ghostty
+github-copilot-for-xcode
+gitkraken --appdir=~/Applications
+google-chrome --appdir=~/Applications
+google-drive
+handy
+hp-easy-start
+iina
+iterm2 --appdir=~/Applications
+itsycal --appdir=~/Applications
+jetbrains-toolbox
+kodi
+little-snitch
+localsend --appdir=~/Applications
+macfuse
+macpacker
+macusb
+micro-snitch
+microsoft-auto-update
+microsoft-office
+microsoft-teams
+mole-app
+nordvpn
+notion
+openvpn-connect
+orbstack
+qlmarkdown
+quicklook-video
+readdle-spark
+rustdesk
+setapp
+simpholders
+snagit
+sourcetree
+spotify
+stremio
+surfshark
+suspicious-package
+tailscale-app
+termius
+textream
+tower --appdir=~/Applications
+twingate
+visual-studio-code
+vlc
+vscodium --appdir=~/Applications
+wezterm
+whatsapp@beta
+windscribe
+wordcraft
+zoom

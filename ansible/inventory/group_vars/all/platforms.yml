@@ -1,0 +1,18 @@
+---
+# Which package manager installs what, per platform. The playbook works out a machine's platform:
+#   macos_arm64    Apple Silicon Mac
+#   macos_x86_64   Intel Mac
+#   debian         Debian, Ubuntu, Raspberry Pi OS (Pi 4, arm64), WSL, Hetzner's images: any Debian-family Linux
+#
+#   cli     command-line tools (kind cli, and anything with a mise key):   brew | mise | port
+#   system  libraries, daemons, big tools (kind system / apple):           brew | apt | port
+#   apps    GUI apps, in order of preference:                              cask, mas | flatpak, snap, deb
+#
+# An Intel Mac has no Homebrew (Tier 3 since September 2026, dropped on 1 September 2027). Its command-line tools come
+# from MacPorts (binary archives, `port` in packages.yml) and else from mise (`mise`, `mise_intel`, `mise_fallback`);
+# mise also keeps the language runtimes. Its GUI apps, CLI casks included (claude-code, codex), come from mycask
+# (tools/mycask), which reads Homebrew's cask index without Homebrew.
+platform_managers:
+  macos_arm64: {cli: brew, system: brew, apps: [cask, mas]}
+  macos_x86_64: {cli: port, system: port, apps: [cask, mas]}
+  debian: {cli: mise, system: apt, apps: [flatpak, snap, deb]}

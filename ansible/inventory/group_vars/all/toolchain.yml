@@ -1,0 +1,11 @@
+# Xcode and the iOS simulator runtime installed by xcodes (it asks for your Apple ID).
+#
+# Empty means: the newest release this Mac can run. That differs per machine, an Intel Mac stops at an older
+# Xcode than an Apple Silicon one (Xcode needs a recent macOS and, lately, Apple Silicon). Betas are never picked.
+# The runtime defaults to the one that goes with the Xcode that was chosen.
+#
+# To pin a version for everyone, write it here. To pin it on one machine, put `toolchain` in that machine's
+# host_vars/<host>.yml (both keys), or pass -e xcode_version=26.6 / -e ios_runtime=26.5 for a single run.
+toolchain:
+  xcode_version: ""
+  ios_runtime: ""

@@ -1,0 +1,38 @@
+---
+# Homebrew's or MacPorts' zsh when there is one, else the system's
+- name: Login shell | which zsh
+  ansible.builtin.shell: |
+    for z in {{ '/opt/homebrew/bin/zsh /opt/local/bin/zsh /usr/local/bin/zsh' if dotfiles_os == 'darwin' else '' }} /usr/bin/zsh /bin/zsh; do
+      [ -x "$z" ] && { echo "$z"; exit 0; }
+    done
+    exit 1
+  register: shell_zsh
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+
+- name: Login shell | zsh is not installed
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['login shell: zsh is not installed, left as it is'] }}"
+  when: shell_zsh.rc != 0
+
+- name: Login shell | allow it (chsh only takes shells listed in /etc/shells)
+  ansible.builtin.lineinfile:
+    path: /etc/shells
+    line: "{{ shell_zsh.stdout }}"
+  become: true
+  when: shell_zsh.rc == 0
+
+- name: Login shell | zsh
+  ansible.builtin.user:
+    name: "{{ ansible_facts.user_id }}"
+    shell: "{{ shell_zsh.stdout }}"
+  become: true
+  register: shell_chsh
+  ignore_errors: true
+  when: shell_zsh.rc == 0
+
+- name: Login shell | not changed
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['login shell: could not set ' ~ shell_zsh.stdout] }}"
+  when: shell_chsh is failed

@@ -1,0 +1,97 @@
+---
+# One app from a GitHub release (packages.yml: github, asset, app), installed the way its README says: the release's
+# zip unpacked with ditto (as Finder does; it keeps the signature's extended attributes), the app checked (intact
+# Developer ID signature, accepted by Gatekeeper), then copied into /Applications. Only when the release is newer
+# than the installed copy. What fails is reported and the run goes on.
+- name: "GitHub app | {{ gh_app.name }}: latest release of {{ gh_app.github }}"
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/{{ gh_app.github }}/releases/latest"
+    headers:
+      Accept: application/vnd.github+json
+  register: gh_release
+  check_mode: false   # only looks, so --check shows what would be installed
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: gh_release is succeeded
+  ignore_errors: true
+
+- name: "GitHub app | {{ gh_app.name }}: installed version"
+  ansible.builtin.command: defaults read "/Applications/{{ gh_app.app }}/Contents/Info.plist" CFBundleShortVersionString
+  register: gh_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "GitHub app | {{ gh_app.name }}: the release and its asset"
+  ansible.builtin.set_fact:
+    gh_version: "{{ gh_release.json.tag_name | regex_replace('^v', '') }}"
+    gh_asset: "{{ gh_release.json.assets | selectattr('name', 'search', gh_app.asset) | first | default({}) }}"
+  when: gh_release is succeeded
+
+- name: "GitHub app | {{ gh_app.name }}: no release or no asset matching {{ gh_app.asset }}"
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['GitHub app: ' ~ gh_app.name ~ ' (no release asset)'] }}"
+  when: gh_release is failed or gh_asset.browser_download_url is not defined
+
+- name: "GitHub app | {{ gh_app.name }} {{ gh_version | default('') }}"
+  when:
+    - gh_release is succeeded
+    - gh_asset.browser_download_url is defined
+    - gh_installed.rc != 0 or gh_installed.stdout | trim is version(gh_version, '<')
+  block:
+    - name: "GitHub app | {{ gh_app.name }}: temp directory"
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: "-{{ gh_app.name }}"
+      register: gh_tmp
+
+    - name: "GitHub app | {{ gh_app.name }}: download {{ gh_asset.name }}"
+      ansible.builtin.get_url:
+        url: "{{ gh_asset.browser_download_url }}"
+        dest: "{{ gh_tmp.path }}/{{ gh_asset.name }}"
+        mode: "0600"
+      register: gh_download
+      retries: "{{ install_retries | int - 1 }}"
+      delay: "{{ install_delay }}"
+      until: gh_download is succeeded
+
+    - name: "GitHub app | {{ gh_app.name }}: unpack"
+      ansible.builtin.command: ditto -x -k "{{ gh_tmp.path }}/{{ gh_asset.name }}" "{{ gh_tmp.path }}/unpacked"
+      changed_when: true
+
+    - name: "GitHub app | {{ gh_app.name }}: signature intact and from a Developer ID"
+      ansible.builtin.command: codesign --verify --deep --strict --verbose=2 "{{ gh_tmp.path }}/unpacked/{{ gh_app.app }}"
+      changed_when: false
+
+    - name: "GitHub app | {{ gh_app.name }}: signed by"
+      ansible.builtin.command: codesign --display --verbose=2 "{{ gh_tmp.path }}/unpacked/{{ gh_app.app }}"
+      register: gh_signer
+      changed_when: false
+      failed_when: "'Authority=Developer ID Application' not in gh_signer.stderr"
+
+    - name: "GitHub app | {{ gh_app.name }}: accepted by Gatekeeper"
+      ansible.builtin.command: spctl --assess --type execute --verbose "{{ gh_tmp.path }}/unpacked/{{ gh_app.app }}"
+      changed_when: false
+
+    - name: "GitHub app | {{ gh_app.name }}: quit it if it is running"
+      ansible.builtin.command: osascript -e 'quit app "{{ gh_app.app | regex_replace('\.app$', '') }}"'
+      changed_when: false
+      failed_when: false
+      when: gh_installed.rc == 0
+
+    - name: "GitHub app | {{ gh_app.name }}: into /Applications"
+      ansible.builtin.shell: |
+        set -e
+        rm -rf "/Applications/{{ gh_app.app }}"
+        ditto "{{ gh_tmp.path }}/unpacked/{{ gh_app.app }}" "/Applications/{{ gh_app.app }}"
+      changed_when: true
+  rescue:
+    - name: "GitHub app | {{ gh_app.name }} did not install"
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['GitHub app: ' ~ gh_app.name] }}"
+  always:
+    - name: "GitHub app | {{ gh_app.name }}: remove the download"
+      ansible.builtin.file:
+        path: "{{ gh_tmp.path }}"
+        state: absent
+      when: gh_tmp.path is defined

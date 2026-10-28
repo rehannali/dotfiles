@@ -1,0 +1,47 @@
+---
+# Homebrew 6 loads nothing from a tap that is not trusted (docs.brew.sh/Tap-Trust): installing from it, or a cask that
+# depends on another formula of the same tap, fails. So each tap is trusted as a whole right after it is tapped, before
+# anything is installed from it (the taps come before the formulae and casks).
+- name: "Tap | {{ tap.name }}"
+  ansible.builtin.command: brew tap {{ tap.name }}
+  register: tap_result
+  changed_when: "'Tapped' in tap_result.stderr"
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: tap_result is succeeded
+  ignore_errors: true
+
+- name: "Tap | {{ tap.name }} could not be added"
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['tap ' ~ tap.name ~ ': cannot be cloned'] }}"
+  when: tap_result is failed
+
+- name: "Tap | does this Homebrew know trust"
+  ansible.builtin.command: brew trust --help
+  register: brew_trust_help
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: tap_result is succeeded
+
+- name: "Tap | what this Homebrew trusts already"
+  ansible.builtin.command: brew trust --json=v1
+  register: brew_trusted
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: tap_result is succeeded and brew_trust_help.rc == 0
+
+- name: "Tap | trust {{ tap.name }}"
+  ansible.builtin.command: brew trust --tap {{ tap.name }}
+  register: trust_result
+  changed_when: true
+  ignore_errors: true
+  when: >-
+    tap_result is succeeded and brew_trust_help.rc == 0
+    and tap.name not in (brew_trusted.stdout | default('{}', true) | from_json).taps | default([])
+
+- name: "Tap | {{ tap.name }} could not be trusted"
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['tap ' ~ tap.name ~ ': cannot be trusted, nothing from it installs'] }}"
+  when: trust_result is failed

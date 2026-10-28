@@ -1,0 +1,83 @@
+[[ -f "$HOME/.zsh/functions.zsh" ]] && source "$HOME/.zsh/functions.zsh"
+
+# Keep PATH free of duplicates, so prepending an entry again simply moves it to the front.
+typeset -U path PATH
+
+export ZSH="$HOME/.oh-my-zsh"
+export LANG={{ settings.locale }}
+export SPACESHIP_CONFIG="$HOME/.config/spaceship/spaceship.zsh"
+
+{% if dotfiles_os == 'darwin' %}
+export HOMEBREW_NO_ANALYTICS=1
+{% if dotfiles_arch == 'arm64' %}
+# Apple Silicon (Tier 1): Homebrew lives in /opt/homebrew
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+{% else %}
+# Intel: no Homebrew. Command-line tools from MacPorts (and mise, whose shims come first below); apps from mycask
+export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+export MANPATH="/opt/local/share/man:$MANPATH"
+{% endif %}
+
+if chrome_path=$(locate_chrome); then
+  export CHROME_EXECUTABLE="$chrome_path"
+fi
+{% endif %}
+
+{% if dotfiles_os == 'linux' %}
+# Ubuntu's /etc/zsh/zshrc runs compinit itself; zsh-autocomplete (and Oh My Zsh) want to be the only ones that do
+skip_global_compinit=1
+
+{% endif %}
+export PATH="$HOME/fvm/default/bin:$PATH"
+# mise itself, and its shims: IDEs and non-interactive shells (Xcode build phases, Android Studio,
+# cron) never run `mise activate`, but they do read this file, so they still find every runtime.
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+
+{% set bw_agent = settings.shell.bitwarden_ssh_agent | default('auto') %}
+{% set bw_sockets = {
+  'appstore': '$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock',
+  'dmg': '$HOME/.bitwarden-ssh-agent.sock',
+  'linux': '$HOME/.bitwarden-ssh-agent.sock',
+  'snap': '$HOME/snap/bitwarden/current/.bitwarden-ssh-agent.sock',
+  'flatpak': '$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock'} %}
+{% if bw_agent != 'off' %}
+# Bitwarden's SSH agent (docs/bitwarden.md): ssh and git use the keys in the vault. Not inside an SSH session, where the
+# forwarded agent is the one to use. The socket exists while Bitwarden runs with its SSH agent switched on.
+if [[ -z "$SSH_CONNECTION" ]]; then
+{% if bw_agent == 'auto' and dotfiles_os == 'darwin' %}
+  for _bw_app in /Applications/Bitwarden.app "$HOME/Applications/Bitwarden.app"; do
+    if [[ -d "$_bw_app/Contents/_MASReceipt" ]]; then   # App Store: sandboxed, the socket is in its container
+      export SSH_AUTH_SOCK="{{ bw_sockets.appstore }}"
+      break
+    elif [[ -d "$_bw_app" ]]; then   # dmg or cask
+      export SSH_AUTH_SOCK="{{ bw_sockets.dmg }}"
+      break
+    fi
+  done
+  unset _bw_app
+{% elif bw_agent == 'auto' and dotfiles_os == 'linux' %}
+  if [[ -d "$HOME/.var/app/com.bitwarden.desktop" ]]; then   # Flatpak
+    export SSH_AUTH_SOCK="{{ bw_sockets.flatpak }}"
+  elif [[ -d "$HOME/snap/bitwarden" ]]; then   # Snap
+    export SSH_AUTH_SOCK="{{ bw_sockets.snap }}"
+  elif [[ -d /opt/Bitwarden || -S "$HOME/.bitwarden-ssh-agent.sock" ]]; then   # deb, rpm, AppImage
+    export SSH_AUTH_SOCK="{{ bw_sockets.linux }}"
+  fi
+{% elif bw_agent != 'auto' %}
+  export SSH_AUTH_SOCK="{{ bw_sockets[bw_agent] | mandatory('shell.bitwarden_ssh_agent must be auto, off, appstore, dmg, linux, snap or flatpak') }}"
+{% endif %}
+fi
+
+{% endif %}
+# Your environment variables and tokens: the Bitwarden fields named like variables (GITHUB_TOKEN), else
+# ~/.config/dotfiles/env, else the environment of the run (docs/bitwarden.md). Here, not in .zshrc, so every zsh has
+# them: terminals, scripts, IDEs, cron. Written by Ansible, mode 600.
+[[ -f "$HOME/.config/dotfiles/secrets.zsh" ]] && source "$HOME/.config/dotfiles/secrets.zsh"
+
+# settings.shell.env and settings.shell.path (docs/configuration.md)
+{% for name, value in settings.shell.env.items() if name not in (dotfiles_secret_values | default({})) %}
+export {{ name }}={{ value | string | to_json }}
+{% endfor %}
+{% for dir in settings.shell.path | reverse %}
+export PATH={{ dir | to_json }}:"$PATH"
+{% endfor %}

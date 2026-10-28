@@ -1,0 +1,48 @@
+---
+# Things installed with the runtimes mise put in place: global npm packages (mise's node) and Flutter through fvm.
+# Ruby gems are mise tools (gem: backend) since October 2026. One at a time with retries; what still fails is reported.
+- name: Dev | PATH with mise's tools
+  ansible.builtin.set_fact:
+    dev_env:
+      PATH: >-
+        {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:{{
+        ansible_facts.env.PATH }}
+
+# Ruby gems are mise tools (gem: backend, roles/mise); a missing one is reported there
+- name: Dev | gems without mise's Ruby
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['gems (' ~ (selected.gems | join(', ')) ~ '): need the runtimes bundle (mise Ruby)'] }}"
+  when: selected.gems | length > 0 and 'ruby' not in selected.runtimes
+
+- name: Dev | global npm packages already there
+  ansible.builtin.command: "{{ dev_mise }} exec node -- npm ls -g --depth=0 --json"
+  environment: "{{ dev_env }}"
+  register: dev_npm_ls
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+  when: selected.npm | length > 0 and 'node' in selected.runtimes
+
+- name: Dev | global npm packages
+  ansible.builtin.command: "{{ dev_mise }} exec node -- npm install -g {{ item }}"
+  environment: "{{ dev_env }}"
+  loop: "{{ selected.npm if 'node' in selected.runtimes else [] }}"
+  register: dev_npm
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: dev_npm is succeeded
+  ignore_errors: true
+  changed_when: true
+  when: item not in (((dev_npm_ls.stdout | default('', true)) or '{}') | from_json).dependencies | default({})
+
+- name: Dev | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + [item.0 ~ ': ' ~ item.1.item] }}"
+  loop: >-
+    {{ (['npm'] | product(dev_npm.results | default([])) | list) | selectattr('1.failed', 'defined') | selectattr('1.failed') | list }}
+  loop_control:
+    label: "{{ item.0 }} {{ item.1.item }}"
+
+- name: Dev | Flutter
+  ansible.builtin.include_tasks: flutter.yml
+  when: install_flutter | bool and gui_apps | bool and settings.flutter.version | length > 0

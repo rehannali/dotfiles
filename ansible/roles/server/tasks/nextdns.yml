@@ -1,0 +1,52 @@
+---
+# NextDNS's CLI as this machine's DNS resolver (a DNS53 to DoH proxy): /etc/nextdns.conf from server.nextdns, the
+# profile id from the secrets. Without a profile id it is installed but not set up (reported).
+- name: NextDNS | NextDNS's apt repository and the CLI
+  ansible.builtin.include_tasks: apt_repo.yml
+  vars:
+    repo:
+      name: nextdns
+      key_url: https://repo.nextdns.io/nextdns.gpg
+      key_file: nextdns.gpg
+      uris: https://repo.nextdns.io/deb
+      suites: stable
+      components: main
+      packages: [nextdns]
+
+- name: NextDNS | no profile id
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: NextDNS is installed but not set up: nextdns_profile in the private values '
+         ~ '(Bitwarden item "dotfiles.<host>") or SERVER_NEXTDNS_PROFILE, then run again'] }}
+  when: not server_secrets.nextdns_profile
+
+- name: NextDNS | /etc/nextdns.conf
+  ansible.builtin.copy:
+    dest: /etc/nextdns.conf
+    mode: "0644"
+    content: |
+      profile {{ server_secrets.nextdns_profile }}
+      {% for addr in server_cfg.nextdns.listen | default(['localhost:53']) %}
+      listen {{ addr }}
+      {% endfor %}
+      {% for fwd in server_cfg.nextdns.forwarders | default([]) %}
+      forwarder {{ fwd }}
+      {% endfor %}
+      {% for key, value in server_cfg.nextdns.items() if key not in ['listen', 'forwarders'] %}
+      {{ key }} {{ (value | string | lower) if value is boolean else value }}
+      {% endfor %}
+  become: true
+  no_log: true
+  register: nextdns_conf
+  when: server_secrets.nextdns_profile | length > 0
+
+# `nextdns install` writes and starts its service (it is safe to run again); restart when the config changed
+- name: NextDNS | the service
+  ansible.builtin.shell: |
+    set -eu
+    if [ ! -e /etc/systemd/system/nextdns.service ]; then nextdns install; echo installed; fi
+    {% if nextdns_conf is changed %}nextdns restart; echo restarted{% endif %}
+  become: true
+  register: nextdns_service
+  changed_when: nextdns_service.stdout | length > 0
+  when: server_secrets.nextdns_profile | length > 0 and not ansible_check_mode

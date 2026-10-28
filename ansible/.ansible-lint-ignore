@@ -1,0 +1,2 @@
+# one entry per line in the package list reads best, comments included
+inventory/group_vars/all/packages.yml yaml[line-length]

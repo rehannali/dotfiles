@@ -1,0 +1,57 @@
+---
+# Linux desktops: apps in neither Flathub nor the Snap Store, from their vendor's own apt repository (`deb` in
+# packages.yml): its signing key into /usr/share/keyrings, its deb822 .sources file into /etc/apt/sources.list.d,
+# then the package. Brave Origin, for example. With upgrade_on_apply the package is kept at the newest version.
+- name: Vendor apt repositories | signing keys
+  ansible.builtin.get_url:
+    url: "{{ item.deb.keyring }}"
+    dest: "/usr/share/keyrings/{{ item.deb.keyring | basename }}"
+    mode: "0644"
+  loop: "{{ deb_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  register: deb_keys
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: deb_keys is succeeded
+  ignore_errors: true
+
+- name: Vendor apt repositories | sources
+  ansible.builtin.get_url:
+    url: "{{ item.deb.sources }}"
+    dest: "/etc/apt/sources.list.d/{{ item.deb.package }}.sources"
+    mode: "0644"
+  loop: "{{ deb_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  register: deb_sources
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: deb_sources is succeeded
+  ignore_errors: true
+
+- name: Vendor apt repositories | the apps
+  ansible.builtin.apt:
+    name: "{{ item.deb.package }}"
+    state: "{{ 'latest' if (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) else 'present' }}"
+    update_cache: true
+  loop: "{{ deb_apps }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.deb.package }})"
+  become: true
+  register: deb_result
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: deb_result is succeeded
+  ignore_errors: true
+
+- name: Vendor apt repositories | record what did not install
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['deb: ' ~ item.item.name ~ ' (' ~ item.item.deb.package ~ ')'] }}"
+  loop: >-
+    {{ ((deb_keys.results | default([])) + (deb_sources.results | default([])) + (deb_result.results | default([])))
+       | selectattr('failed', 'defined') | selectattr('failed') | list }}
+  loop_control:
+    label: "{{ item.item.name }}"

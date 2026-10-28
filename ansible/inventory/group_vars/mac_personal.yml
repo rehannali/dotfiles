@@ -1,0 +1,3 @@
+---
+# Personal Macs: everything.
+bundles: [core, runtimes, dev, media, network, web, mac_dev, fonts, apps_dev, apps_productivity, apps_network, apps_personal]

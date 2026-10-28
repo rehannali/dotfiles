@@ -1,0 +1,118 @@
+---
+# Intel Mac, without Homebrew: its GUI apps, and the command-line tools that ship as casks (claude-code, codex), come
+# from mycask (tools/mycask). It reads Homebrew's cask index itself (refreshed once a day) and installs, upgrades,
+# uninstalls and zaps casks the way Homebrew does. Command-line tools are MacPorts and mise (ports.yml, roles/mise).
+#
+#   ansible-playbook site.yml -l <mac> -e mycask_adopt=true   first run after Homebrew: take over the apps in place
+- name: Intel | mycask and this Mac's casks
+  ansible.builtin.set_fact:
+    mycask_py: "{{ dotfiles_dir }}/tools/mycask/mycask.py"
+    mycask_conf: "{{ ansible_facts.env.HOME }}/.config/mycask"
+    mycask_casks_wanted: >-
+      {{ apps_wanted | selectattr('cask', 'defined') | rejectattr('arch', 'defined') | list
+         + (apps_wanted | selectattr('cask', 'defined') | selectattr('arch', 'defined')
+            | selectattr('arch', 'equalto', dotfiles_arch) | list) }}
+
+- name: Intel | the cask lines (with --appdir for the appdir ones)
+  ansible.builtin.set_fact:
+    mycask_cask_lines: >-
+      {{ mycask_casks_wanted | mycask_casks(settings.macos.cask_appdir | replace('~', ansible_facts.env.HOME)) }}
+
+- name: Intel | what mycask can't install (it reads homebrew/cask only, no taps)
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['mycask (Intel): taps are not supported, skipped: '
+         ~ (mycask_casks_wanted | mycask_unsupported | join(', '))] }}
+  when: install_casks | bool and gui_apps | bool and mycask_casks_wanted | mycask_unsupported | length > 0
+
+- name: Intel | python3 (from the Command Line Tools; mycask needs nothing else)
+  ansible.builtin.command: /usr/bin/python3 --version
+  register: intel_python
+  changed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+  failed_when: false
+
+- name: Intel | no python3
+  ansible.builtin.fail:
+    msg: /usr/bin/python3 does not run; install the Command Line Tools (xcode-select --install, bootstrap.sh does it)
+  when: intel_python.rc != 0
+
+- name: Intel | ~/.local/bin and ~/.config/mycask
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ ansible_facts.env.HOME }}/.local/bin"
+    - "{{ mycask_conf }}"
+
+- name: Intel | mycask command (~/.local/bin/mycask)
+  ansible.builtin.file:
+    src: "{{ mycask_py }}"
+    dest: "{{ ansible_facts.env.HOME }}/.local/bin/mycask"
+    state: link
+    force: true
+
+- name: Intel | mycask's list, from packages.yml
+  ansible.builtin.copy:
+    dest: "{{ mycask_conf }}/casks.txt"
+    mode: "0644"
+    content: "# Written by Ansible (roles/packages) from packages.yml. Edit that, not this file.\n{{ mycask_cask_lines | join('\n') }}\n"
+
+# Files of the bottle era (mycask installed command-line tools until October 2026)
+- name: Intel | lists mycask no longer reads
+  ansible.builtin.file:
+    path: "{{ mycask_conf }}/{{ item }}"
+    state: absent
+  loop: [formulae.txt, cli-map.json]
+
+- name: Intel | apps (mycask bundle casks.txt)
+  when: gui_apps | bool and install_casks | bool
+  block:
+    - name: Intel | casks not installed yet (check mode)
+      ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} list
+      register: intel_cask_list
+      changed_when: false
+      check_mode: false   # only looks, so --check shows what would be installed
+      failed_when: false
+      when: ansible_check_mode
+
+    - name: Intel | casks mycask would install
+      ansible.builtin.debug:
+        msg: >-
+          {{ mycask_cask_lines | map('split') | map('first')
+             | reject('in', intel_cask_list.stdout_lines | default([]) | map('split') | map('first') | list) | list }}
+      when: ansible_check_mode
+
+    - name: Intel | install the casks{{ ' (taking over apps already in place)' if mycask_adopt | bool else '' }}
+      ansible.builtin.command: >-
+        /usr/bin/python3 -I {{ mycask_py | quote }} bundle {{ '--adopt' if mycask_adopt | bool else '' }}
+        {{ (mycask_conf ~ '/casks.txt') | quote }}
+      register: intel_casks
+      changed_when: intel_casks.stdout is search('(?m) installed$')
+      failed_when: intel_casks.rc != 0
+      ignore_errors: true
+
+    - name: Intel | record casks that did not install
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['mycask casks: ' ~ (intel_casks.stderr_lines | select('match', '^Error: ')
+             | map('regex_replace', '^Error: ', '') | join('; ') | default('failed', true))] }}
+      when: intel_casks is failed
+
+    # every run with upgrade_on_apply (or --tags upgrade): casks with a newer version. A cask whose new version
+    # dropped Intel or needs a newer macOS is kept at its version (mycask checks the app before it replaces it).
+    - name: Intel | upgrade the casks (mycask upgrade)
+      ansible.builtin.command: /usr/bin/python3 -I {{ mycask_py | quote }} upgrade
+      register: intel_cask_upgrade
+      changed_when: intel_cask_upgrade.stdout is search('(?m)^==> Upgrading ')
+      failed_when: intel_cask_upgrade.rc != 0
+      ignore_errors: true
+      when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
+
+    - name: Intel | record upgrades that failed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['mycask upgrade: ' ~ (intel_cask_upgrade.stderr_lines | select('match', '^Error: ')
+             | join('; ') | default('failed', true))] }}
+      when: intel_cask_upgrade is failed

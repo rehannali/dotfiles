@@ -1,6 +1,0 @@
-{{- if eq .chezmoi.os "windows" -}}
-# winget list hash: {{ .packages.windows.winget | toJson | sha256sum }}
-{{ range .packages.windows.winget -}}
-winget install --id {{ . }} -e --silent --accept-package-agreements --accept-source-agreements
-{{ end -}}
-{{ end -}}

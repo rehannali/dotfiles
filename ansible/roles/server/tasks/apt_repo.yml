@@ -1,0 +1,38 @@
+---
+# A vendor's apt repository (repo: name, key_url, key_file, uris, suites, components, packages): its signing key in
+# /etc/apt/keyrings (key_file .asc = armored, .gpg = binary, as apt expects), a deb822 .sources file, then the
+# packages, kept at the newest version on runs that upgrade.
+- name: "{{ repo.name }} | signing key"
+  ansible.builtin.get_url:
+    url: "{{ repo.key_url }}"
+    dest: "/etc/apt/keyrings/{{ repo.key_file }}"
+    mode: "0644"
+  become: true
+  register: repo_key
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: repo_key is succeeded
+
+- name: "{{ repo.name }} | apt source"
+  ansible.builtin.copy:
+    dest: "/etc/apt/sources.list.d/{{ repo.name }}.sources"
+    mode: "0644"
+    content: |
+      # Written by the dotfiles (roles/server)
+      Types: deb
+      URIs: {{ repo.uris }}
+      Suites: {{ repo.suites }}
+      Components: {{ repo.components }}
+      Signed-By: /etc/apt/keyrings/{{ repo.key_file }}
+  become: true
+
+- name: "{{ repo.name }} | packages"
+  ansible.builtin.apt:
+    name: "{{ repo.packages }}"
+    state: "{{ 'latest' if (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) else 'present' }}"
+    update_cache: true
+  become: true
+  register: repo_packages
+  retries: "{{ install_retries | int - 1 }}"
+  delay: "{{ install_delay }}"
+  until: repo_packages is succeeded

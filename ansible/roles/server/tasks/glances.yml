@@ -1,0 +1,49 @@
+---
+# Glances' web dashboard (http://<server>:61208), with pipx in your home, as a service that runs as you
+- name: Glances | pipx
+  ansible.builtin.apt:
+    name: pipx
+    state: present
+  become: true
+
+# pipx itself, not community.general.pipx: that module needs pipx 1.7, Ubuntu 24.04 ships 1.4
+- name: Glances | glances[web]
+  ansible.builtin.command: pipx install "glances[web]"
+  args:
+    creates: "{{ ansible_facts.env.HOME }}/.local/bin/glances"
+
+- name: Glances | newest version
+  ansible.builtin.command: pipx upgrade glances
+  register: glances_upgrade
+  changed_when: glances_upgrade.stdout is search('upgraded')
+  when: (upgrade_on_apply | bool or 'upgrade' in ansible_run_tags) and not ansible_check_mode
+
+- name: Glances | the service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/glances.service
+    mode: "0644"
+    content: |
+      # Written by the dotfiles (roles/server)
+      [Unit]
+      Description=Glances web dashboard
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User={{ ansible_facts.user_id }}
+      ExecStart={{ ansible_facts.env.HOME }}/.local/bin/glances -w -p 61208
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+  notify: Restart glances
+
+- name: Glances | started at boot
+  ansible.builtin.systemd_service:
+    name: glances
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: not ansible_check_mode

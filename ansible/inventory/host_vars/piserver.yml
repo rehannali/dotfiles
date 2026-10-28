@@ -1,0 +1,47 @@
+---
+# piserver: the Raspberry Pi 4 homelab server (Ubuntu Server, arm64), as its old install was set up (Oct 2026).
+# Its 2 TB disk holds Docker and every service; it is also the network's NextDNS resolver and a Samba share.
+# Personal and secret values are not in this public repo: `private.piserver.*` comes from the Bitwarden item
+# "dotfiles.piserver" at run time (docs/bitwarden.md, "Private values"; the layout is in ansible/private.example.yml).
+# Set up from the laptop: ansible-playbook site.yml -l piserver -K   (docs/setup-guide.md, "A server with disks and Docker")
+# A freshly flashed OS still has SSH on port 22: the first run takes -e ansible_port=22, and moves SSH to the private port.
+server:
+  swap_size: 2G
+  ssh:
+    port: "{{ private.piserver.ssh_port }}"
+    password_authentication: true   # as before; false once your key works (ssh-copy-id)
+  authorized_keys: "{{ [private.piserver.authorized_keys] | flatten }}"   # one Bitwarden field per key
+  mounts:
+    - path: /mnt/kingston2tb
+      src: "UUID={{ private.piserver.disk_uuid }}"   # the disk keeps its UUID when the SD card is reflashed
+      fstype: ext4
+      opts: defaults,nofail,errors=remount-ro,x-systemd.device-timeout=30s
+  docker:
+    data_root: /mnt/kingston2tb/docker
+    containerd_root: /mnt/kingston2tb/containerd
+    services_dir: /mnt/kingston2tb/docker-services
+    log_opts:   # daemon.json of the old install
+      max-size: 20m
+      max-file: "10"
+      compress: "true"
+      mode: non-blocking
+      cache-max-size: 8m
+  cloudflared: true
+  netbird: true
+  speedtest: true
+  nextdns:   # /etc/nextdns.conf of the old install; the profile id is a secret
+    listen: ["localhost:53", "{{ private.piserver.lan_ip }}:53"]
+    forwarders: "{{ [private.piserver.nextdns_forwarders | default([])] | flatten }}"
+    report-client-info: true
+    cache-size: 10MB
+    max-ttl: 5s
+    use-hosts: true
+    mdns: all
+    bogus-priv: true
+    max-inflight-requests: 256
+    auto-activate: true
+    timeout: 5s
+  samba:
+    shares:
+      - {name: PiNAS, path: /mnt/kingston2tb, comment: PiNAS}
+  glances: true

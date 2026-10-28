@@ -1,0 +1,179 @@
+---
+# Docker Engine from Docker's apt repository, with its data on the server's disk: Docker's data-root, and containerd's
+# root (where images and containers live with the containerd image store, the default since Docker 29; data-root alone
+# would leave them on the system disk). json-file logs with a size and file limit per container. Docker and
+# containerd wait for the disk at boot. If that disk is not mounted, the Docker config is not touched (a new install
+# keeps the package defaults, an existing one its config) and it is reported: nothing is ever written under an empty
+# mount point, and a running server is never switched to empty folders on the system disk.
+- name: Docker | the configured folders
+  ansible.builtin.set_fact:
+    docker_paths: "{{ [server_docker.data_root, server_docker.containerd_root, server_docker.services_dir] | select | list }}"
+
+- name: Docker | the disks they are on (a configured mount point they are at or under)
+  ansible.builtin.set_fact:
+    docker_disks: >-
+      {%- set out = [] -%}
+      {%- for m in server_cfg.mounts | map(attribute='path') -%}
+      {%- for p in docker_paths if (p == m or p.startswith(m ~ '/')) and m not in out -%}
+      {%- set _ = out.append(m) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Docker | is the disk mounted?
+  ansible.builtin.command: mountpoint -q {{ item | quote }}
+  loop: "{{ docker_disks }}"
+  register: docker_disk_check
+  changed_when: false
+  failed_when: false
+  check_mode: false   # only looks, so it runs in --check too
+
+- name: Docker | where its data goes
+  ansible.builtin.set_fact:
+    docker_disk_ok: "{{ docker_disk_check.results | default([]) | rejectattr('rc', 'equalto', 0) | list | length == 0 }}"
+
+- name: Docker | the disk is not mounted, its config is left alone
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: ' ~ (docker_disks | join(', ')) ~ ' not mounted, so the Docker config '
+         ~ 'was not written; mount the disk and run again'] }}
+  when: not docker_disk_ok | bool
+
+- name: Docker | its folders
+  ansible.builtin.set_fact:
+    docker_data_root: "{{ server_docker.data_root }}"
+    docker_containerd_root: "{{ server_docker.containerd_root }}"
+
+- name: Docker | config folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [/etc/docker, /etc/containerd, /etc/systemd/system/docker.service.d, /etc/systemd/system/containerd.service.d]
+  become: true
+
+# the modes Docker (0710) and containerd (0711) set themselves, so a run never fights them
+- name: Docker | data folders on the disk
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ docker_data_root }}", mode: "0710"}
+    - {path: "{{ docker_containerd_root }}", mode: "0711"}
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+  when: docker_disk_ok | bool
+
+- name: Docker | the services folder (one folder per service), yours
+  ansible.builtin.file:
+    path: "{{ server_docker.services_dir }}"
+    state: directory
+    owner: "{{ ansible_facts.user_id }}"
+    mode: "0755"
+  become: true
+  when: server_docker.services_dir | length > 0 and docker_disk_ok | bool
+
+# before the packages, so the first start already uses them (apt keeps a config file that is already there)
+- name: Docker | daemon.json (data-root, log size per container)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+    content: "{{ docker_daemon | to_nice_json }}\n"
+  vars:
+    docker_daemon:
+      data-root: "{{ docker_data_root }}"
+      log-driver: json-file
+      log-opts: "{{ server_docker.log_opts }}"
+  become: true
+  when: docker_disk_ok | bool
+  notify: Restart docker
+
+- name: Docker | containerd's root on the disk
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    mode: "0644"
+    content: |
+      # Written by the dotfiles (roles/server): images and containers on the server's disk.
+      # containerd 2.x format (version 3); Docker needs no CRI (that is for Kubernetes).
+      version = 3
+      root = "{{ docker_containerd_root }}"
+      disabled_plugins = ["io.containerd.grpc.v1.cri"]
+  become: true
+  when: docker_disk_ok | bool
+  notify: [Restart containerd, Restart docker]
+
+- name: Docker | wait for the disk at boot
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service.d/disk.conf"
+    mode: "0644"
+    content: |
+      # Written by the dotfiles (roles/server): start only once the disk with the data is mounted
+      [Unit]
+      RequiresMountsFor={{ docker_disks | join(' ') }}
+  loop: [containerd, docker]
+  become: true
+  when: docker_disk_ok | bool and docker_disks | length > 0
+  notify: [Reload systemd, Restart containerd, Restart docker]
+
+- name: Docker | Docker's apt repository and Docker Engine
+  ansible.builtin.include_tasks: apt_repo.yml
+  vars:
+    repo:
+      name: docker
+      key_url: "https://download.docker.com/linux/{{ docker_distro }}/gpg"
+      key_file: docker.asc
+      uris: "https://download.docker.com/linux/{{ docker_distro }}"
+      suites: "{{ ansible_facts.distribution_release }}"
+      components: stable
+      packages: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    docker_distro: "{{ 'ubuntu' if ansible_facts.distribution == 'Ubuntu' else 'debian' }}"
+
+# the new config takes effect now, not at the end of the run, so the check below sees it
+- name: Docker | apply the config now (restart if it changed)
+  ansible.builtin.meta: flush_handlers
+
+- name: Docker | running, and started at boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: [containerd, docker]
+  become: true
+  register: docker_started
+  ignore_errors: true
+  when: not ansible_check_mode
+
+# a config containerd or Docker rejects keeps them restarting; this is where that shows
+- name: Docker | answers, with its data where it should be
+  ansible.builtin.command: docker info --format '{{ '{{' }}.DockerRootDir{{ '}}' }}'
+  become: true
+  register: docker_info
+  changed_when: false
+  failed_when: false
+  retries: 6
+  delay: 5
+  until: docker_info.rc == 0
+  when: not ansible_check_mode
+
+- name: Docker | does not run
+  ansible.builtin.set_fact:
+    install_failures: >-
+      {{ install_failures | default([]) + ['server: Docker does not answer (journalctl -u containerd -u docker on the server): '
+         ~ (docker_info.stderr | default('') | truncate(120))] }}
+  when: not ansible_check_mode and docker_info.rc | default(1) != 0
+
+- name: Docker | data in the wrong place
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['server: Docker keeps its data in ' ~ docker_info.stdout ~ ', not ' ~ docker_data_root] }}"
+  when: >-
+    not ansible_check_mode and docker_disk_ok | bool and docker_info.rc | default(1) == 0
+    and docker_info.stdout | trim != docker_data_root
+
+- name: Docker | you may use docker without sudo (next login)
+  ansible.builtin.user:
+    name: "{{ ansible_facts.user_id }}"
+    groups: docker
+    append: true
+  become: true

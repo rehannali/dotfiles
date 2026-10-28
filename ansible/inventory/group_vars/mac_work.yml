@@ -1,0 +1,5 @@
+---
+# Office / work Macs: the command-line and development setup and the work apps; no personal apps, no App Store.
+# git_email: you@company.com
+bundles: [core, runtimes, dev, mac_dev, fonts, apps_dev, apps_productivity]
+install_app_store: false

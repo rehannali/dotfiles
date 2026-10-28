@@ -1,0 +1,45 @@
+---
+# sshd: the port and whether passwords are accepted, in a drop-in that comes before cloud-init's 50-cloud-init.conf
+# (sshd takes the first value it reads). Applied by a handler at the very end of the run, so the run keeps its
+# connection; the next run connects on the new port (ansible_port). Then the public keys allowed to log in as you.
+- name: SSH | the server (Ubuntu Server has it; a minimal install may not)
+  ansible.builtin.apt:
+    name: openssh-server
+    state: present
+  become: true
+  when: server_cfg.ssh | length > 0
+
+# sshd -t (the check below) needs it; it only appears once sshd has run
+- name: SSH | sshd's run directory
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    mode: "0755"
+  become: true
+  when: server_cfg.ssh | length > 0
+
+- name: SSH | settings
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-dotfiles.conf
+    mode: "0644"
+    content: |
+      # Written by the dotfiles (roles/server)
+      {% if server_cfg.ssh.port is defined %}
+      Port {{ server_cfg.ssh.port }}
+      {% endif %}
+      {% if server_cfg.ssh.password_authentication is defined %}
+      PasswordAuthentication {{ 'yes' if server_cfg.ssh.password_authentication | bool else 'no' }}
+      {% endif %}
+    validate: /usr/sbin/sshd -t -f %s
+  become: true
+  notify: Restart ssh
+  when: server_cfg.ssh | length > 0
+
+- name: SSH | public keys allowed to log in
+  ansible.posix.authorized_key:
+    user: "{{ ansible_facts.user_id }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ server_cfg.authorized_keys }}"
+  loop_control:
+    label: "{{ item.split()[-1] }}"

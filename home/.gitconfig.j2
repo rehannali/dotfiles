@@ -1,0 +1,48 @@
+{% set git = settings.git %}
+[user]
+	name = {{ git_name | to_json }}
+	email = {{ git_email | to_json }}
+	signingKey = {{ git.signing_key }}
+[core]
+	excludesfile = {{ ansible_facts.env.HOME }}/.gitignore_global
+	# commit-msg drops AI co-author trailers; every hook also runs the repository's own one (see the hooks)
+	hooksPath = {{ ansible_facts.env.HOME }}/.config/git/hooks
+[difftool "sourcetree"]
+	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
+	path =
+[mergetool "sourcetree"]
+	cmd = ~/Applications/Sourcetree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[commit]
+{% if git.commit_template %}
+	template = {{ git.commit_template }}
+{% endif %}
+	gpgSign = {{ git.sign_commits | bool | lower }}
+[init]
+	defaultBranch = {{ git.default_branch }}
+[tag]
+	forceSignAnnotated = false
+[gpg]
+	format = {{ git.signing_format }}
+	program = {{ git.gpg_program }}
+[gpg "ssh"]
+	program =
+	allowedSignersFile =
+
+# delta is not available everywhere (no Intel Mac build), so fall back to the normal pager without it
+[core]
+    pager = "if command -v delta >/dev/null 2>&1; then delta; else ${PAGER:-less}; fi"
+
+[interactive]
+    diffFilter = "if command -v delta >/dev/null 2>&1; then delta --color-only; else cat; fi"
+
+[delta]
+    navigate = true    # use n and N to move between diff sections
+    side-by-side = true
+    line-numbers = true
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    colorMoved = default

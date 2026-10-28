@@ -1,0 +1,143 @@
+# Instructions for every project
+
+## Git, GitHub and GitLab: everything is done as me
+
+- Commits, pushes, tags, pull / merge requests, issues and comments are made as me, with my own git identity
+  (`user.name` / `user.email` from my git config) and my own GitHub / GitLab login. Never as {{ agent.name }}, a bot,
+  or another account.
+- Never change `user.name`, `user.email`, or the commit author / committer, and never pass `--author`.
+- Keep commit signing as configured; never pass `--no-gpg-sign` or `--no-verify`.
+
+## No {{ agent.name }} anywhere
+
+- Nothing I publish may mention or point to {{ agent.mentions | join(', ') }} or AI: not commit messages, PR / MR titles
+  or bodies, branch names (no `{{ agent.branch_prefix }}/...`), labels, comments, review comments, release notes or code.
+- No signature, footer, trailer, link or emoji marking work as made by {{ agent.name }}:
+{% for s in agent.signatures %}
+  - no {{ s }}
+{% endfor %}
+- Never add {{ agent.name }} or a bot as reviewer, assignee, approver or co-author.
+{% if agent.override_note %}
+- {{ agent.override_note }}
+{% endif %}
+
+## Commit messages
+
+Default style: **Conventional Commits**. Use another style below only when I name it, or when the repository
+documents its own commit rules (CONTRIBUTING, commitlint config); then follow those.
+
+Write multi-line messages with a heredoc or several `-m` flags so the blank line between subject and body is kept.
+
+### Conventional Commits (default)
+
+Follow Conventional Commits 1.0.0. Base the message only on the actual diff: do not invent context, issue numbers or
+motivations. Plain text: no emojis, no markdown formatting, no code fences.
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Types (pick the single best fit; if the diff mixes unrelated changes, use the type of the dominant change):
+
+- `feat`: new user-facing feature or capability
+- `fix`: bug fix
+- `refactor`: code change that neither fixes a bug nor adds a feature
+- `perf`: performance improvement
+- `style`: formatting or whitespace only, no logic change
+- `test`: adding or correcting tests
+- `docs`: documentation only
+- `build`: build system or tooling changes (excluding dependency updates)
+- `deps`: dependency updates only (version bumps, lockfile changes)
+- `ci`: CI/CD configuration changes
+- `chore`: maintenance that doesn't touch src or tests
+- `security`: fixes for vulnerabilities or security hardening
+- `release`: version bumps and changelog commits
+- `i18n`: translation or localization changes
+- `a11y`: accessibility improvements
+- `revert`: reverts a previous commit
+
+Subject line:
+
+- Target 50 characters or fewer; never more than 72, including type and scope.
+- Imperative mood ("add", not "added" or "adds").
+- Lowercase after the colon, no trailing period.
+- Say what the change does, not how or which files.
+
+Scope:
+
+- Optional; use it when the change clearly targets one module, feature or layer.
+- Lowercase, a single noun (`auth`, `api`, `ui`, `networking`).
+- Leave it out when the change spans many areas.
+
+Body (only for non-trivial changes; skip it for small, self-explanatory ones):
+
+- Separated from the subject by a blank line, wrapped at 72 characters.
+- Explain the motivation (why) and the high-level change (what); don't restate the diff line by line.
+
+Footers:
+
+- Breaking change: `!` after the type/scope and a footer `BREAKING CHANGE: <what changed and how to migrate>`.
+- Issue references only when they appear in the diff or branch context: `Closes #123` or `Refs #123`.
+- Revert: the body says `This reverts commit <hash>.`
+
+### Simple
+
+```
+<summary of the change in imperative mood, about 50 characters>
+
+<optional: what changed and why, wrapped at 72 characters>
+```
+
+- Subject in imperative mood ("Add", not "Added"), no trailing period. Blank line between subject and body.
+
+### Subsystem prefix
+
+```
+<area>: <summary of the change in imperative mood>
+
+<the problem this change solves and why this approach was chosen,
+wrapped at about 72 characters>
+
+<optional trailers, one per line, such as Fixes or Signed-off-by>
+```
+
+- The prefix names the affected area: a subsystem, package, directory or component, e.g. `net/http:` or `docs:`.
+- Reuse the prefixes and capitalization from recent history (`git log --oneline -- <path>`).
+
+### Gitmoji
+
+- Start the subject with the most fitting gitmoji: ✨ new feature, 🐛 bug fix, ♻️ refactor, 📝 docs, 🎨 style /
+  structure, ✅ tests, ⚡️ performance, 👷 CI, 📦️ build / dependencies, 🔧 config, 🔥 removal.
+- Subject under 72 characters.
+
+### Short & direct
+
+- One line, under 72 characters. Say what changed, not why.
+
+## Pull requests (GitHub) and merge requests (GitLab)
+
+- Title in the same style as the commit subject (Conventional Commits by default).
+- Body: what changed and why, then how it was tested. Short; no filler.
+- If the repository has a template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/`), fill
+  that in instead.
+
+## Tools for GitHub and GitLab
+
+- Check the remote (`git remote -v`) to tell which one a repository is on; self-hosted GitLab counts as GitLab.
+- GitHub: the `gh` CLI (PRs, issues, reviews, releases, checks, `gh api`).
+- GitLab: the `glab` CLI (merge requests, issues, pipelines, releases, `glab api`).
+- A GitHub / GitLab app or MCP integration is fine too when one is available and acting as me.
+- Plain git (commit, branch, rebase, push, pull) with `git`, or `gh` / `glab` where it fits.
+- If `gh` or `glab` is not logged in, ask me to run `gh auth login` / `glab auth login` rather than using some
+  other credential.
+
+## Working with git
+
+- Only commit or push when I ask. Don't commit straight to the default branch; make a branch first.
+- Never force-push to shared or protected branches (main / master / develop / release) or rewrite pushed history
+  without asking.
+- Never commit secrets, tokens, `.env` files or credentials.

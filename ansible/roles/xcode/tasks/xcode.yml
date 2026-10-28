@@ -1,0 +1,101 @@
+---
+# Not `xcodes install --latest`: that installs the newest Xcode even when this Mac is too old (or, for Xcode 27, an
+# Intel Mac) to run it. xcode-pick.py only considers releases this Mac can run, and only builds xcodes offers for
+# this CPU (`xcodes list` shows Apple Silicon builds on Apple Silicon, universal ones on Intel).
+- name: Xcode | pick the version
+  when: not xcode_version
+  vars:
+    xcode_listed_file: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/xcodes-list.txt"
+  block:
+    - name: Xcode | builds xcodes offers for this CPU
+      ansible.builtin.shell: >-
+        xcodes list {{ '--architecture appleSilicon --architecture universal' if dotfiles_arch == 'arm64'
+                       else '--architecture universal --architecture x86_64' }} > {{ xcode_listed_file | quote }}
+      environment: "{{ xcode_env }}"
+      register: xcode_listed
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      failed_when: false
+
+    - name: Xcode | newest release this Mac can run
+      ansible.builtin.script:
+        cmd: xcode-pick.py xcode {{ ('--listed ' ~ (xcode_listed_file | quote)) if xcode_listed.rc == 0 else '' }}
+        executable: python3
+      register: xcode_picked
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      failed_when: false
+
+- name: Xcode | where the terminal step finds xcode-pick.py
+  ansible.builtin.set_fact:
+    xcode_pick_copy: "{{ ansible_facts.env.HOME }}/.cache/dotfiles/xcode-pick.py"
+
+- name: Xcode | version
+  ansible.builtin.set_fact:
+    xcode_chosen: "{{ xcode_version or (xcode_picked.stdout | default('') | trim) }}"
+
+- name: Xcode | could not choose
+  ansible.builtin.set_fact:
+    install_failures: "{{ install_failures | default([]) + ['xcode: could not work out the newest Xcode for this Mac; set toolchain.xcode_version'] }}"
+  when: not xcode_chosen
+
+- name: Xcode | {{ xcode_chosen }}
+  when: xcode_chosen | length > 0
+  block:
+    - name: Xcode | installed already?  # noqa: risky-shell-pipe - grep -q ends early; pipefail would turn a match into a miss
+      ansible.builtin.shell: xcodes installed 2> /dev/null | grep -q "^{{ xcode_chosen }}"
+      environment: "{{ xcode_env }}"
+      register: xcode_have
+      changed_when: false
+      check_mode: false   # only looks, so it runs in --check too
+      failed_when: false
+
+    - name: Xcode | the install command
+      ansible.builtin.set_fact:
+        xcode_install_cmd: >-
+          xcodes install {{ xcode_chosen | quote }} --experimental-unxip --select --empty-trash
+          {{ xcode_aria2_arg }}
+          {{ '--use-fastlane-auth' if xcode_auth_env.FASTLANE_SESSION else '' }}
+          {{ ('--path ' ~ (xcode_xip | quote)) if xcode_xip else '' }}
+
+    - name: Xcode | install {{ xcode_chosen }} (takes a while)
+      ansible.builtin.command: "{{ xcode_install_cmd }}"
+      environment: "{{ xcode_env | combine(xcode_auth_env) }}"
+      register: xcode_installed
+      changed_when: true
+      when: xcode_have.rc != 0 and xcode_unattended
+
+    # a version can exist as an Apple Silicon build and as a universal one: make sure this Mac got one it can run
+    - name: Xcode | built for this Mac?  # noqa: command-instead-of-shell - xcode_arch_check is a shell snippet ($(), case)
+      ansible.builtin.shell: "{{ xcode_arch_check }}"
+      register: xcode_arch
+      changed_when: false
+      failed_when: false
+      when: xcode_installed is not skipped
+
+    - name: Xcode | not built for this Mac
+      ansible.builtin.set_fact:
+        install_failures: "{{ install_failures | default([]) + ['xcode: ' ~ xcode_arch.stdout] }}"
+      when: xcode_installed is not skipped and xcode_arch.rc != 0
+
+    - name: Xcode | needs a terminal (two-factor code)
+      ansible.builtin.set_fact:
+        xcode_pending: >-
+          {{ xcode_pending + [xcode_install_cmd, xcode_arch_check]
+             + (['rt="$(python3 ' ~ xcode_pick_copy ~ ' runtime --xcode ' ~ (xcode_chosen | quote)
+                 ~ ')" && xcodes runtimes install "iOS $rt" ' ~ xcode_aria2_arg]
+                if install_ios_runtime | bool and not ios_runtime else []) }}
+      when: xcode_have.rc != 0 and not xcode_unattended
+
+    - name: Xcode | xcode-pick.py for the terminal step
+      ansible.builtin.copy:
+        src: xcode-pick.py
+        dest: "{{ xcode_pick_copy }}"
+        mode: "0755"
+      when: xcode_have.rc != 0 and not xcode_unattended
+  rescue:
+    - name: Xcode | not installed
+      ansible.builtin.set_fact:
+        install_failures: >-
+          {{ install_failures | default([]) + ['xcode ' ~ xcode_chosen ~ ': the install did not finish, run  xcodes install '
+          ~ xcode_chosen ~ '  again later'] }}
