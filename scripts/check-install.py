@@ -191,9 +191,9 @@ VERSION_FLAG = {"tmux": "-V", "go": "version", "zig": "version", "java": "-versi
                 "git-flow": "version"}
 
 
-def smoke(path):
+def smoke(path, env=None):
     """(level, note): does the command start? Only loader/format errors count; exit codes of --version do not."""
-    rc, out = run([path, VERSION_FLAG.get(os.path.basename(path), "--version")], timeout=20)
+    rc, out = run([path, VERSION_FLAG.get(os.path.basename(path), "--version")], timeout=20, env=env)
     first = (out.strip().splitlines() or [""])[0][:60]
     if rc in (126, 127) or BAD_RUN.search(out):
         return FAIL, "does not start: %s" % (out.strip().splitlines() or ["exit %s" % rc])[0][:100]
@@ -214,7 +214,9 @@ def load_plan(path):
 def check_expected(plan):
     expect = [e for e in plan["expect"] if e["bin"]]
     names = sorted({e["bin"] for e in expect})
-    script = 'for b in "$@"; do printf "%s\\t%s\\n" "$b" "$(command -v "$b" 2>/dev/null)"; done'
+    # also the login shell's PATH: a script's `env node` (bw) must find what the user's shell finds
+    script = ('printf "\\t%s\\n" "$PATH"; '
+              'for b in "$@"; do printf "%s\\t%s\\n" "$b" "$(command -v "$b" 2>/dev/null)"; done')
     shell = shutil.which("zsh") or shutil.which("bash")
     rc, out = run([shell, "-l", "-c", script, "_"] + names, timeout=120)
     resolved = {}
@@ -222,6 +224,8 @@ def check_expected(plan):
         if "\t" in line:
             name, _, path = line.partition("\t")
             resolved[name] = path.strip()
+    login_path = resolved.pop("", "")
+    env = dict(os.environ, PATH=login_path) if login_path else None
     rows = []
     for e in sorted(expect, key=lambda x: (x["via"], x["name"])):
         path = resolved.get(e["bin"], "")
@@ -239,7 +243,7 @@ def check_expected(plan):
             add(FAIL, "tools", e["name"], "%s resolves to %s (%s); expected %s" % (e["bin"], path, mgr, e["via"]))
             rows.append((FAIL, e["name"], e["via"], path, "shadowed by %s copy" % mgr))
             continue
-        level, note = smoke(path)
+        level, note = smoke(path, env)
         if level != OK:
             add(level, "tools", e["name"], "%s: %s" % (path, note))
         rows.append((level, e["name"], e["via"], path.replace(HOME, "~"), note))
