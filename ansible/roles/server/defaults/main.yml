@@ -32,6 +32,7 @@
 # read by vars_plugins/private.py; layout in ansible/private.example.yml), or for one run the environment:
 #   cloudflared_token   SERVER_CLOUDFLARED_TOKEN   tunnel token (Cloudflare dashboard, Zero Trust, Networks, Tunnels)
 #   netbird_setup_key   SERVER_NETBIRD_SETUP_KEY   setup key (NetBird dashboard, Setup Keys)
+#   netbird_management_url, netbird_admin_url      a self-hosted NetBird's URLs (yours, so private too)
 #   nextdns_profile     SERVER_NEXTDNS_PROFILE     NextDNS profile id (my.nextdns.io, the id in the URL)
 #   samba_password      SERVER_SAMBA_PASSWORD      your Samba password, set once
 # Without one, that step is skipped and the report says how to do it by hand.

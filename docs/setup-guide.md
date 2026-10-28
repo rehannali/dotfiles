@@ -352,6 +352,7 @@ only skips its step, and the report says what to do:
 |---|---|---|---|
 | `cloudflared_token` | `SERVER_CLOUDFLARED_TOKEN` | the tunnel token (Cloudflare, Zero Trust, Networks, Tunnels) | `sudo cloudflared service install <token>` |
 | `netbird_setup_key` | `SERVER_NETBIRD_SETUP_KEY` | a setup key (NetBird, Setup Keys) | `sudo netbird up --setup-key <key>` |
+| `netbird_management_url` | | a self-hosted NetBird's management URL (`netbird_admin_url`: its dashboard, if it differs) | NetBird's cloud |
 | `nextdns_profile` | `SERVER_NEXTDNS_PROFILE` | your NextDNS profile id (my.nextdns.io, the id in the URL) | NextDNS is installed, not set up |
 | `samba_password` | `SERVER_SAMBA_PASSWORD` | your Samba password, set once | `sudo smbpasswd -a <you>` |
 

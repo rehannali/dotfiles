@@ -15,5 +15,7 @@ piserver:
   # secrets (roles/server); empty = that step is skipped and the run says how to do it by hand
   cloudflared_token: ""               # Cloudflare, Zero Trust, Networks, Tunnels
   netbird_setup_key: ""               # NetBird, Setup Keys
+  netbird_management_url: ""          # a self-hosted NetBird: https://netbird.example.lan (empty: NetBird's cloud)
+  netbird_admin_url: ""               # its dashboard, if it differs (optional)
   nextdns_profile: ""                 # my.nextdns.io, the id in the URL
   samba_password: ""                  # your Samba password, set once
