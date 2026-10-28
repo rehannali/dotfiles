@@ -112,7 +112,7 @@ ask_name_email() {
   if [ -n "${BW_SESSION:-}${BW_PASSWORD:-}" ] || grep -q '"bitwarden": true' <<< "$vars"; then from_vault=true; fi
   for key in git_name git_email; do
     if [ "$key" = git_name ]; then env_var="${DOTFILES_NAME:-}"; else env_var="${DOTFILES_EMAIL:-}"; fi
-    [ "$from_vault" = false ] && [ -z "$env_var" ] || continue
+    if [ "$from_vault" = true ] || [ -n "$env_var" ]; then continue; fi
     grep -q "\"${key}_asked\": \"[^\"]" <<< "$vars" && continue
     # a value of its own in host_vars (not the template in group_vars)
     grep -qE "\"$key\": \"[^\"{]" <<< "$vars" && continue
