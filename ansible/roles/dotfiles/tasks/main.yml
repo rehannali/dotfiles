@@ -14,15 +14,20 @@
   when: dotfiles_update | bool
 
 # fields of the Bitwarden items dotfiles.all / dotfiles.<group> / dotfiles.<host> named like environment variables
-# (GITHUB_TOKEN): exported in ~/.config/dotfiles/secrets.zsh, with the secrets.yml ones. Then, for the names in
-# secrets.from_environment the vault does not have, the value in this run's environment (no Bitwarden needed).
+# (GITHUB_TOKEN): exported in ~/.config/dotfiles/secrets.zsh, with the secrets.yml ones. Then, for the names the vault
+# does not have, the value in this run's environment: the names in secrets.from_environment, and every name in
+# ~/.config/dotfiles/env (private_env_names; the setup's own DOTFILES_ / BW_ / SERVER_ / XCODES_ ones excepted).
 - name: Dotfiles | environment variables from the private values, then from the environment
   ansible.builtin.set_fact:
     dotfiles_env_fields: >-
       {%- set vault = private_host | default({}) | dict2items | selectattr('key', 'match', '^[A-Z][A-Z0-9_]*$')
                       | rejectattr('key', 'match', '^BW_') | items2dict -%}
       {%- set ns = namespace(env={}) -%}
-      {%- for name in secrets.from_environment | default([]) if name not in vault -%}
+      {%- set names = (secrets.from_environment | default([]))
+                      + (private_env_names | default([]) | reject('match', '^(DOTFILES|BW|SERVER|XCODES)_') | list) -%}
+      {%- set ours = lookup('ansible.builtin.env', 'DOTFILES_EXPORTED').split() -%}
+      {%- set from_file = private_env_names | default([]) -%}
+      {%- for name in names | unique if name not in vault and (name in from_file or name not in ours) -%}
       {%-   set value = lookup('ansible.builtin.env', name) -%}
       {%-   if value -%}{%- set ns.env = ns.env | combine({name: value}) -%}{%- endif -%}
       {%- endfor -%}
@@ -88,6 +93,43 @@
   no_log: true
   when: (bitwarden | bool or dotfiles_env_fields | length > 0) and dotfiles_secrets is not defined
 
+# A variable your own shell files already set (settings.shell.own_files) is updated there instead of being written again
+- name: Dotfiles | your own shell files
+  ansible.builtin.slurp:
+    src: "{{ ansible_facts.env.HOME }}/{{ item }}"
+  loop: >-
+    {{ settings.shell.own_files | default([])
+       | reject('in', dotfiles_files | map(attribute='path') | map('regex_replace', '\\.j2$', '') | list) | list }}
+  register: dotfiles_own_files
+  failed_when: false
+  no_log: true
+  when: dotfiles_secrets | default({}) | length > 0
+
+- name: Dotfiles | which variables they already set
+  ansible.builtin.set_fact:
+    dotfiles_env_in_own: >-
+      {%- set found = {} -%}
+      {%- for res in dotfiles_own_files.results | default([]) if res.content is defined -%}
+      {%-   set text = res.content | b64decode -%}
+      {%-   for name in dotfiles_secrets | default({}) if name not in found -%}
+      {%-     if text is search('(?m)^[ \t]*(export[ \t]+)?' ~ name ~ '=') -%}{%- set _ = found.update({name: res.item}) -%}{%- endif -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ found }}
+  no_log: true
+
+- name: Dotfiles | update those variables where they already are
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_facts.env.HOME }}/{{ item.value }}"
+    regexp: "^[ \t]*(export[ \t]+)?{{ item.key }}="
+    line: "export {{ item.key }}='{{ dotfiles_secrets[item.key] | replace(\"'\", \"'\\\\''\") }}'"
+    mode: "0600"
+    backup: true
+  loop: "{{ dotfiles_env_in_own | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} in ~/{{ item.value }}"
+  no_log: true
+
 - name: Dotfiles | templates
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -98,7 +140,9 @@
   loop_control:
     label: "{{ item.path }}"
   vars:
-    dotfiles_secret_values: "{{ dotfiles_secrets | default({}) }}"
+    # the ones your own shell files set are updated there (above), not written twice
+    dotfiles_secret_values: >-
+      {{ dotfiles_secrets | default({}) | dict2items | rejectattr('key', 'in', dotfiles_env_in_own | default({})) | items2dict }}
   when: not item.path.startswith('.config/dotfiles/') or dotfiles_secrets is defined
 
 - name: Dotfiles | directories for the coding agents' instructions

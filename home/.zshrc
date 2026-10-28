@@ -2,8 +2,7 @@
 # aliases, completions) sees the real tool paths. Replaces pyenv/rbenv/sdkman.
 command -v mise >/dev/null 2>&1 && eval "$(mise activate zsh)"
 
-# tokens: the Bitwarden fields named like variables (GITHUB_TOKEN), or kept from the environment (secrets.yml)
-[[ -f "$HOME/.config/dotfiles/secrets.zsh" ]] && source "$HOME/.config/dotfiles/secrets.zsh"
+# your environment variables and tokens are loaded by ~/.zshenv (secrets.zsh), for every zsh
 # bw unlocks itself with the login bootstrap.sh kept (Keychain / Secret Service)
 [[ -f "$HOME/.config/shell/bitwarden.sh" ]] && source "$HOME/.config/shell/bitwarden.sh"
 

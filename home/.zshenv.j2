@@ -69,8 +69,13 @@ if [[ -z "$SSH_CONNECTION" ]]; then
 fi
 
 {% endif %}
+# Your environment variables and tokens: the Bitwarden fields named like variables (GITHUB_TOKEN), else
+# ~/.config/dotfiles/env, else the environment of the run (docs/bitwarden.md). Here, not in .zshrc, so every zsh has
+# them: terminals, scripts, IDEs, cron. Written by Ansible, mode 600.
+[[ -f "$HOME/.config/dotfiles/secrets.zsh" ]] && source "$HOME/.config/dotfiles/secrets.zsh"
+
 # settings.shell.env and settings.shell.path (docs/configuration.md)
-{% for name, value in settings.shell.env.items() %}
+{% for name, value in settings.shell.env.items() if name not in (dotfiles_secret_values | default({})) %}
 export {{ name }}={{ value | string | to_json }}
 {% endfor %}
 {% for dir in settings.shell.path | reverse %}

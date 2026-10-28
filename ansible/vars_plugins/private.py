@@ -5,7 +5,7 @@ The repo holds templates only: `{{ private.piserver.ssh_port }}`. This vars plug
 
   1. the file DOTFILES_PRIVATE_FILE (default ~/.config/dotfiles/private.yml), if it exists: outside the repo, mode 600;
      for a machine without Bitwarden. Its layout is ansible/private.example.yml
-  2. else Bitwarden, from the unlocked vault (BW_SESSION: bootstrap.sh --bitwarden and dot unlock it; without it, a
+  2. and Bitwarden, whose fields win over the file's, from the unlocked vault (BW_SESSION: bootstrap.sh --bitwarden and dot unlock it; without it, a
      master password in BW_PASSWORD, or the login bootstrap.sh kept in the Keychain / Secret Service, unlocks the
      vault here, for this run only): one item per
      host, named DOTFILES_PRIVATE_PREFIX + host (default "dotfiles.piserver", like host_vars/piserver.yml), in any
@@ -20,6 +20,11 @@ winning; so a template needs no host name: {{ private_host.git_email }}.
 
 Neither there: `private` is an empty dict, and only what refers to it fails, with a message saying how to unlock.
 
+Without Bitwarden, environment variables can also come from the file DOTFILES_ENV_FILE (default
+~/.config/dotfiles/env): NAME=value lines (ansible/env.example). They are put in this run's environment, over what the
+shell had (which came from the previous run), and every name in it is exported in ~/.config/dotfiles/secrets.zsh
+(`private_env_names`); a Bitwarden field of the same name still wins.
+
 Fill Bitwarden from a YAML file in that layout (creates the items, replaces the fields of existing ones):
 
   python3 ansible/vars_plugins/private.py import ~/private.yml
@@ -27,6 +32,7 @@ Fill Bitwarden from a YAML file in that layout (creates the items, replaces the 
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -136,26 +142,54 @@ def values_to_fields(values):
 def load_private():
     if "data" in _CACHE:
         return _CACHE["data"]
-    data = {}
+    data, sources = {}, []
     path = os.path.expanduser(os.environ.get("DOTFILES_PRIVATE_FILE", "~/.config/dotfiles/private.yml"))
     if os.path.isfile(path):
         with open(path) as fh:
             data = yaml.safe_load(fh) or {}
-        source = path
         if not isinstance(data, dict):
             raise AnsibleError("private: %s is not a YAML mapping" % path)
-    elif _unlock():
+        sources.append(path)
+    if _unlock():
         try:
             _bw("sync")   # the newest values; offline, the local copy
         except AnsibleError:
             pass
-        data = {host: fields_to_values(item.get("fields")) for host, item in _host_items().items()}
-        source = "Bitwarden"
-    else:
-        source = None
+        for host, item in _host_items().items():
+            data[host] = {**(data.get(host) or {}), **fields_to_values(item.get("fields"))}
+        sources.insert(0, "Bitwarden")
     _CACHE["data"] = data
-    _CACHE["source"] = source
+    _CACHE["source"] = " + ".join(sources) or None
     return data
+
+
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def load_env_file():
+    """NAME=value lines of DOTFILES_ENV_FILE into this run's environment, over the shell's; the names."""
+    if "env_names" in _CACHE:
+        return _CACHE["env_names"]
+    names = []
+    path = os.path.expanduser(os.environ.get("DOTFILES_ENV_FILE", "~/.config/dotfiles/env"))
+    if os.path.isfile(path):
+        with open(path) as fh:
+            for number, line in enumerate(fh, 1):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].lstrip()
+                name, sep, value = line.partition("=")
+                name, value = name.strip(), value.strip()
+                if not sep or not ENV_NAME.match(name):
+                    raise AnsibleError("private: %s line %d is not NAME=value" % (path, number))
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+                os.environ[name] = value
+                names.append(name)
+    _CACHE["env_names"] = names
+    return names
 
 
 def import_file(path):
@@ -198,6 +232,7 @@ class VarsModule(BaseVarsPlugin):
 
     def get_vars(self, loader, path, entities, cache=True):
         super().get_vars(loader, path, entities)
+        env_names = load_env_file()
         data = load_private()
         for entity in entities if isinstance(entities, list) else [entities]:
             if entity.name in data or not _uses_private(getattr(entity, "vars", {})):
@@ -212,7 +247,7 @@ class VarsModule(BaseVarsPlugin):
             raise AnsibleError("%s needs the private values, but %s has none for it: create the Bitwarden item %r "
                                "(or run bw sync after creating it), docs/bitwarden.md, 'Private values'."
                                % (entity.name, _CACHE["source"], _prefix() + entity.name))
-        result = {"private": data, "private_source": _CACHE.get("source") or ""}
+        result = {"private": data, "private_source": _CACHE.get("source") or "", "private_env_names": env_names}
         hosts = [e for e in (entities if isinstance(entities, list) else [entities]) if type(e).__name__ == "Host"]
         if len(hosts) == 1:
             groups = sorted(hosts[0].get_groups(), key=lambda g: g.depth)   # all, macs, mac_personal

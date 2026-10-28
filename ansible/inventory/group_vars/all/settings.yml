@@ -51,6 +51,10 @@ settings_defaults:
       PYTHONUNBUFFERED: "1"
     # Extra directories put in front of PATH, first entry first. Example: ["$HOME/go/bin"]
     path: []
+    # Your own shell files, which this repo does not write. A variable from Bitwarden / ~/.config/dotfiles/env that one
+    # of them already sets (export GH_TOKEN=...) gets its value updated there, in place, instead of a second definition
+    # in ~/.config/dotfiles/secrets.zsh; the file becomes mode 600.
+    own_files: [.zshenv.local, .zshrc.local, .zprofile.local, .zlogin, .profile, .bashrc.local, .bash_profile.local]
     # Bitwarden's SSH agent: ~/.zshenv sets SSH_AUTH_SOCK to its socket, except in an SSH session (the forwarded agent
     # stays). auto = look at which Bitwarden is installed (macOS: App Store or dmg/cask; Linux: Flatpak, Snap, or deb /
     # rpm / AppImage) and set nothing where there is none. Or name it: appstore, dmg, linux, snap, flatpak. off = never.

@@ -32,7 +32,7 @@ install_ios_runtime: true        # the iOS simulator runtime that goes with that
 install_flutter: true            # Flutter with fvm (settings.yml flutter.version); needs gui_apps
 login_shell_zsh: true            # make zsh the login shell
 # fetch the secrets in secrets.yml and the Apple ID from Bitwarden; on by itself when this run reads the vault
-bitwarden: "{{ private_source | default('') == 'Bitwarden' }}"
+bitwarden: "{{ private_source | default('') is search('^Bitwarden') }}"
 
 # --- Packages: the bundles from packages.yml this machine gets (each group sets its own), and single entries on top
 bundles: [core]

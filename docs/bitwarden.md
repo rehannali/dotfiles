@@ -27,14 +27,39 @@ For every value, the first place that has it:
 
 1. **Bitwarden**: a field of `dotfiles.<host>`, else of the machine's group items (`dotfiles.mac_personal`, ...),
    else of `dotfiles.all`
-2. **the environment of the run**: `DOTFILES_NAME` / `DOTFILES_EMAIL` (`--name` / `--email`), the tokens listed in
-   `secrets.from_environment` (`GITHUB_TOKEN`, `NPM_TOKEN`, ...), `SERVER_CLOUDFLARED_TOKEN` and the other server
-   secrets, `XCODES_USERNAME` / `XCODES_PASSWORD`
-3. **what you typed once**: the name and email bootstrap or `dot` asked for, kept as `git_name_asked` /
-   `git_email_asked` in `~/.config/dotfiles/local.yml`
+2. **`~/.config/dotfiles/env`**: your own file, for a setup without Bitwarden (below)
+3. **the environment of the run**: `DOTFILES_NAME` / `DOTFILES_EMAIL` (`--name` / `--email`), the tokens listed in
+   `secrets.from_environment`, `SERVER_*`, `XCODES_*`. For one run only: what the setup exported itself
+   (`DOTFILES_EXPORTED`) is not taken back from the shell, so a value removed from the vault or the file goes away
+4. **what you typed once**: the name and email bootstrap or `dot` asked for (`git_name_asked` / `git_email_asked` in
+   `~/.config/dotfiles/local.yml`)
 
-So someone without Bitwarden sets the environment variables (or answers the questions) and gets the same setup; with
-Bitwarden the vault wins, and a value missing there can still come from the environment.
+## Environment variables: where they end up
+
+Every name in capitals with underscores (`GH_TOKEN`, `MY_API_KEY`) from Bitwarden or `~/.config/dotfiles/env` is
+exported in `~/.config/dotfiles/secrets.zsh` (mode 600), which `~/.zshenv` loads, so every zsh has it (terminals,
+scripts, IDEs, cron); `~/.bashrc` loads it for bash. Each name once:
+
+- a name one of **your own shell files** already sets (`export GH_TOKEN=...` in `~/.zlogin`, `~/.profile`,
+  `~/.zshrc.local`, ...; the list is `settings.shell.own_files`) is updated there, in place, and not written again;
+  that file becomes mode 600 (a backup of it is kept)
+- a name also in `settings.shell.env` is exported once, with the vault's / file's value
+
+The report at the end says where each one is: `OK: GH_TOKEN exported in ~/.zlogin (updated in place)`.
+
+## Without Bitwarden: ~/.config/dotfiles/env
+
+```sh
+cp ~/.dotfiles/ansible/env.example ~/.config/dotfiles/env
+chmod 600 ~/.config/dotfiles/env
+$EDITOR ~/.config/dotfiles/env            # NAME=value lines
+dot apply                                  # or bootstrap.sh on a new machine (create the file first)
+```
+
+`ansible/env.example` shows the layout: `DOTFILES_NAME` / `DOTFILES_EMAIL` for git, your tokens (`GITHUB_TOKEN=...`),
+and the setup's own variables (`XCODES_*`, `SERVER_*`), which are read but not exported. `export ` in front and quotes
+around a value are fine. Change a line and run `dot apply` again; delete a line and the variable goes away. With
+Bitwarden too, a field of the same name wins.
 
 ## The login, kept after the first setup
 

@@ -104,6 +104,7 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --home -
 | `BW_SESSION` | an unlocked vault | `bootstrap.sh` sets it; the playbook's Bitwarden lookups use it |
 | `DOTFILES_BW_METHOD` | `apikey`, `sso`, `password` | default: `apikey` if the two API variables are set, else `password` |
 | `DOTFILES_BW_EMAIL` | Bitwarden login email | default `--email`, else asked |
+| `DOTFILES_ENV_FILE` | a path | your environment variables without Bitwarden, default `~/.config/dotfiles/env` (`ansible/env.example`) |
 | `DOTFILES_BW_REMEMBER` | `false` | keep nothing: by default the API key and master password go to the Keychain / Secret Service after the first setup, so `bw`, `dot` and later runs unlock by themselves |
 | `DOTFILES_BW_SERVER` | self-hosted or EU server URL | `bootstrap.sh` runs `bw config server` with it before logging in. Only applied while logged out: if the CLI is already logged in to another server run `bw logout` first |
 
