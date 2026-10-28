@@ -6,7 +6,8 @@ The repo holds templates only: `{{ private.piserver.ssh_port }}`. This vars plug
   1. the file DOTFILES_PRIVATE_FILE (default ~/.config/dotfiles/private.yml), if it exists: outside the repo, mode 600;
      for a machine without Bitwarden. Its layout is ansible/private.example.yml
   2. else Bitwarden, from the unlocked vault (BW_SESSION: bootstrap.sh --bitwarden and dot unlock it; without it, a
-     master password in BW_PASSWORD unlocks the vault here, for this run only): one item per
+     master password in BW_PASSWORD, or the login bootstrap.sh kept in the Keychain / Secret Service, unlocks the
+     vault here, for this run only): one item per
      host, named DOTFILES_PRIVATE_PREFIX + host (default "dotfiles.piserver", like host_vars/piserver.yml), in any
      folder. Each value is a custom field: name ssh_port, value 2222. A name used more than once is a list
      (authorized_keys, one field per key); a boolean field is true / false; every other value is a string. The
@@ -73,10 +74,22 @@ def _bw(*args, stdin=None):
     return out.stdout
 
 
+_SECRET_HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "home", ".local", "bin",
+                              "dotfiles-secret")
+
+
 def _unlock():
-    """BW_SESSION, or a session from `bw unlock --passwordenv BW_PASSWORD` (the vault must be logged in: bw login)."""
+    """BW_SESSION; else a session from BW_PASSWORD (the vault must be logged in); else from the login bootstrap.sh kept
+    in the Keychain / Secret Service (dotfiles-secret bw-session). None of them: the vault stays closed."""
     if not os.environ.get("BW_SESSION") and os.environ.get("BW_PASSWORD"):
         os.environ["BW_SESSION"] = _bw("unlock", "--passwordenv", "BW_PASSWORD", "--raw").strip()
+    if not os.environ.get("BW_SESSION") and os.path.isfile(_SECRET_HELPER):
+        try:
+            out = subprocess.run([_SECRET_HELPER, "bw-session"], capture_output=True, text=True, timeout=120)
+            if out.returncode == 0 and out.stdout.strip():
+                os.environ["BW_SESSION"] = out.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     return bool(os.environ.get("BW_SESSION"))
 
 

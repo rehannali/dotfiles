@@ -113,13 +113,8 @@ all:
   children:
     macs:
       children:
-        mac_personal:
-          hosts:
-            macbook-arm64:                     # set up on the machine itself (bootstrap.sh / dot)
-        mac_work:
-          hosts:
-            office-intel:
-            office-m3:
+        mac_personal: {}                 # Macs join under their own hostname: bootstrap.sh --home
+        mac_work: {}                     # bootstrap.sh --office
     servers:
       hosts:
         piserver:                        # also reachable over SSH from your laptop
@@ -137,8 +132,10 @@ all:
         linux-laptop:
 ```
 
-The name (`macbook-arm64`, `piserver`) is what `--host` and `-l` take. It doesn't have to match the hostname, but if it does,
-`bootstrap.sh` finds it without `--host`.
+The name (`piserver`) is what `--host` and `-l` take: a label, not necessarily the hostname. A machine set up on
+itself needs no entry at all: it uses its hostname, and `--home` / `--office` (Macs) or `--group` says which kind it
+is; Intel or Apple Silicon is detected. `~/.config/dotfiles/machine` remembers both for `dot`. List a machine only to
+reach it over SSH or to give it `host_vars/<host>.yml`.
 
 ### The groups
 
@@ -218,7 +215,7 @@ There are three ways to run it. Each runs the same playbook, `ansible/site.yml`.
 ### On the machine itself (Mac, Linux, WSL)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64 \
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --home \
   --name "Rehan Ali" --email rehan@example.com
 ```
 

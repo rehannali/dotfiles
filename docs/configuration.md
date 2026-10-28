@@ -23,7 +23,7 @@ A variable in a group or host file replaces the one in `all/`. That also goes fo
 replaced, not merged. The one exception is `settings`: put only the keys you change in `settings_override`, and
 they are merged into the defaults (a host's `settings_override` replaces its group's, though).
 
-For a single run, `-e` beats everything: `ansible-playbook site.yml -l macbook-arm64 -e install_casks=false`, or the
+For a single run, `-e` beats everything: `dot apply -e install_casks=false`, or the
 `bootstrap.sh` options.
 
 ## Name and email
@@ -166,7 +166,7 @@ Exactly those are uninstalled, on every run; nothing else is touched. Look first
 Defaults in `group_vars/all/settings.yml`. To change some for a group or one machine:
 
 ```yaml
-# host_vars/macbook-arm64.yml
+# host_vars/<host>.yml (list the host in hosts.yml for that)
 settings_override:
   git:
     sign_commits: true

@@ -18,7 +18,8 @@
 # written by every run. Override for one command with DOTFILES_HOST / DOTFILES_GROUP.
 # This machine's own choices (bootstrap.sh options, your name and email) are in ~/.config/dotfiles/local.yml, an
 # inventory every run reads: they win over group_vars, and lose to host_vars/<host>.yml in the repo and to -e.
-# With bitwarden on, dot unlocks the vault first (BW_PASSWORD, or it asks), unless BW_SESSION is set.
+# With bitwarden on, dot unlocks the vault first, unless BW_SESSION is set: with the login bootstrap.sh kept in the
+# Keychain / Secret Service (dotfiles-secret), else BW_PASSWORD, else it asks.
 set -euo pipefail
 
 REPO="${DOTFILES_DIR:-$HOME/.dotfiles}"
@@ -44,10 +45,16 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # remember 'KEY: VALUE' ...: add or replace this machine's settings in local.yml (VALUE is YAML)
+# older runs kept the typed name / email as git_name / git_email, which would win over the vault: now <key>_asked
+migrate_local_vars() {
+  [ -f "$LOCAL_VARS" ] && grep -qE '^      git_(name|email): ' "$LOCAL_VARS" || return 0
+  perl -pi -e 's/^(      git_(?:name|email)):/$1_asked:/' "$LOCAL_VARS"
+}
 remember() {
   local line key keys=" "
   for line in "$@"; do keys="$keys${line%%:*} "; done
   mkdir -p "$(dirname "$LOCAL_VARS")"
+  migrate_local_vars
   {
     printf '%s\n' "# This machine's choices (bootstrap.sh options, the name and email you typed); every dot run uses them." \
       "# Change or delete a line to change one; host_vars/<host>.yml in the repo and -e KEY=VALUE win over them." \
@@ -76,7 +83,7 @@ inventory() {
     printf 'all:\n  children:\n    %s:\n      hosts:\n        %s:\n' "$group" "$host" > "$TMP/host.yml"
     inv+=(-i "$TMP/host.yml")
   fi
-  [ ! -f "$LOCAL_VARS" ] || inv+=(-i "$LOCAL_VARS")
+  [ ! -f "$LOCAL_VARS" ] || { migrate_local_vars; inv+=(-i "$LOCAL_VARS"); }
 }
 host_vars() { ansible-inventory "${inv[@]}" --host "$host" 2> /dev/null || true; }
 
@@ -84,15 +91,18 @@ host_vars() { ansible-inventory "${inv[@]}" --host "$host" 2> /dev/null || true;
 # a git name / email nothing has given yet: asked (your git config is the suggestion, Enter takes it); without a
 # terminal, or with DOTFILES_YES=true, the git config value is taken as it is
 ask_name_email() {
-  local vars value suggestion key label lines=()
+  local vars value suggestion key env_var label lines=()
   vars="$(host_vars)"
-  # with Bitwarden in use, a name / email the inventory takes from the vault (private_host) is not asked here
+  # the run takes them from the vault first (private_host), then DOTFILES_NAME / DOTFILES_EMAIL, then what was typed
+  # once (<key>_asked): ask only when none of these can give one
   local from_vault=false
   if [ -n "${BW_SESSION:-}${BW_PASSWORD:-}" ] || grep -q '"bitwarden": true' <<< "$vars"; then from_vault=true; fi
   for key in git_name git_email; do
-    if ! grep -q "\"$key\": \"\"" <<< "$vars"; then
-      grep -q "\"$key\": \"{{ private_host" <<< "$vars" && [ "$from_vault" = false ] || continue
-    fi
+    if [ "$key" = git_name ]; then env_var="${DOTFILES_NAME:-}"; else env_var="${DOTFILES_EMAIL:-}"; fi
+    [ "$from_vault" = false ] && [ -z "$env_var" ] || continue
+    grep -q "\"${key}_asked\": \"[^\"]" <<< "$vars" && continue
+    # a value of its own in host_vars (not the template in group_vars)
+    grep -qE "\"$key\": \"[^\"{]" <<< "$vars" && continue
     if [ "$key" = git_name ]; then label="Your name, for git commits"; suggestion="$(git config --global user.name || true)"
     else label="Your email, for git commits"; suggestion="$(git config --global user.email || true)"
     fi
@@ -105,7 +115,7 @@ ask_name_email() {
     else
       value="$suggestion"
     fi
-    [ -z "$value" ] || lines+=("$key: $(yaml_str "$value")")
+    [ -z "$value" ] || lines+=("${key}_asked: $(yaml_str "$value")")
   done
   [ ${#lines[@]} -eq 0 ] && return 0
   remember "${lines[@]}"
@@ -117,10 +127,16 @@ ask_name_email() {
 bitwarden_unlock() {
   [ -z "${BW_SESSION:-}" ] || return 0
   case " $* " in *bitwarden=false*) return 0 ;; esac
-  grep -q '"bitwarden": true' <<< "$(host_vars)" || return 0
+  local secret="$REPO/home/.local/bin/dotfiles-secret" session
+  # on when this machine says so, or when bootstrap.sh kept a Bitwarden login in the Keychain / Secret Service
+  grep -q '"bitwarden": true' <<< "$(host_vars)" || "$secret" get BW_PASSWORD > /dev/null 2>&1 || return 0
   command -v bw > /dev/null 2>&1 || die "bitwarden is on for $host but bw is not installed (once without it: dot apply -e bitwarden=false)"
+  if session="$("$secret" bw-session 2> /dev/null)" && [ -n "$session" ]; then
+    export BW_SESSION="$session"
+    say "Bitwarden unlocked with the login kept by bootstrap.sh"
+    return 0
+  fi
   case "$(bw status 2> /dev/null)" in
-    *'"status":"unlocked"'*) return 0 ;;
     *'"status":"unauthenticated"'*) die "bitwarden is on for $host: log in first (bw login, see docs/bitwarden.md)" ;;
   esac
   say "Unlocking Bitwarden (secrets for the dotfiles)"
@@ -135,8 +151,8 @@ bitwarden_unlock() {
 
 playbook() {
   inventory
+  bitwarden_unlock "$@"   # first: with the vault open, the name and email come from it and are not asked
   ask_name_email
-  bitwarden_unlock "$@"
   # dotfiles_update=false: apply ~/.dotfiles as it is (dot sync pulls first)
   local args=("${inv[@]}" -c local -e "dotfiles_dir=$REPO" -e dotfiles_update=false)
   # sudo for the steps that need it: Ansible asks once if it can't use an already unlocked sudo

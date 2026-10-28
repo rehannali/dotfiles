@@ -13,13 +13,20 @@
   ansible.builtin.include_tasks: checkout.yml
   when: dotfiles_update | bool
 
-# fields of the Bitwarden items dotfiles.all / dotfiles.<host> named like environment variables (GITHUB_TOKEN): exported
-# in ~/.config/dotfiles/secrets.zsh, with the secrets.yml ones
-- name: Dotfiles | environment variables from the private values
+# fields of the Bitwarden items dotfiles.all / dotfiles.<group> / dotfiles.<host> named like environment variables
+# (GITHUB_TOKEN): exported in ~/.config/dotfiles/secrets.zsh, with the secrets.yml ones. Then, for the names in
+# secrets.from_environment the vault does not have, the value in this run's environment (no Bitwarden needed).
+- name: Dotfiles | environment variables from the private values, then from the environment
   ansible.builtin.set_fact:
     dotfiles_env_fields: >-
-      {{ private_host | default({}) | dict2items | selectattr('key', 'match', '^[A-Z][A-Z0-9_]*$')
-         | rejectattr('key', 'match', '^BW_') | items2dict }}
+      {%- set vault = private_host | default({}) | dict2items | selectattr('key', 'match', '^[A-Z][A-Z0-9_]*$')
+                      | rejectattr('key', 'match', '^BW_') | items2dict -%}
+      {%- set ns = namespace(env={}) -%}
+      {%- for name in secrets.from_environment | default([]) if name not in vault -%}
+      {%-   set value = lookup('ansible.builtin.env', name) -%}
+      {%-   if value -%}{%- set ns.env = ns.env | combine({name: value}) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ ns.env | combine(vault) }}
   no_log: true
 
 - name: Dotfiles | what this machine leaves out

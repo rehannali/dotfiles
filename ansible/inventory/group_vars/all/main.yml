@@ -6,10 +6,15 @@
 # packages, in bundles), platforms.yml (which package manager installs what on each OS), settings.yml (taste: git,
 # terminal, Dock, shell), secrets.yml (Bitwarden), toolchain.yml (Xcode).
 
-# for git commits: the fields git_name / git_email of the Bitwarden items dotfiles.all and dotfiles.<host>
-# (docs/bitwarden.md); else bootstrap.sh --name / --email, or asked once
-git_name: "{{ private_host.git_name | default('') }}"
-git_email: "{{ private_host.git_email | default('') }}"
+# for git commits, the first one there: the Bitwarden fields git_name / git_email (dotfiles.all, dotfiles.<group>,
+# dotfiles.<host>; docs/bitwarden.md), then DOTFILES_NAME / DOTFILES_EMAIL (bootstrap.sh --name / --email), then
+# what you typed once (git_name_asked / git_email_asked in ~/.config/dotfiles/local.yml)
+git_name: >-
+  {{ private_host.git_name | default(lookup('ansible.builtin.env', 'DOTFILES_NAME'), true)
+     | default(git_name_asked | default(''), true) }}
+git_email: >-
+  {{ private_host.git_email | default(lookup('ansible.builtin.env', 'DOTFILES_EMAIL'), true)
+     | default(git_email_asked | default(''), true) }}
 
 # --- Which parts a machine gets
 gui_apps: true                   # false: command-line tools and terminal setup only (servers, WSL)

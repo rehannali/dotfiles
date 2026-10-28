@@ -16,8 +16,40 @@ reads the vault. Unattended, a new machine needs only these three:
 export BW_CLIENTID=... BW_CLIENTSECRET=...   # web vault: Account settings, Security, Keys, View API key
 export BW_PASSWORD=...                        # the master password, for this command only
 export DOTFILES_BW_SERVER=https://vault.example.com   # a self-hosted server (once, before the first login)
-bootstrap.sh --yes
+bootstrap.sh --yes --home                     # or --office
 ```
+
+Without `BW_PASSWORD`, bootstrap asks for the master password itself (hidden).
+
+## Where each value comes from
+
+For every value, the first place that has it:
+
+1. **Bitwarden**: a field of `dotfiles.<host>`, else of the machine's group items (`dotfiles.mac_personal`, ...),
+   else of `dotfiles.all`
+2. **the environment of the run**: `DOTFILES_NAME` / `DOTFILES_EMAIL` (`--name` / `--email`), the tokens listed in
+   `secrets.from_environment` (`GITHUB_TOKEN`, `NPM_TOKEN`, ...), `SERVER_CLOUDFLARED_TOKEN` and the other server
+   secrets, `XCODES_USERNAME` / `XCODES_PASSWORD`
+3. **what you typed once**: the name and email bootstrap or `dot` asked for, kept as `git_name_asked` /
+   `git_email_asked` in `~/.config/dotfiles/local.yml`
+
+So someone without Bitwarden sets the environment variables (or answers the questions) and gets the same setup; with
+Bitwarden the vault wins, and a value missing there can still come from the environment.
+
+## The login, kept after the first setup
+
+Once the vault opened, bootstrap keeps `BW_CLIENTID`, `BW_CLIENTSECRET` and `BW_PASSWORD` in the OS secret store: the
+macOS Keychain, or the Secret Service on Linux (`secret-tool`, package `libsecret-tools`). Nothing goes in a file.
+`DOTFILES_BW_REMEMBER=false` keeps nothing. From then on, without typing anything:
+
+- `bw` in a terminal unlocks on its first use and keeps the session in that shell (`~/.config/shell/bitwarden.sh`);
+  `bw lock` ends it
+- `dot apply` / `dot sync` unlock before the run
+- a plain `ansible-playbook` run unlocks too (`ansible/vars_plugins/private.py`)
+
+All three use `dotfiles-secret` (`~/.local/bin`): `dotfiles-secret bw-session` logs in with the API key if the CLI is
+logged out, then unlocks with the master password and prints the session. `dotfiles-secret delete BW_PASSWORD` (or
+`BW_CLIENTID`, `BW_CLIENTSECRET`) forgets one; the Keychain app lists them under "dotfiles".
 
 ## A Mac's values, and checking they are in place
 
@@ -109,7 +141,7 @@ push to another machine, the vault on your laptop is used):
 
 ```sh
 export BW_SESSION=$(bw unlock --raw)          # or: bw login you@example.com --raw
-cd ansible && ansible-playbook site.yml -l macbook-arm64 -e bitwarden=true
+cd ansible && ansible-playbook site.yml -l piserver -e bitwarden=true
 ```
 
 ## Apple ID for Xcode (and the two-factor code)

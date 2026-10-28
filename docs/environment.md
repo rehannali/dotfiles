@@ -17,7 +17,8 @@ Do not put passwords or tokens in your shell profile.
 | Scenario | Set | Explained in |
 |---|---|---|
 | Set up this machine as listed in the inventory | `--host NAME` (default: the hostname) | [README](../README.md) |
-| A new machine, not in the inventory yet | `--host NAME --group mac_work` (or `mac_personal`, `servers`, `linux_desktop`, `wsl`); without `--group` it is asked, with a suggestion | [README](../README.md) |
+| A Mac | `--home` (personal) or `--office` (work); its hostname is the host name, Intel / Apple Silicon is detected | [README](../README.md) |
+| Another machine, not in the inventory | `--group servers` (or `linux_desktop`, `wsl`); `--host NAME` to name it other than its hostname; without `--group` it is asked, with a suggestion | [README](../README.md) |
 | No questions at all (fresh VM, script, CI) | `--yes` (`DOTFILES_YES=true`): takes every suggestion; give `--name` / `--email` (or have them in the inventory or your git config), plus `--no-xcode --no-appstore` | [setup-guide.md](setup-guide.md#before-the-first-run) |
 | A Linux desktop without Flathub / Snap apps | `DOTFILES_FLATPAKS=skip` (`--no-flatpaks`), `DOTFILES_SNAPS=skip` (`--no-snaps`) | [configuration.md](configuration.md) |
 | A server, no GUI apps | put it in the `servers` group, or `--cli` for one run | [configuration.md](configuration.md) |
@@ -49,14 +50,14 @@ Do not put passwords or tokens in your shell profile.
 Examples:
 
 ```sh
-# no questions, no Xcode, no App Store, a Mac that is in the inventory as macbook-arm64
-bash bootstrap.sh --host macbook-arm64 --name "Ada Lovelace" --email ada@example.com --no-xcode --no-appstore
+# no questions, no Xcode, no App Store, a personal Mac
+bash bootstrap.sh --home --name "Ada Lovelace" --email ada@example.com --no-xcode --no-appstore
 
 # a server that is not in the inventory yet
 bash bootstrap.sh --host pi --group servers --name "Ada Lovelace" --email ada@example.com
 
 # a specific Xcode, Apple ID from the environment for this one command
-XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host macbook-arm64 --xcode 26.6
+XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --home --xcode 26.6
 ```
 
 ## Reference
@@ -66,6 +67,7 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host m
 | Option | Variable | Becomes |
 |---|---|---|
 | `--host NAME` | `DOTFILES_HOST` | `-l NAME`; default the hostname |
+| `--home`, `--office` | `DOTFILES_GROUP=home` / `office` | a Mac: `mac_personal` / `mac_work` |
 | `--group GROUP` | `DOTFILES_GROUP` | a machine not in the inventory is put in GROUP for this run (default `mac_personal` on a Mac, `servers` on Linux) |
 | `--name`, `--email` | `DOTFILES_NAME`, `DOTFILES_EMAIL` | `git_name`, `git_email` |
 | `--cli` | `DOTFILES_PROFILE=cli` | `gui_apps=false` |
@@ -102,6 +104,7 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --host m
 | `BW_SESSION` | an unlocked vault | `bootstrap.sh` sets it; the playbook's Bitwarden lookups use it |
 | `DOTFILES_BW_METHOD` | `apikey`, `sso`, `password` | default: `apikey` if the two API variables are set, else `password` |
 | `DOTFILES_BW_EMAIL` | Bitwarden login email | default `--email`, else asked |
+| `DOTFILES_BW_REMEMBER` | `false` | keep nothing: by default the API key and master password go to the Keychain / Secret Service after the first setup, so `bw`, `dot` and later runs unlock by themselves |
 | `DOTFILES_BW_SERVER` | self-hosted or EU server URL | `bootstrap.sh` runs `bw config server` with it before logging in. Only applied while logged out: if the CLI is already logged in to another server run `bw logout` first |
 
 The secrets themselves (`BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD`) have no option on purpose, so they do not

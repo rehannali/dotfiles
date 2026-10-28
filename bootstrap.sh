@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command to set up a machine (macOS Apple Silicon / Intel, Debian-based Linux, WSL2) with Ansible:
 #
-#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64
+#   curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --home   (or --office)
 #
 # --host is this machine's name in ansible/inventory/hosts.yml (default: its hostname); that decides what it gets.
 # A machine that is not in the inventory yet: add --group mac_personal | mac_work | servers | wsl (default:
@@ -29,6 +29,7 @@
 #
 # Options (all optional):
 #   --host NAME         this machine in ansible/inventory/hosts.yml (default: its hostname)  (DOTFILES_HOST)
+#   --home, --office    a Mac: personal (mac_personal) or work (mac_work); Intel / Apple Silicon is detected
 #   --group GROUP       a machine not in the inventory gets what GROUP gets                  (DOTFILES_GROUP)
 #   --name "Full Name"  name for git commits (else git_name from the inventory)              (DOTFILES_NAME)
 #   --email ADDRESS     email for git commits (else git_email from the inventory)           (DOTFILES_EMAIL)
@@ -77,6 +78,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --host)        [ $# -ge 2 ] || die "--host needs a name"; HOST="$2"; shift ;;
     --group)       [ $# -ge 2 ] || die "--group needs a group"; GROUP="$2"; shift ;;
+    --home)        GROUP=mac_personal ;;
+    --office)      GROUP=mac_work ;;
     --name)        [ $# -ge 2 ] || die "--name needs a value"; export DOTFILES_NAME="$2"; shift ;;
     --email)       [ $# -ge 2 ] || die "--email needs a value"; export DOTFILES_EMAIL="$2"; shift ;;
     --cli)         export DOTFILES_PROFILE=cli ;;
@@ -109,6 +112,7 @@ done
 
 OS="$(uname -s)"
 case "$OS" in Darwin | Linux) ;; *) die "unsupported OS: $OS (Windows: see the README)" ;; esac
+case "$GROUP" in home) GROUP=mac_personal ;; office) GROUP=mac_work ;; esac   # DOTFILES_GROUP=home / office too
 
 # Bitwarden credentials in the environment (API key, master password or an unlocked session) mean --bitwarden
 if [ -z "${DOTFILES_BITWARDEN:-}" ] \
@@ -129,12 +133,12 @@ hosts_yml() {   # the inventory, from --source, an existing checkout, or the rep
   else curl -fsSL "https://raw.githubusercontent.com/$REPO/${BRANCH:-HEAD}/ansible/inventory/hosts.yml" 2> /dev/null || true
   fi
 }
-local_has() { grep -q "^      $1: " "$HOME/.config/dotfiles/local.yml" 2> /dev/null; }
+local_has() { grep -qE "^      $1(_asked)?: " "$HOME/.config/dotfiles/local.yml" 2> /dev/null; }
 [ -n "$HOST" ] || HOST="$(hostname -s 2> /dev/null || hostname)"
 ASKED=()   # answers kept in local.yml (an inventory: the repo's host_vars still win over them)
 
 if [ -z "$GROUP" ] && ! hosts_yml | grep -qE "^[[:space:]]+$HOST:[[:space:]]*(#.*)?$"; then
-  if [ "$OS" = Darwin ]; then GROUP=mac_personal; groups="mac_personal mac_work"
+  if [ "$OS" = Darwin ]; then GROUP=mac_personal; groups="mac_personal mac_work home office"
   else
     groups="servers linux_desktop wsl"
     if grep -qi microsoft /proc/version 2> /dev/null; then GROUP=wsl
@@ -144,8 +148,10 @@ if [ -z "$GROUP" ] && ! hosts_yml | grep -qE "^[[:space:]]+$HOST:[[:space:]]*(#.
   fi
   if interactive; then
     say "$HOST is not in ansible/inventory/hosts.yml. Which kind of machine is it? ($groups)"
+    [ "$OS" != Darwin ] || printf '%s\n' "home = mac_personal, office = mac_work; Intel or Apple Silicon is detected"
     while :; do
       answer="$(ask "Group" "$GROUP")"
+      case "$answer" in home) answer=mac_personal ;; office) answer=mac_work ;; esac
       case " $groups " in *" $answer "*) GROUP="$answer"; break ;; esac
       printf 'One of: %s\n' "$groups"
     done
@@ -163,7 +169,7 @@ elif [ -z "${DOTFILES_NAME:-}" ] && ! local_has git_name; then
   else
     answer="$suggestion"
   fi
-  [ -z "$answer" ] || ASKED+=("git_name: $(printf '"%s"' "${answer//\"/\\\"}")")
+  [ -z "$answer" ] || ASKED+=("git_name_asked: $(printf '"%s"' "${answer//\"/\\\"}")")
 fi
 if [ "${DOTFILES_BITWARDEN:-}" = true ]; then :
 elif [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
@@ -174,7 +180,7 @@ elif [ -z "${DOTFILES_EMAIL:-}" ] && ! local_has git_email; then
   else
     answer="$suggestion"
   fi
-  [ -z "$answer" ] || ASKED+=("git_email: $(printf '"%s"' "${answer//\"/\\\"}")")
+  [ -z "$answer" ] || ASKED+=("git_email_asked: $(printf '"%s"' "${answer//\"/\\\"}")")
 fi
 
 if interactive; then
@@ -303,6 +309,12 @@ bw_open_vault() {
   bw_install
   local state method email cur
   state="$(bw_state)"
+  # the master password read here (hidden) rather than by bw, so it can be kept afterwards (bw_remember)
+  if [ -z "${BW_PASSWORD:-}" ] && [ -z "${BW_SESSION:-}" ] && [ "${DOTFILES_BW_REMEMBER:-true}" != false ] \
+      && [ "${DOTFILES_BW_METHOD:-}" != sso ] && interactive; then
+    read -r -s -p "Bitwarden master password: " BW_PASSWORD < /dev/tty; printf '\n'
+    export BW_PASSWORD
+  fi
   # self-hosted or EU server: the CLI has to know before anything else (it refuses while logged in)
   if [ -n "${DOTFILES_BW_SERVER:-}" ] && [ "$state" = unauthenticated ]; then
     bw config server "$DOTFILES_BW_SERVER" > /dev/null
@@ -347,6 +359,20 @@ bw_open_vault() {
 }
 
 if [ "${DOTFILES_BITWARDEN:-}" = true ]; then bw_open_vault; fi
+
+# After the vault opened: its API key and master password into the OS secret store (macOS Keychain, Linux Secret
+# Service) with home/.local/bin/dotfiles-secret, so later `bw`, `dot` and playbook runs unlock it by themselves.
+# DOTFILES_BW_REMEMBER=false keeps nothing.
+bw_remember() {
+  [ "${DOTFILES_BITWARDEN:-}" = true ] && [ -n "${BW_SESSION:-}" ] && [ "${DOTFILES_BW_REMEMBER:-true}" != false ] || return 0
+  local helper="$1" name kept=""
+  [ "$("$helper" store)" != none ] || { say "No secret store here (Keychain / secret-tool): the Bitwarden login is not kept"; return 0; }
+  for name in BW_CLIENTID BW_CLIENTSECRET BW_PASSWORD; do
+    [ -n "${!name:-}" ] || continue
+    printf '%s' "${!name}" | "$helper" set "$name" && kept="$kept $name"
+  done
+  [ -z "$kept" ] || say "Kept in the $("$helper" store) for later runs:$kept (dotfiles-secret delete NAME removes one)"
+}
 
 export PATH="$WORK_TMP:$PATH"   # the Bitwarden CLI, when it was downloaded
 
@@ -412,8 +438,10 @@ yaml_str() { local s="${1//\\/\\\\}"; printf '"%s"' "${s//\"/\\\"}"; }
 saved=()
 choice() { args+=(-e "{\"$1\": $2}"); saved+=("$1: $2"); }
 [ -z "$SOURCE" ] || args+=(-e dotfiles_update=false)
-[ -z "${DOTFILES_NAME:-}" ] || choice git_name "$(yaml_str "$DOTFILES_NAME")"
-[ -z "${DOTFILES_EMAIL:-}" ] || choice git_email "$(yaml_str "$DOTFILES_EMAIL")"
+# --name / --email: the run reads DOTFILES_NAME / DOTFILES_EMAIL itself, after the vault (group_vars/all/main.yml);
+# kept for later runs as git_name_asked / git_email_asked
+[ -z "${DOTFILES_NAME:-}" ] || saved+=("git_name_asked: $(yaml_str "$DOTFILES_NAME")")
+[ -z "${DOTFILES_EMAIL:-}" ] || saved+=("git_email_asked: $(yaml_str "$DOTFILES_EMAIL")")
 case "${DOTFILES_PROFILE:-}" in cli) choice gui_apps false ;; full) choice gui_apps true ;; esac
 [ "${DOTFILES_BITWARDEN:-}" != true ] || choice bitwarden true
 [ "${DOTFILES_XCODE:-}" != skip ] || { choice install_xcode false; choice install_ios_runtime false; }
@@ -446,6 +474,7 @@ if [ -z "$CHECK" ]; then
   if [ ${#saved[@]} -gt 0 ]; then dot_cmd remember "${saved[@]}" || die "Could not save this machine's choices"; fi
   dot_cmd remember || true
 fi
+[ -n "$CHECK" ] || bw_remember "$REPO_DIR/home/.local/bin/dotfiles-secret"
 local_vars="$HOME/.config/dotfiles/local.yml"
 [ ! -f "$local_vars" ] || args+=(-i "$local_vars")
 [ -z "$CHECK" ] || args+=(--check --diff)

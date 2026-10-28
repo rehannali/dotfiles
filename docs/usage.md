@@ -7,7 +7,7 @@ machines, is in [setup-guide.md](setup-guide.md).
 ## A new machine
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --host macbook-arm64
+curl -fsSL https://raw.githubusercontent.com/rehannali/dotfiles/main/bootstrap.sh | bash -s -- --home      # or --office
 ```
 
 `--host` is the machine's name in `ansible/inventory/hosts.yml`. A machine that isn't there yet:
