@@ -231,7 +231,9 @@ case "$cmd" in
   sync)
     say "git pull in $REPO"
     git -C "$REPO" pull --ff-only || die "could not fast-forward $REPO: commit or stash your changes (dot status), then dot sync again"
-    playbook "$@"
+    # apply with the dot that was just pulled: this running copy is the old one
+    rm -rf "$TMP"
+    DOTFILES_DIR="$REPO" exec "$REPO/home/.local/bin/dot" apply "$@"
     ;;
   check) playbook --check --diff "$@" ;;
   save)
