@@ -42,6 +42,7 @@ Do not put passwords or tokens in your shell profile.
 | Bitwarden, email and master password | `DOTFILES_BW_EMAIL` (`--bw-email`, defaults to `--email`), optionally `BW_PASSWORD` | [bitwarden.md](bitwarden.md) |
 | Bitwarden on a self-hosted or EU server | `DOTFILES_BW_SERVER=https://vault.example.com` (`--bw-server`), with any login method above | [bitwarden.md](bitwarden.md) |
 | Vault already unlocked in this shell | `BW_SESSION` (what `bw unlock --raw` prints) | [bitwarden.md](bitwarden.md) |
+| Nobody at the keyboard to type the sudo password (CI, a self-hosted runner, a script) | `DOTFILES_SUDO_PASSWORD`, and `DOTFILES_BECOME_PASSWORD` only if Ansible's differs | |
 | Test a branch or a fork | `--branch NAME`, `DOTFILES_REPO=owner/name` | |
 | Test an uncommitted local checkout | `DOTFILES_SOURCE=/path` (`--source`); it is used as it is, never pulled | |
 | Only one part (e.g. the dotfiles) | `DOTFILES_ANSIBLE_ARGS="--tags dotfiles"` | [README](../README.md) |
@@ -101,6 +102,8 @@ XCODES_USERNAME=ada@example.com XCODES_PASSWORD='...' bash bootstrap.sh --home -
 | `FASTLANE_SESSION` | Apple login without the two-factor code | used with `xcodes --use-fastlane-auth`. Make one with `fastlane spaceauth` or the `apple-session` workflow |
 | `BW_CLIENTID`, `BW_CLIENTSECRET` | Bitwarden API key login | both set means `DOTFILES_BW_METHOD=apikey` is picked automatically, and Bitwarden is on (as `--bitwarden`) |
 | `BW_PASSWORD` | master password, so it is not asked | export for one command only; also unlocks the vault for a plain `ansible-playbook` run |
+| `DOTFILES_SUDO_PASSWORD` | sudo's password, so it is not asked | `bootstrap.sh` and `dot` unlock sudo with it (`sudo -S`) and hand it to Ansible as the become password through a script that prints it (`--become-password-file`), so it is never written to a file. Every process of the run inherits it: export it for one command only, or set it as a CI secret |
+| `DOTFILES_BECOME_PASSWORD` | Ansible's become password, when it is not the sudo password | default `DOTFILES_SUDO_PASSWORD` |
 | `BW_SESSION` | an unlocked vault | `bootstrap.sh` sets it; the playbook's Bitwarden lookups use it |
 | `DOTFILES_BW_METHOD` | `apikey`, `sso`, `password` | default: `apikey` if the two API variables are set, else `password` |
 | `DOTFILES_BW_EMAIL` | Bitwarden login email | default `--email`, else asked |

@@ -146,5 +146,9 @@ fixes it until the next plugin update; `dot sync` fixes it for good.
 **`dot: <host> is not in ansible/inventory/hosts.yml`**: add the machine to `hosts.yml` under its group (and
 `dot save`), or run once with `DOTFILES_GROUP=mac_work dot`.
 
-**sudo password asked during `dot`**: macOS keeps sudo's unlock per terminal, so Ansible asks once for the steps that
-need root (MacPorts, `/etc/shells`, Touch ID, Rosetta).
+**sudo during `dot`**: on macOS `dot` (and `bootstrap.sh`) unlock sudo once at the start, with Touch ID or your
+password, for the steps that need root (MacPorts, `/etc/shells`, Touch ID, Rosetta). macOS keeps that unlock per
+terminal and Touch ID would show a dialog Ansible can't answer, so for the run `/etc/sudoers.d/dotfiles-run` makes the
+unlock count for every terminal; it is removed when the run ends (if a run was killed: `sudo rm
+/etc/sudoers.d/dotfiles-run`). With nobody at the keyboard (CI, a script), `DOTFILES_SUDO_PASSWORD` gives sudo and
+Ansible the password ([environment.md](environment.md)).

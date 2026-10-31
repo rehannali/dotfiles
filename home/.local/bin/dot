@@ -55,7 +55,50 @@ if [ -f "$MACHINE_FILE" ]; then   # written by the report role: DOTFILES_HOST=..
 fi
 [ -n "$host" ] || host="$(hostname -s 2> /dev/null || hostname)"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+RUN_SUDOERS=/etc/sudoers.d/dotfiles-run
+SUDO_KEEPALIVE_PID=""
+cleanup() {
+  [ ! -f "$RUN_SUDOERS" ] || sudo -n rm -f "$RUN_SUDOERS" 2> /dev/null || true
+  [ -z "$SUDO_KEEPALIVE_PID" ] || kill "$SUDO_KEEPALIVE_PID" 2> /dev/null || true
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
+
+# DOTFILES_SUDO_PASSWORD: the sudo password, for runs nobody types into (CI, a self-hosted runner, a script); it is
+# also Ansible's become password unless DOTFILES_BECOME_PASSWORD is set. Read from the environment, never written down.
+sudo_unlock() {
+  if [ -n "${DOTFILES_SUDO_PASSWORD:-}" ]; then
+    printf '%s\n' "$DOTFILES_SUDO_PASSWORD" | sudo -S -p '' -v || die "sudo did not take DOTFILES_SUDO_PASSWORD"
+  else
+    sudo -v
+  fi
+}
+# --become-password-file for ansible-playbook: a script in DIR that prints the password, so it is in no file
+become_password_file() {
+  [ -n "${DOTFILES_BECOME_PASSWORD:-${DOTFILES_SUDO_PASSWORD:-}}" ] || return 1
+  # shellcheck disable=SC2016  # expanded when Ansible runs the script, not here
+  printf '%s\n' '#!/bin/sh' 'printf "%s\n" "${DOTFILES_BECOME_PASSWORD:-$DOTFILES_SUDO_PASSWORD}"' > "$1/become-password"
+  chmod 0700 "$1/become-password"
+  printf '%s\n' "$1/become-password"
+}
+
+# macOS remembers a sudo unlock per terminal, and with Touch ID (sudo_local) sudo waits for a fingerprint instead of
+# the password prompt Ansible answers, so Ansible's sudo times out. For the run, one unlock counts for every terminal
+# (a sudoers drop-in, removed at the end) and is kept fresh while long steps (port builds) run.
+sudo_for_run() {
+  [ "$(uname -s)" = Darwin ] && [ "$(id -u)" -ne 0 ] || return 0
+  say "Unlocking sudo for this run (it stays unlocked until the run ends)"
+  sudo_unlock
+  if ! { printf 'Defaults:%s timestamp_type=global\n' "$(id -un)" | sudo tee "$RUN_SUDOERS.new" > /dev/null \
+      && sudo chmod 0440 "$RUN_SUDOERS.new" && sudo /usr/sbin/visudo -cqf "$RUN_SUDOERS.new" \
+      && sudo mv "$RUN_SUDOERS.new" "$RUN_SUDOERS"; }; then
+    sudo rm -f "$RUN_SUDOERS.new"; die "could not unlock sudo"
+  fi
+  sudo_unlock
+  ( while true; do sudo -n true 2> /dev/null || exit; sleep 50; kill -0 "$$" 2> /dev/null || exit; done ) &
+  SUDO_KEEPALIVE_PID=$!
+  disown "$SUDO_KEEPALIVE_PID" 2> /dev/null || true
+}
 
 # remember 'KEY: VALUE' ...: add or replace this machine's settings in local.yml (VALUE is YAML)
 # older runs kept the typed name / email as git_name / git_email, which would win over the vault: now <key>_asked
@@ -168,8 +211,13 @@ playbook() {
   ask_name_email
   # dotfiles_update=false: apply the checkout as it is (dot sync pulls first)
   local args=("${inv[@]}" -c local -e "dotfiles_dir=$REPO" -e dotfiles_update=false)
-  # sudo for the steps that need it: Ansible asks once if it can't use an already unlocked sudo
-  if [ "$(id -u)" -ne 0 ] && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
+  sudo_for_run
+  # sudo for the steps that need it: the password from the environment, else Ansible asks once if it can't use an
+  # already unlocked sudo
+  local pwfile
+  if [ "$(id -u)" -ne 0 ] && pwfile="$(become_password_file "$TMP")"; then
+    args+=(--become-password-file "$pwfile")
+  elif [ "$(id -u)" -ne 0 ] && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
     args+=(--ask-become-pass)
   fi
   say "ansible-playbook site.yml for $host${group:+ ($group)} $*"

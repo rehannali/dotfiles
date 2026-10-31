@@ -60,7 +60,8 @@
 #
 # Other variables read: DOTFILES_REPO (owner/name, default rehannali/dotfiles), DOTFILES_DIR (where the repo is,
 # default the checkout bootstrap.sh runs from, else ~/.dotfiles), DOTFILES_SKIP_CASKS (casks to leave out, space
-# separated), DOTFILES_ANSIBLE_ARGS (extra ansible-playbook options), and for Bitwarden
+# separated), DOTFILES_ANSIBLE_ARGS (extra ansible-playbook options), DOTFILES_SUDO_PASSWORD (sudo's password, so
+# it is not asked; also Ansible's become password unless DOTFILES_BECOME_PASSWORD is set), and for Bitwarden
 # BW_CLIENTID and BW_CLIENTSECRET (API key login), BW_PASSWORD (master password, so it is not asked) and BW_SESSION
 # (an already unlocked vault). Every variable, by scenario: docs/environment.md
 set -euo pipefail
@@ -198,23 +199,53 @@ if interactive; then
   for line in ${ASKED[@]+"${ASKED[@]}"}; do printf '  %s\n' "$line"; done
   [ -z "${DOTFILES_NAME:-}" ] || printf '  git_name: %s\n' "$DOTFILES_NAME"
   [ -z "${DOTFILES_EMAIL:-}" ] || printf '  git_email: %s\n' "$DOTFILES_EMAIL"
-  env | sed -n 's/^\(DOTFILES_[A-Z_]*=\)/  \1/p' | grep -vE 'DOTFILES_(NAME|EMAIL|HOST|GROUP)=' || true
+  env | sed -n 's/^\(DOTFILES_[A-Z_]*=\)/  \1/p' | grep -vE 'DOTFILES_(NAME|EMAIL|HOST|GROUP|[A-Z_]*PASSWORD)=' || true
   printf '  %s\n' "Defaults for everything else; bootstrap.sh --help lists the options. Ctrl-C to stop."
   case "$(ask "Run the setup with these? [Y/n]" "")" in [nN]*) die "stopped; nothing was changed" ;; esac
 fi
 
+# DOTFILES_SUDO_PASSWORD: the sudo password, for runs nobody types into (CI, a self-hosted runner, a script); it is
+# also Ansible's become password unless DOTFILES_BECOME_PASSWORD is set. Read from the environment, never written down.
+sudo_unlock() {
+  if [ -n "${DOTFILES_SUDO_PASSWORD:-}" ]; then
+    printf '%s\n' "$DOTFILES_SUDO_PASSWORD" | sudo -S -p '' -v || die "sudo did not take DOTFILES_SUDO_PASSWORD"
+  else
+    sudo -v
+  fi
+}
+# --become-password-file for ansible-playbook: a script in DIR that prints the password, so it is in no file
+become_password_file() {
+  [ -n "${DOTFILES_BECOME_PASSWORD:-${DOTFILES_SUDO_PASSWORD:-}}" ] || return 1
+  # shellcheck disable=SC2016  # expanded when Ansible runs the script, not here
+  printf '%s\n' '#!/bin/sh' 'printf "%s\n" "${DOTFILES_BECOME_PASSWORD:-$DOTFILES_SUDO_PASSWORD}"' > "$1/become-password"
+  chmod 0700 "$1/become-password"
+  printf '%s\n' "$1/become-password"
+}
+
 # 1. sudo, once
 SUDO_KEEPALIVE_PID=""
+RUN_SUDOERS=/etc/sudoers.d/dotfiles-run
 if [ "$(id -u)" -ne 0 ]; then
   command -v sudo > /dev/null 2>&1 || die "sudo is required (or run this as root)"
   say "Unlocking sudo (asked once; it stays unlocked while this runs)"
-  sudo -v
+  if [ "$(uname -s)" = Darwin ]; then
+    sudo_unlock
+    # macOS remembers the unlock per terminal, and with Touch ID (sudo_local) sudo waits for a fingerprint instead of
+    # the password prompt Ansible answers: for the run, one unlock counts for every terminal (removed at the end)
+    if ! { printf 'Defaults:%s timestamp_type=global\n' "$(id -un)" | sudo tee "$RUN_SUDOERS.new" > /dev/null \
+        && sudo chmod 0440 "$RUN_SUDOERS.new" && sudo /usr/sbin/visudo -cqf "$RUN_SUDOERS.new" \
+        && sudo mv "$RUN_SUDOERS.new" "$RUN_SUDOERS"; }; then
+      sudo rm -f "$RUN_SUDOERS.new"; die "could not unlock sudo"
+    fi
+  fi
+  sudo_unlock
   ( while true; do sudo -n true 2> /dev/null || exit; sleep 50; kill -0 "$$" 2> /dev/null || exit; done ) &
   SUDO_KEEPALIVE_PID=$!
   disown "$SUDO_KEEPALIVE_PID" 2> /dev/null || true   # no "Terminated: 15" when cleanup stops it
 fi
 WORK_TMP="$(mktemp -d)"
 cleanup() {
+  [ ! -f "$RUN_SUDOERS" ] || sudo -n rm -f "$RUN_SUDOERS" 2> /dev/null || true
   [ -z "$SUDO_KEEPALIVE_PID" ] || kill "$SUDO_KEEPALIVE_PID" 2> /dev/null || true
   rm -rf "$WORK_TMP"
 }
@@ -492,8 +523,10 @@ local_vars="$HOME/.config/dotfiles/local.yml"
 if [ -n "${DOTFILES_ANSIBLE_ARGS:-}" ]; then read -r -a extra_ansible <<< "$DOTFILES_ANSIBLE_ARGS"; args+=("${extra_ansible[@]}"); fi
 
 # sudo was unlocked in step 1 and is kept unlocked. Where sudo remembers that per terminal (macOS), Ansible's own
-# sudo calls may not see it: then Ansible asks for the password once more.
-if [ "$(id -u)" -ne 0 ] && [ -z "$CHECK" ] \
+# sudo calls may not see it: then Ansible asks for the password once more (or takes DOTFILES_SUDO_PASSWORD).
+if [ "$(id -u)" -ne 0 ] && become_pw_file="$(become_password_file "$WORK_TMP")"; then
+  args+=(--become-password-file "$become_pw_file")
+elif [ "$(id -u)" -ne 0 ] && [ -z "$CHECK" ] \
     && ! ansible all -i localhost, -c local -b -m ansible.builtin.command -a true > /dev/null 2>&1 < /dev/null; then
   args+=(--ask-become-pass)
 fi

@@ -148,6 +148,8 @@ jobs:
       DOTFILES_CASKS: ${{ inputs.casks || 'skip' }}
       DOTFILES_SKIP_CASKS: ${{ inputs.skip_casks }}
       DOTFILES_SOURCE: ${{ github.workspace }}
+      # GitHub's runners need no sudo password; a self-hosted one gets it from this secret (empty: not used)
+      DOTFILES_SUDO_PASSWORD: ${{ secrets.DOTFILES_SUDO_PASSWORD }}
       # mise resolves GitHub releases through the API; an authenticated token avoids anonymous rate limits.
       MISE_GITHUB_TOKEN: ${{ github.token }}
       HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
