@@ -16,6 +16,12 @@ if $port -q installed "$name" 2> /dev/null | grep -q '(active)'; then
   if [ -z "$($port -q outdated "$name" 2> /dev/null)" ]; then echo "$name is up to date"; exit 0; fi
   action=upgrade
 else
+  # a conflicting port with the same files is active (pkgconf for pkgconfig, pulled in by another port): it serves
+  for other in $($port -q info --conflicts --line "$name" 2> /dev/null | tr ',' ' '); do
+    if $port -q installed "$other" 2> /dev/null | grep -q '(active)'; then
+      echo "$name is already installed (as $other, which conflicts with it)"; exit 0
+    fi
+  done
   action=install
 fi
 

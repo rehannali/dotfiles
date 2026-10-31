@@ -160,7 +160,7 @@ packages:
         - {name: libyaml, kind: system, brew: libyaml, apt: libyaml-dev, port: libyaml}   # Ruby's psych needs it
         - {name: openssl, kind: system, brew: openssl@3, port: openssl3, apt: libssl-dev}
         - {name: pkgconf, kind: system, brew: pkgconf, port: pkgconfig, port_links: {pkgconf: /opt/local/bin/pkg-config},
-           bin: pkgconf}   # apt: comes with libharfbuzz-dev. MacPorts: pkgconfig (other ports need it, and it conflicts with pkgconf)
+           bin: pkgconf}   # apt: comes with libharfbuzz-dev. MacPorts: pkgconfig, or the pkgconf another port pulled in
         - {name: subversion, kind: system, brew: subversion, port: subversion, apt: subversion, bin: svn}
         - {name: zlib, kind: system, brew: zlib, port: zlib}   # apt: zlib1g-dev comes with libharfbuzz-dev
         # needed by the Flutter SDK (fvm) on Debian: it unpacks .tar.xz and zip files and calls `file`
