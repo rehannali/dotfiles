@@ -14,6 +14,19 @@
     label: "{{ item.key }}"
   notify: Restart the Dock
 
+# osx_defaults refuses to change a key's type ("Type mismatch"): a key stored with another type (an int 1 where a
+# bool is wanted, written by some app or an older macOS) is deleted first, then written with the right one
+- name: Defaults | keys stored with another type
+  ansible.builtin.shell: >-
+    t="$(defaults read-type {{ item[0] | quote }} {{ item[1] | quote }} 2> /dev/null)" || exit 0;
+    [ "$t" = "Type is {{ {'bool': 'boolean', 'int': 'integer'}.get(item[2], item[2]) }}" ] && exit 0;
+    defaults delete {{ item[0] | quote }} {{ item[1] | quote }} && echo deleted
+  loop: "{{ macos_defaults_list }}"
+  loop_control:
+    label: "{{ item[0] }} {{ item[1] }}"
+  register: defaults_retyped
+  changed_when: "'deleted' in defaults_retyped.stdout"
+
 - name: Defaults | Finder, keyboard and trackpad
   community.general.osx_defaults:
     domain: "{{ item[0] }}"
