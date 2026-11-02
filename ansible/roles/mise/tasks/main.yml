@@ -101,6 +101,25 @@
   failed_when: false
   when: not ansible_check_mode
 
+# a pipx: / pypi: tool lives in a venv on one Python; when prune (or an upgrade) removed that Python, its commands stop
+# with "bad interpreter": reinstall it on a Python that is there
+- name: Mise | Python tools whose Python is gone
+  ansible.builtin.shell: >-
+    for id in {{ mise_python_tools | map('quote') | join(' ') }}; do
+    d="$({{ mise_bin }} where "$id" 2> /dev/null)" || continue;
+    for py in "$d"/*/bin/python; do
+    if [ -L "$py" ] && [ ! -e "$py" ]; then {{ mise_bin }} install --force "$id" && echo "reinstalled $id"; break; fi;
+    done; done
+  vars:
+    mise_python_tools: >-
+      {{ (tool_plan.mise + intel_mise_fallback | default([])) | select('match', '(pipx|pypi):') | unique | list }}
+  environment:
+    PATH: "{{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.PATH }}"
+  register: mise_venvs
+  changed_when: "'reinstalled' in mise_venvs.stdout"
+  failed_when: false
+  when: not ansible_check_mode
+
 # The global config (~/.config/mise/config.toml) is what every shell, IDE and script gets: the shims directory is on
 # PATH in .zshenv, .zprofile and .bashrc. Anything in it that is still not installed is reported by name.
 - name: Mise | anything in the global config not installed

@@ -1,3 +1,7 @@
 ---
 # Apple Silicon: from Homebrew; elsewhere: mise's own installer, into ~/.local/bin
 mise_bin: "{{ '/opt/homebrew/bin/mise' if (dotfiles_os == 'darwin' and dotfiles_arch == 'arm64') else ansible_facts.env.HOME ~ '/.local/bin/mise' }}"
+# options for a tool line in config.toml ({version = "latest", ...}). ansible-core does not run on the newest Python
+# (3.15: dataclasses._is_type is gone): uv builds its venv on its own Python 3.13, which mise prune never removes
+mise_tool_options:
+  "pipx:ansible-core": {uvx_args: "--python 3.13"}
