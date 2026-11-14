@@ -11,22 +11,36 @@ It is one file, `mycask.py`, standard library only (it runs on the macOS system 
 ## Commands
 
 Definitions come from Homebrew's `cask.json` (formulae.brew.sh), downloaded at most once a day and reused in between.
-mycask follows Homebrew's cask rules for artifacts, uninstall and zap. Before it replaces an app, it reads the new
-app's own `Info.plist` and `lipo -archs`, so it never installs an update that dropped Intel or needs a newer macOS. It
-keeps the installed version and skips that update from then on.
+mycask follows Homebrew's cask rules for artifacts, uninstall and zap, and its commands and flags follow
+`brew ... --cask`, so a Homebrew habit works as is (`--cask` itself is accepted and ignored). Before it replaces an
+app, it reads the new app's own `Info.plist` and `lipo -archs`, so it never installs an update that dropped Intel or
+needs a newer macOS. It keeps the installed version and skips that update from then on.
+
+`mycask` or `mycask help` prints the overview below with every command; `mycask help COMMAND` (or
+`mycask COMMAND --help`) the options of one command. Everything that changes the Mac takes `-n` (`--dry-run`).
 
 ```sh
 mycask install firefox                  # --adopt takes over an app already in place, --force replaces it
 mycask install --appdir ~/Applications alfred   # into another folder; upgrades and uninstalls remember it
 mycask bundle casks.txt                 # every token in a file (see the format below)
-mycask upgrade                          # outdated casks; --greedy includes auto-updating and "latest" ones
+mycask upgrade                          # lists the outdated casks first, then upgrades them all
+mycask upgrade -n                       # the list only; --greedy includes casks that update themselves
+mycask update                           # refresh the index now and list what is outdated
+mycask outdated                         # --greedy, --greedy-latest, --greedy-auto-updates, --json, -q
 mycask reinstall <token>                # download and install again
-mycask outdated | list | info <token> | search <text>
+mycask uninstall <token>                # --zap also removes settings and caches; --force: even without a receipt
+mycask zap <token>                      # leftovers of an app, even one mycask didn't install (--appdir DIR, --force)
+mycask cleanup                          # old downloads and staged versions; --prune DAYS, -s (every download)
+mycask list | outdated | info <token> | search <text> | deps <token> | home <token> | cat <token>
 mycask pin <token> / unpin <token>      # hold a cask at its installed version
-mycask uninstall <token>                # --zap also removes settings and caches
-mycask zap <token>                      # leftovers of an app, even one mycask didn't install (--appdir DIR)
-mycask update                           # refresh the index now (otherwise at most once a day)
+mycask fetch <token>                    # download only
+mycask doctor                           # checks the setup and every installed cask
 ```
+
+Install flags, as in Homebrew: `--adopt`, `--force`, `--appdir DIR`, `--no-quarantine`, `--no-binaries`,
+`--skip-cask-deps`, `--require-sha`, and mycask's own `--skip-compat`. Global, before or after the command:
+`-n/--dry-run`, `-v/--verbose` (every command run), `-q/--quiet`, `-d/--debug`, `--offline`, `-V/--version`.
+Aliases: `up`, `remove`/`rm`, `ls`, `homepage`.
 
 `casks.txt` has one token per line, `#` starts a comment. A line can name the folder its app goes to:
 
@@ -34,8 +48,6 @@ mycask update                           # refresh the index now (otherwise at mo
 firefox
 alfred --appdir=~/Applications
 ```
-
-`--help` after any command lists all its options.
 
 ## Checking an install
 
