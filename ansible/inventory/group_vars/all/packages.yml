@@ -41,6 +41,7 @@
 #   prebuilt    true  = tap formula that downloads a prebuilt binary (no bottle, no compile)
 #   bin         command the tool provides when it differs from `name` (cli/apple default to `name`;
 #               system entries have none unless set). Used by scripts/check-install.py after an apply.
+#   arch        arm64 = Apple Silicon only: the tool is left out on Intel Macs (gnupg: only Homebrew's doppler wants it)
 #
 # Which manager installs a tool on a machine is decided by platform_managers (platforms.yml) and
 # ansible/filter_plugins/tool_plan.py; a tool is never installed by two managers on one machine.
@@ -136,6 +137,7 @@ packages:
         - {name: docker, kind: cli, mise: docker-cli, brew: docker, port: docker}
         - {name: docker-compose, kind: cli, mise: docker-compose, brew: docker-compose, port: docker-compose-plugin,
            port_links: {docker-compose: /opt/local/libexec/docker/cli-plugins/docker-compose}}   # Compose v2 (the docker-compose port is v1)
+        - {name: doppler, kind: cli, mise: doppler, brew: doppler}   # secrets CLI. Debian and Intel Macs: mise (GitHub release)
         - {name: fvm, kind: cli, mise: aqua:leoafarias/fvm, brew: leoafarias/fvm/fvm}
         - {name: graphite, kind: cli, mise: graphite, brew: withgraphite/tap/graphite, bin: gt}   # stacked PRs
         - {name: mkcert, kind: cli, mise: mkcert, brew: mkcert, port: mkcert, apt: mkcert}
@@ -155,6 +157,7 @@ packages:
         # `git-flow` command). remove: in main.yml uninstalls the old one. Macs: Homebrew (mycask on Intel); Linux: mise.
         - {name: git-flow-next, kind: cli, mise: "github:gittower/git-flow-next", brew: git-flow-next, bin: git-flow}
         # - {name: glib, kind: system, brew: glib, apt: libglib2.0-dev}   # brew: comes with harfbuzz and ghostscript. apt: comes with libharfbuzz-dev
+        - {name: gnupg, kind: system, brew: gnupg, arch: arm64, bin: gpg}   # Homebrew's doppler wants it; Intel Macs and Debian (mise doppler) don't
         - {name: harfbuzz, kind: system, apt: libharfbuzz-dev}   # brew: comes with ghostscript. apt: libharfbuzz-dev pulls in libglib2.0-dev
         - {name: libksba, kind: system, brew: libksba, port: libksba, apt: libksba-dev}
         - {name: libyaml, kind: system, brew: libyaml, apt: libyaml-dev, port: libyaml}   # Ruby's psych needs it

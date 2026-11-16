@@ -9,6 +9,7 @@ $ids = @(
     'Brave.Brave'
     'Discord.Discord'
     'Docker.DockerDesktop'
+    'doppler.doppler'
     'Git.Git'
     'GitHub.cli'
     'Google.AndroidStudio'

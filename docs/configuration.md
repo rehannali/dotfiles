@@ -87,7 +87,7 @@ file; nothing else reaches it:
 |---|---|
 | `core` | the shell and everyday command-line tools (zsh, git, tmux, neovim, bat, eza, zoxide, atuin, btop, gh, glab, rclone, ...) |
 | `runtimes` | node, python, ruby, java, go, rust, uv from mise, and the global npm packages |
-| `dev` | building software: docker, cmake, act, mkcert, poetry, zig, fvm, graphite (`gt`), ansible, compilers and headers |
+| `dev` | building software: docker, cmake, act, mkcert, doppler, poetry, zig, fvm, graphite (`gt`), ansible, gnupg, compilers and headers |
 | `media` | ffmpeg, imagemagick, graphicsmagick, ghostscript |
 | `network` | nmap, aria2, wireguard-tools, openconnect, speedtest, unbound, telnet |
 | `web` | nginx, php |
