@@ -65,6 +65,11 @@
       ansible_facts.env.PATH }}
     # Intel Macs: mise has no prebuilt Ruby there, it compiles; keep the machine usable
     MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
+    # Intel Macs: Rust build scripts (cargo: tools) must not find MacPorts' libraries with pkg-config: a crate that
+    # bundles its C library (libgit2) is compiled against Apple's headers but would link /opt/local/lib (iconv:
+    # undefined _iconv), and one that uses the port breaks when the port is upgraded. Only the x86_64-apple-darwin
+    # target reads this name, so Linux and Apple Silicon are not affected
+    PKG_CONFIG_x86_64_apple_darwin: /usr/bin/false
     MAKE_OPTS: -j2
     RUBY_MAKE_OPTS: -j2
     # Intel Macs compile Ruby: MacPorts' OpenSSL and libyaml (psych), as there is no Homebrew for ruby-build to find
@@ -87,6 +92,7 @@
       {{ ansible_facts.env.HOME }}/.local/bin:{{ ansible_facts.env.HOME }}/.local/share/mise/shims:/opt/homebrew/bin:/opt/local/bin:{{
       ansible_facts.env.PATH }}
     MISE_JOBS: "{{ '2' if (dotfiles_os == 'darwin' and dotfiles_arch != 'arm64') else '4' }}"
+    PKG_CONFIG_x86_64_apple_darwin: /usr/bin/false   # as for mise install
   register: mise_upgrade
   changed_when: mise_upgrade.stderr is search('installed')
   ignore_errors: true

@@ -41,6 +41,8 @@ def tool_plan(tools, platform, managers, gui_apps=True):
             raise AnsibleFilterError("tool %r: kind cli needs a mise key" % t.get("name"))
         if kind == "apple" and (not is_mac or not gui_apps):
             continue
+        if t.get("arch") == "arm64" and intel_mac:
+            continue   # Apple Silicon only (packages.yml: arch)
         mise_intel = t.get("mise_intel")
 
         def mise_id():

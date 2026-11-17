@@ -3,38 +3,16 @@
 without Homebrew.
 
 Cask definitions come from Homebrew's bulk cask index (formulae.brew.sh/api/cask.json),
-downloaded at most once a day and reused from a local copy in between. mycask implements the cask artifact, uninstall and zap rules itself, using only
-the Python standard library and tools that ship with macOS (curl, hdiutil, ditto, tar,
-installer, pkgutil, launchctl, osascript).
+downloaded at most once a day and reused from a local copy in between. mycask implements
+the cask artifact, uninstall and zap rules itself, using only the Python standard library
+and tools that ship with macOS (curl, hdiutil, ditto, tar, installer, pkgutil, launchctl,
+osascript). Its commands and flags follow `brew ... --cask`, so a Homebrew habit works here:
 
-Commands:
-  install <token>...     install casks (--adopt takes over apps already in place,
-                         --force replaces them, --appdir DIR puts the app in another folder;
-                         upgrades and uninstalls remember that folder)
-  reinstall <token>...   download and install again
-  upgrade [<token>...]   upgrade outdated casks, all of them if none given
-                         (--greedy also upgrades auto-updating and "latest" casks)
-  outdated               list casks with a newer version available
-  uninstall <token>...   run the cask's uninstall steps (--zap also removes settings/caches)
-  zap <token>...         remove an app's leftover files, even if mycask didn't install it
-  list                   installed casks and versions
-  pin / unpin <token>... hold a cask at its installed version, or release it
-  info <token>           summary of a cask definition
-  search <text>          search cask tokens, names and descriptions
-  update [--force]       refresh the local indexes (otherwise done at most once a day)
-  bundle <file>          install every token in a file (one per line, # for comments;
-                         a line may add --appdir=DIR)
+    mycask install --adopt firefox          mycask upgrade --greedy -n
+    mycask uninstall --zap firefox          mycask cleanup --prune 30
 
-Environment:
-  MYCASK_TTL        seconds between automatic index refreshes (default 86400 = 1 day)
-  MYCASK_API        index URL (default https://formulae.brew.sh/api/cask.json); point it
-                    at your own mirror if formulae.brew.sh ever goes away
-  MYCASK_PREFIX     where binaries, man pages and completions are linked (default ~/.local)
-  MYCASK_ROOT       receipts and staged files (default ~/.local/share/mycask)
-  MYCASK_CACHE      download and API cache (default ~/Library/Caches/mycask)
-  MYCASK_OVERRIDES  folder of <token>.json files used instead of the API, for pinning or
-                    patching definitions (default ~/.config/mycask/casks)
-  MYCASK_DEBUG=1    show full Python tracebacks on errors
+`mycask help` prints the command list, `mycask help COMMAND` (or `mycask COMMAND --help`)
+the options of one command. The environment variables are listed there too.
 """
 from __future__ import annotations
 
@@ -69,7 +47,8 @@ RECEIPTS = ROOT / "receipts"
 API_ALL = os.environ.get("MYCASK_API", "https://formulae.brew.sh/api/cask.json")
 INDEX_TTL = int(os.environ.get("MYCASK_TTL", 86400))  # seconds between index refreshes
 INDEX_FILE = CACHE / "api" / "cask.json"  # keeps the server's Last-Modified time
-UA_DEFAULT = "mycask/1.0 (Macintosh; macOS) curl"
+__version__ = "1.1.0"
+UA_DEFAULT = f"mycask/{__version__} (Macintosh; macOS) curl"
 UA_FAKE = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
            "(KHTML, like Gecko) Version/18.0 Safari/605.1.15")
 
@@ -136,10 +115,14 @@ class CaskError(Exception):
 
 
 LOG_STREAM = sys.stdout
+QUIET = False        # -q: no "==>" progress lines (errors and warnings still show)
+VERBOSE = False      # -v: show every command mycask runs
+REQUIRE_SHA = False  # --require-sha: refuse downloads the cask can't verify
 
 
 def log(msg):
-    print(f"==> {msg}", file=LOG_STREAM, flush=True)
+    if not QUIET:
+        print(f"==> {msg}", file=LOG_STREAM, flush=True)
 
 
 def warn(msg):
@@ -150,6 +133,8 @@ def run(cmd, sudo=False, check=True, input=None, capture=False):
     cmd = [str(c) for c in cmd]
     if sudo and os.geteuid() != 0:
         cmd = ["sudo"] + cmd
+    if VERBOSE:
+        print("$ " + " ".join(shlex.quote(c) for c in cmd), file=sys.stderr, flush=True)
     r = subprocess.run(cmd, input=input,
                        stdout=subprocess.PIPE if capture else None,
                        stderr=subprocess.PIPE if capture else None)
@@ -555,12 +540,14 @@ def download(meta):
     dest = CACHE / "downloads" / f"{meta['token']}--{safe_version(version)}--{name}"
     expected = meta.get("sha256")
     verify = bool(expected) and str(expected).lstrip(":") != "no_check"
+    if REQUIRE_SHA and not verify:
+        raise CaskError(f"{meta['token']} has no checksum and --require-sha was given")
     if exists(dest) and version != "latest" and verify and file_sha256(dest) == expected:
         log(f"Using cached download {dest.name}")
         return dest, name
     ensure_dir(dest.parent)
 
-    cmd = ["curl", "-fL", "-#", "--retry", "3", "--connect-timeout", "30"]
+    cmd = ["curl", "-fL", "-sS" if QUIET else "-#", "--retry", "3", "--connect-timeout", "30"]
     ua = str(specs.get("user_agent") or "").lstrip(":")
     cmd += ["-A", UA_FAKE if ua == "fake" else (UA_DEFAULT if ua in ("", "default") else ua)]
     if specs.get("referer"):
@@ -1015,6 +1002,8 @@ def install_artifacts(meta, staged, opts, items):
         for kind, args, target in entries:
             if kind != want:
                 continue
+            if kind == "binary" and not getattr(opts, "binaries", True):
+                continue   # --no-binaries, as in Homebrew
             src, o = split_args(args)
             target = o.get("target") or target
             if kind in ("preflight_steps", "postflight_steps"):
@@ -1309,8 +1298,12 @@ def install(token, opts, seen):
         return
     meta = fetch_meta(token, opts.offline)
     check_requirements(meta, installed_tokens())
-    for dep in (meta.get("depends_on") or {}).get("cask") or []:
-        install(dep, opts, seen)
+    if not getattr(opts, "skip_cask_deps", False):
+        for dep in (meta.get("depends_on") or {}).get("cask") or []:
+            install(dep, opts, seen)
+    if getattr(opts, "dry_run", False):
+        print(f"Would install {token} {meta['version']}")
+        return
     log(f"Installing {token} {meta['version']}")
     staged = stage(meta, caskroom_dir(token, meta["version"]))
     items = []
@@ -1330,8 +1323,17 @@ def install(token, opts, seen):
     log(f"{token} {meta['version']} installed")
 
 
-@with_appdir
-def upgrade(token, opts, force=False):
+class Status:
+    """What `upgrade` would do with an installed cask: outdated, current, pinned, blocked (the newest version does
+    not support this Mac), auto / latest (the app updates itself or has no version: only with --greedy), gone (no
+    longer in the index)."""
+    __slots__ = ("token", "state", "old", "new", "meta", "rec")
+
+    def __init__(self, token, state, old, new, meta, rec):
+        self.token, self.state, self.old, self.new, self.meta, self.rec = token, state, old, new, meta, rec
+
+
+def cask_status(token, opts, force=False):
     rec = load_receipt(token)
     if not rec:
         raise CaskError(f"{token} is not installed")
@@ -1339,19 +1341,36 @@ def upgrade(token, opts, force=False):
         meta = fetch_meta(token, opts.offline)
     except CaskError as e:
         if "no cask named" in str(e):
-            return "gone"
+            return Status(token, "gone", rec["version"], None, None, rec)
         raise
     meta = {**meta, "token": token}
     old_v, new_v = rec["version"], str(meta["version"])
-    if not force:
-        if new_v == old_v and new_v != "latest":
-            return "current"
-        if rec.get("pinned"):
-            return "pinned"
-        if rec.get("blocked_version") == new_v:
-            return "blocked"
-        if (meta.get("auto_updates") or new_v == "latest") and not opts.greedy:
-            return "skipped"
+    greedy = getattr(opts, "greedy", False)
+    state = "outdated"
+    if force:
+        pass
+    elif new_v == old_v and new_v != "latest":
+        state = "current"
+    elif rec.get("pinned"):
+        state = "pinned"
+    elif rec.get("blocked_version") == new_v:
+        state = "blocked"
+    elif new_v == "latest" and not (greedy or getattr(opts, "greedy_latest", False)):
+        state = "latest"
+    elif meta.get("auto_updates") and not (greedy or getattr(opts, "greedy_auto_updates", False)):
+        state = "auto"
+    return Status(token, state, old_v, new_v, meta, rec)
+
+
+@with_appdir
+def upgrade(token, opts, force=False):
+    st = cask_status(token, opts, force)
+    if st.state != "outdated":
+        return {"auto": "skipped", "latest": "skipped"}.get(st.state, st.state)
+    meta, rec, old_v, new_v = st.meta, st.rec, st.old, st.new
+    if getattr(opts, "dry_run", False):
+        print(f"Would {'reinstall' if old_v == new_v else 'upgrade'} {token} {old_v}" + (f" -> {new_v}" if old_v != new_v else ""))
+        return "dry-run"
     check_requirements(meta, [])
     log(f"Upgrading {token} {old_v} -> {new_v}" if old_v != new_v else f"Reinstalling {token} {new_v}")
 
@@ -1420,12 +1439,66 @@ def upgrade(token, opts, force=False):
     return "upgraded"
 
 
+def describe_directives(d, staged):
+    """Lines describing what the uninstall or zap directives would touch (for --dry-run)."""
+    out = []
+    for key in DIRECTIVE_ORDER:
+        vals = d.get(key)
+        if not vals:
+            continue
+        if key in ("delete", "trash", "rmdir"):
+            out += [f"  {key}: {p}" for p in expand_globs(vals)]
+        elif key == "signal":
+            out += [f"  signal: {pair[0]} to {pair[1]}" for pair in vals]
+        elif key in ("script", "early_script"):
+            out += [f"  {key}: {v['executable'] if isinstance(v, dict) else v}" for v in vals]
+        else:
+            out += [f"  {key}: {v}" for v in vals]
+    return out
+
+
+def default_targets(meta):
+    """Where a cask's artifacts land by default (for `uninstall --force` without a receipt)."""
+    out = []
+    for kind, args, target in artifact_entries(meta):
+        src, o = split_args(args)
+        target = o.get("target") or target
+        if kind in MOVE_DIRS and src:
+            dest = expand(target, MOVE_DIRS[kind]) if target else MOVE_DIRS[kind] / Path(src).name
+            if kind in ("app", "suite") and MOVE_DIRS[kind] != DEFAULT_APPDIR:
+                try:
+                    dest = MOVE_DIRS[kind] / dest.relative_to(DEFAULT_APPDIR)
+                except ValueError:
+                    pass
+            out.append({"kind": kind, "path": str(dest), "mode": "move"})
+        elif kind in LINK_DIRS and src:
+            dest = expand(target, LINK_DIRS[kind]) if target else LINK_DIRS[kind] / Path(src).name
+            out.append({"kind": kind, "path": str(dest), "mode": "link"})
+    return out
+
+
 @with_appdir
 def uninstall(token, opts):
     rec = load_receipt(token)
     if not rec:
-        raise CaskError(f"{token} is not installed")
+        if not getattr(opts, "force", False):
+            raise CaskError(f"{token} is not installed")
+        # --force: Homebrew uninstalls from the definition alone; so does mycask
+        meta = fetch_meta(token, opts.offline)
+        warn(f"{token} has no receipt; removing what its definition names (--force)")
+        rec = {"version": meta["version"], "staged": str(caskroom_dir(token, meta["version"])),
+               "items": default_targets(meta), "meta": meta}
     meta, staged = rec["meta"], Path(rec["staged"])
+    if getattr(opts, "dry_run", False):
+        print(f"Would uninstall {token} {rec['version']}:")
+        for it in rec["items"]:
+            if exists(it["path"]):
+                print(f"  {it['kind'].replace('_', ' ')}: {it['path']}")
+        lines = describe_directives(directives(meta, "uninstall"), staged)
+        if opts.zap:
+            lines += describe_directives(directives(meta, "zap"), staged)
+        print("\n".join(lines) if lines else "  (no uninstall steps)")
+        return
     log(f"Uninstalling {token} {rec['version']}")
     for kind, _, _ in artifact_entries(meta):
         if kind in ("uninstall_preflight", "uninstall_postflight"):
@@ -1446,18 +1519,23 @@ def uninstall(token, opts):
         log(f"Zapping {token}")
         run_directives(directives(meta, "zap"), staged)
     remove(CASKROOM / token)
-    receipt_file(token).unlink()
+    if receipt_file(token).exists():
+        receipt_file(token).unlink()
     log(f"{token} uninstalled")
 
 
 @with_appdir
 def zap(token, opts):
-    if load_receipt(token):
+    if load_receipt(token) or getattr(opts, "force", False):
         o = copy.copy(opts)
         o.zap = True
         uninstall(token, o)
         return
     meta = fetch_meta(token, opts.offline)
+    if getattr(opts, "dry_run", False):
+        lines = describe_directives(directives(meta, "zap"), None)
+        print(f"Would zap {token} leftovers:\n" + ("\n".join(lines) if lines else "  (nothing found)"))
+        return
     log(f"Zapping {token} leftovers (the app itself is left alone)")
     run_directives(directives(meta, "zap"), None)
 
@@ -1479,65 +1557,355 @@ def for_each(tokens, fn):
     return failed
 
 
-def cmd_upgrade(tokens, opts):
-    results = {}
+def plural(n, word):
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def status_report(tokens, opts, force=False):
+    """Group the installed casks by what `upgrade` would do with them: ({state: [Status]}, failed tokens)."""
+    groups = {}
 
     def one(t):
-        results[t] = upgrade(t, opts)
-        if results[t] == "skipped":
-            log(f"{t} updates itself; skipped (use --greedy to include it)")
-        elif results[t] == "gone":
-            log(f"{t} is no longer in the cask index; keeping the installed version")
-        elif results[t] == "pinned":
-            log(f"{t} is pinned; skipped")
-        elif results[t] == "blocked":
-            log(f"{t}: the newest version doesn't support this Mac; staying on the installed one")
+        st = cask_status(t, opts, force)
+        groups.setdefault(st.state, []).append(st)
 
-    failed = for_each(tokens or installed_tokens(), one)
-    if not failed and "upgraded" not in results.values():
-        log("Everything is up to date")
+    failed = for_each(tokens, one)
+    return groups, failed
+
+
+def print_outdated(outdated, header=""):
+    log((header + " " if header else "") + plural(len(outdated), "outdated cask") + ":")
+    width = max(len(st.token) for st in outdated)
+    for st in outdated:
+        print(f"{st.token:<{width}}  {st.old} -> {st.new}" if st.old != st.new else f"{st.token:<{width}}  {st.old} (reinstall)")
+
+
+def print_skipped(groups, explicit):
+    """One line per reason something installed is not upgraded (Homebrew says nothing; mycask says why, once)."""
+    notes = (("pinned", "Not upgrading {n} (pinned): {names}"),
+             ("blocked", "Keeping the installed version of {n} (the newest does not support this Mac): {names}"),
+             ("gone", "No longer in the cask index, keeping the installed version: {names}"))
+    if explicit or VERBOSE:
+        notes += (("auto", "Updates itself, skipped (--greedy or --greedy-auto-updates includes it): {names}"),
+                  ("latest", "No version to compare (\"latest\"), skipped (--greedy or --greedy-latest): {names}"))
+    for state, text in notes:
+        casks = groups.get(state) or []
+        if casks:
+            log(text.format(n=plural(len(casks), "cask"), names=", ".join(st.token for st in casks)))
+    if not (explicit or VERBOSE):
+        auto = len(groups.get("auto") or []) + len(groups.get("latest") or [])
+        if auto:
+            log(f"{plural(auto, 'cask')} update themselves and were skipped (--greedy includes them, -v names them)")
+
+
+def cmd_upgrade(tokens, opts):
+    """Homebrew's `brew upgrade --cask`: say what is outdated first, then upgrade all of it."""
+    explicit = bool(tokens)
+    groups, failed = status_report(tokens or installed_tokens(), opts, force=opts.force)
+    outdated = groups.get("outdated") or []
+    print_skipped(groups, explicit)
+    if not outdated:
+        if not failed:
+            log("Everything is up to date" if not explicit else "Nothing to upgrade")
+        return failed
+    print_outdated(outdated, "Would upgrade" if opts.dry_run else "Upgrading")
+    if opts.dry_run:
+        return failed
+    done = []
+
+    def one(t):
+        if upgrade(t, opts, force=opts.force) == "upgraded":
+            done.append(t)
+
+    failed += for_each([st.token for st in outdated], one)
+    if done:
+        log(f"Upgraded {plural(len(done), 'cask')}: {', '.join(done)}")
     return failed
 
 
 def cmd_outdated(opts):
-    def one(t):
+    greedy = opts.greedy or opts.greedy_latest or opts.greedy_auto_updates
+    groups, failed = status_report(installed_tokens(), opts)
+    rows = []
+    for state in ("outdated", "pinned", "blocked", "auto", "latest", "gone"):
+        for st in groups.get(state) or []:
+            if state in ("auto", "latest") and not greedy:
+                continue
+            rows.append(st)
+    if opts.json:
+        print(json.dumps([{"name": st.token, "installed_versions": [st.old], "current_version": st.new,
+                           "pinned": bool(st.rec.get("pinned")), "pinned_version": st.old if st.rec.get("pinned") else None,
+                           "auto_updates": bool((st.meta or {}).get("auto_updates")), "state": st.state}
+                          for st in rows], indent=2))
+        return failed
+    for st in rows:
+        if opts.quiet:
+            print(st.token)
+            continue
+        tags = [x for x, on in (("auto-updates", st.state in ("auto", "latest") or (st.meta or {}).get("auto_updates")),
+                                ("pinned", st.state == "pinned"), ("unsupported on this Mac", st.state == "blocked"),
+                                ("no longer in the cask index", st.state == "gone")) if on]
+        print(f"{st.token} ({st.old}) != {st.new or '?'}" + (f" [{', '.join(tags)}]" if tags else ""))
+    return failed
+
+
+def cmd_update(opts):
+    load_index(force=True)
+    age = index_age() or 0
+    log(f"{len(_INDEX[0])} casks in the index, refreshed {age / 3600:.1f} hours ago")
+    installed = installed_tokens()
+    if not installed:
+        return []
+    groups, failed = status_report(installed, opts)
+    outdated = groups.get("outdated") or []
+    if outdated:
+        print_outdated(outdated)
+        log("Run `mycask upgrade` to upgrade them")
+    else:
+        log("All installed casks are up to date")
+    print_skipped(groups, explicit=False)
+    return failed
+
+
+def cmd_list(opts):
+    tokens = installed_tokens()
+    for t in tokens:
         rec = load_receipt(t)
-        try:
-            meta = fetch_meta(t, opts.offline)
-        except CaskError as e:
-            if "no cask named" in str(e):
-                print(f"{t} ({rec['version']}) [no longer in the cask index]")
-                return
-            raise
-        new_v = str(meta["version"])
-        auto = meta.get("auto_updates") or new_v == "latest"
-        if (new_v != rec["version"] or new_v == "latest") and (opts.greedy or not auto):
-            tags = [x for x, on in (("auto-updates", auto), ("pinned", rec.get("pinned")),
-                    ("unsupported on this Mac", rec.get("blocked_version") == new_v)) if on]
-            print(f"{t} ({rec['version']}) != {new_v}" + (f" [{', '.join(tags)}]" if tags else ""))
-    return for_each(installed_tokens(), one)
+        if opts.pinned and not rec.get("pinned"):
+            continue
+        line = t
+        if opts.versions:
+            line += f" {rec['version']}"
+            if rec.get("pinned"):
+                line += " (pinned)"
+        if opts.full_name and rec.get("appdir"):
+            line += f"  --appdir={rec['appdir']}"
+        print(line)
 
 
 def cmd_info(token, opts):
     meta = fetch_meta(token, opts.offline)
     rec = load_receipt(token)
-    print(f"{meta['token']}: {meta['version']}" + (" (auto-updates)" if meta.get("auto_updates") else ""))
+    if opts.json:
+        out = dict(meta)
+        out["installed"] = rec["version"] if rec else None
+        print(json.dumps(out, indent=2))
+        return
+    tags = [t for t, on in (("auto_updates", meta.get("auto_updates")), ("deprecated", meta.get("deprecated")),
+                            ("disabled", meta.get("disabled"))) if on]
+    print(f"==> {meta['token']}: {meta['version']}" + (f" ({', '.join(tags)})" if tags else ""))
+    if meta.get("homepage"):
+        print(meta["homepage"])
+    if rec:
+        print(f"Installed: {rec['version']}" + (" (pinned)" if rec.get("pinned") else "") +
+              (f", apps in {rec['appdir']}" if rec.get("appdir") else ""))
+        print(f"  {rec['staged']}")
+    else:
+        print("Not installed")
+    if meta.get("ruby_source_path"):
+        print(f"From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/{meta['ruby_source_path']}")
     if meta.get("name"):
-        print(f"Name: {', '.join(meta['name'])}")
-    for key in ("desc", "homepage", "url"):
-        if meta.get(key):
-            print(f"{key.capitalize()}: {meta[key]}")
-    print(f"Installed: {rec['version'] if rec else 'no'}")
-    print(f"Artifacts: {', '.join(sorted({k for k, _, _ in artifact_entries(meta)}))}")
+        print("==> Name\n" + ", ".join(meta["name"]))
+    if meta.get("desc"):
+        print("==> Description\n" + meta["desc"])
+    dep = meta.get("depends_on") or {}
+    needs = []
+    for op, vals in (dep.get("macos") or {}).items():
+        needs.append(f"macOS {op} {', '.join(map(str, vals if isinstance(vals, list) else [vals]))}")
+    if dep.get("arch"):
+        needs.append("arch " + ", ".join(str(a.get("type") if isinstance(a, dict) else a).lstrip(":") for a in dep["arch"]))
+    needs += [f"cask {c}" for c in dep.get("cask") or []] + [f"tool {f}" for f in dep.get("formula") or []]
+    if needs:
+        print("==> Dependencies\n" + "\n".join(needs))
+    print("==> Artifacts")
+    for kind, args, target in artifact_entries(meta):
+        if kind in ("uninstall", "zap", "preflight", "postflight", "uninstall_preflight", "uninstall_postflight"):
+            continue
+        src, _ = split_args(args)
+        print(f"{src or ''} ({kind.replace('_', ' ')})" + (f" -> {target}" if target else ""))
+    if meta.get("url"):
+        print(f"==> Download\n{meta['url']}")
     show_caveats(meta)
 
 
 def cmd_search(query, opts):
     q = query.lower()
+    hits = 0
     for c in load_index(opts.offline)[0].values():
-        hay = " ".join([c.get("token", ""), " ".join(c.get("name") or []), c.get("desc") or ""]).lower()
-        if q in hay:
-            print(f"{c['token']:<32} {str(c.get('version')):<16} {c.get('desc') or ''}")
+        fields = [c.get("desc") or ""] if opts.desc else [c.get("token", ""), " ".join(c.get("name") or []), c.get("desc") or ""]
+        if q in " ".join(fields).lower():
+            hits += 1
+            if opts.desc:
+                print(f"{c['token']}: {c.get('desc') or ''}")
+            else:
+                print(f"{c['token']:<32} {str(c.get('version')):<16} {c.get('desc') or ''}")
+    if not hits:
+        raise CaskError(f"no casks found for {query!r}")
+
+
+def cmd_fetch(token, opts):
+    meta = fetch_meta(token, opts.offline)
+    if is_git(meta):
+        raise CaskError(f"{token} is a git repository, there is nothing to download ahead of time")
+    if opts.force:
+        name = unquote(Path(urlparse(meta["url"]).path).name) or "download"
+        remove(CACHE / "downloads" / f"{token}--{safe_version(meta['version'])}--{name}")
+    dest, _ = download(meta)
+    print(f"Downloaded to: {dest}")
+
+
+def cmd_home(tokens, opts):
+    urls = []
+    for t in tokens or []:
+        meta = fetch_meta(t, opts.offline)
+        if not meta.get("homepage"):
+            raise CaskError(f"{t} has no homepage")
+        urls.append(meta["homepage"])
+    for u in urls or ["https://formulae.brew.sh/cask/"]:
+        log(f"Opening {u}")
+        run(["open", u], check=False)
+
+
+def cmd_cat(token, opts):
+    print(json.dumps(fetch_meta(token, opts.offline), indent=2))
+
+
+def cmd_deps(token, opts):
+    dep = (fetch_meta(token, opts.offline).get("depends_on") or {})
+    for c in dep.get("cask") or []:
+        print(c)
+    for f in dep.get("formula") or []:
+        print(f"{f} (command-line tool, from MacPorts or mise)")
+
+
+def dir_size(p):
+    p = Path(p)
+    if p.is_symlink() or not p.exists():
+        return 0
+    if p.is_file():
+        return p.stat().st_size
+    return sum(f.stat().st_size for f in p.rglob("*") if f.is_file() and not f.is_symlink())
+
+
+def human(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+
+
+def cmd_cleanup(tokens, opts):
+    """Homebrew's `brew cleanup`: old downloads and staged versions nothing installed uses any more."""
+    installed = {t: load_receipt(t) for t in installed_tokens()}
+    only = set(tokens or [])
+    cutoff = time.time() - opts.prune * 86400 if opts.prune is not None else None
+    victims = []
+
+    def claim(path, why):
+        victims.append((Path(path), why))
+
+    downloads = CACHE / "downloads"
+    if downloads.is_dir():
+        for f in sorted(downloads.iterdir()):
+            token, _, rest = f.name.partition("--")
+            version = rest.split("--", 1)[0]
+            if only and token not in only:
+                continue
+            rec = installed.get(token)
+            if f.name.endswith(".part"):
+                claim(f, "unfinished download")
+            elif opts.scrub:
+                claim(f, "download (-s)")
+            elif rec is None:
+                claim(f, "download of a cask that is not installed")
+            elif safe_version(rec["version"]) != version:
+                claim(f, f"download of {token} {version}, installed is {rec['version']}")
+            elif cutoff is not None and f.stat().st_mtime < cutoff:
+                claim(f, f"download older than {opts.prune} days")
+    if CASKROOM.is_dir():
+        for d in sorted(CASKROOM.iterdir()):
+            if only and d.name not in only:
+                continue
+            rec = installed.get(d.name)
+            if rec is None:
+                claim(d, "staged files of a cask that is not installed")
+                continue
+            keep = Path(rec["staged"]).name
+            for v in sorted(d.iterdir()):
+                if v.name != keep:
+                    claim(v, f"staged files of {d.name} {v.name.lstrip('.')}, installed is {rec['version']}")
+    if CACHE.is_dir() and not only:
+        for d in sorted(CACHE.glob("git-*")):
+            claim(d, "temporary clone")
+        for f in sorted((CACHE / "api").glob("*.part")) if (CACHE / "api").is_dir() else []:
+            claim(f, "unfinished index download")
+    if not victims:
+        log("Nothing to clean up")
+        return []
+    freed = 0
+    for path, why in victims:
+        size = dir_size(path)
+        freed += size
+        if opts.dry_run:
+            print(f"Would remove: {path} ({human(size)}, {why})")
+        else:
+            print(f"Removing: {path} ({human(size)}, {why})")
+            remove(path)
+    log(f"This operation {'would free' if opts.dry_run else 'has freed'} approximately {human(freed)}")
+    return []
+
+
+def cmd_doctor(opts):
+    """Checks mycask's own setup and every installed cask; exit 1 when something needs a hand."""
+    problems = []
+    note = lambda msg: problems.append(msg)
+    ver = ".".join(map(str, host_macos()))
+    print(f"mycask {__version__}, Python {platform.python_version()}, macOS {ver} ({platform_key() or 'unknown codename'}), "
+          f"{'Apple Silicon' if host_is_arm() else 'Intel'}")
+    if not platform_key():
+        note(f"macOS {ver} is newer than mycask knows; cask variations for this release are not applied")
+    for tool in ("curl", "hdiutil", "ditto", "tar", "installer", "pkgutil", "launchctl", "osascript", "xattr", "lipo"):
+        if not shutil.which(tool):
+            note(f"{tool} not found; it ships with macOS or the Command Line Tools")
+    path = os.environ.get("PATH", "").split(":")
+    if str(PREFIX / "bin") not in path:
+        note(f"{PREFIX / 'bin'} is not in PATH; the binaries casks link there won't be found")
+    age = index_age()
+    if age is None:
+        note("no cask index yet; run `mycask update` while online")
+    else:
+        print(f"Cask index: {INDEX_FILE}, {age / 3600:.1f} hours old" + (" (stale, refreshed on the next command)" if age > INDEX_TTL else ""))
+    if OVERRIDES.is_dir():
+        for f in OVERRIDES.glob("*.json"):
+            try:
+                json.loads(f.read_text())
+            except ValueError as e:
+                note(f"override {f} is not valid JSON: {e}")
+    tokens = installed_tokens()
+    print(f"Installed casks: {len(tokens)} ({RECEIPTS})")
+    for t in tokens:
+        rec = load_receipt(t)
+        if not Path(rec["staged"]).exists():
+            note(f"{t}: staged files {rec['staged']} are missing (reinstall it)")
+        for it in rec["items"]:
+            p = Path(it["path"])
+            if it["mode"] == "link" and not p.is_symlink():
+                note(f"{t}: link {p} is gone")
+            elif it["mode"] != "link" and not exists(p):
+                note(f"{t}: {it['kind'].replace('_', ' ')} {p} is gone (uninstall it, or reinstall)")
+        if rec.get("pinned"):
+            print(f"  {t} is pinned at {rec['version']}")
+        if rec.get("blocked_version"):
+            print(f"  {t} stays at {rec['version']}: {rec['blocked_version']} does not support this Mac")
+    if CASKROOM.is_dir():
+        for d in CASKROOM.iterdir():
+            if d.name not in tokens:
+                note(f"{d} has staged files but no receipt (`mycask cleanup` removes them)")
+    if problems:
+        print("\n".join(f"Warning: {m}" for m in problems), file=sys.stderr)
+        return ["doctor"]
+    print("Your mycask setup looks fine.")
+    return []
 
 
 def read_bundle(path):
@@ -1564,59 +1932,225 @@ def bundle_entry(line, opts):
     return words[0], o
 
 
+# (name, aliases, arguments, one-line summary) in the order `mycask help` shows them
+COMMANDS = [
+    ("install", [], "TOKEN...", "install casks and the casks they depend on"),
+    ("reinstall", [], "TOKEN...", "download and install again"),
+    ("upgrade", ["up"], "[TOKEN...]", "list the outdated casks, then upgrade them (all installed ones if none given)"),
+    ("outdated", [], "", "list casks with a newer version available"),
+    ("update", [], "", "refresh the cask index now and list what is outdated"),
+    ("bundle", [], "FILE", "install every token in FILE (one per line, # comments, `token --appdir=DIR`)"),
+    ("fetch", [], "TOKEN...", "download without installing"),
+    ("uninstall", ["remove", "rm"], "TOKEN...", "run the cask's uninstall steps and remove its files"),
+    ("zap", [], "TOKEN...", "uninstall, and remove settings, caches and support files too"),
+    ("cleanup", [], "[TOKEN...]", "remove old downloads and staged versions nothing uses"),
+    ("list", ["ls"], "", "installed casks"),
+    ("info", [], "TOKEN...", "summary of a cask definition"),
+    ("search", [], "TEXT", "search cask tokens, names and descriptions"),
+    ("deps", [], "TOKEN", "casks and command-line tools a cask depends on"),
+    ("home", ["homepage"], "[TOKEN...]", "open the homepage in the browser"),
+    ("cat", [], "TOKEN", "print the cask definition (JSON from the index, or your override)"),
+    ("pin", [], "TOKEN...", "hold a cask at its installed version"),
+    ("unpin", [], "TOKEN...", "let a pinned cask upgrade again"),
+    ("doctor", [], "", "check mycask's setup and every installed cask"),
+    ("commands", [], "", "list the command names"),
+    ("help", [], "[COMMAND]", "this overview, or the options of one command"),
+]
+GROUPS = [("Install and update", ("install", "reinstall", "upgrade", "outdated", "update", "bundle", "fetch")),
+          ("Remove", ("uninstall", "zap", "cleanup")),
+          ("Look up", ("list", "info", "search", "deps", "home", "cat")),
+          ("Maintain", ("pin", "unpin", "doctor", "commands", "help"))]
+
+GLOBAL_HELP = """\
+Global options (before or after the command):
+  -n, --dry-run    show what would be done; change nothing
+  -v, --verbose    print every command mycask runs (and name the casks it skips)
+  -q, --quiet      no "==>" progress lines; errors and warnings still show
+  -d, --debug      full Python tracebacks on errors (same as MYCASK_DEBUG=1)
+      --offline    use the cached cask index, never download it
+      --cask       accepted, for Homebrew muscle memory (mycask only has casks)
+  -V, --version    print the mycask version
+
+Environment:
+  MYCASK_TTL        seconds between automatic index refreshes (default 86400 = 1 day)
+  MYCASK_API        index URL (default https://formulae.brew.sh/api/cask.json); point it
+                    at your own mirror if formulae.brew.sh ever goes away
+  MYCASK_PREFIX     where binaries, man pages and completions are linked (default ~/.local)
+  MYCASK_ROOT       receipts and staged files (default ~/.local/share/mycask)
+  MYCASK_CACHE      download and API cache (default ~/Library/Caches/mycask)
+  MYCASK_OVERRIDES  folder of <token>.json files used instead of the index, for pinning or
+                    patching definitions (default ~/.config/mycask/casks)
+  MYCASK_DEBUG=1    show full Python tracebacks on errors
+"""
+
+
+def overview():
+    lines = ["Usage: mycask COMMAND [OPTIONS] [TOKEN...]", "",
+             "Install, upgrade and remove macOS apps from Homebrew's cask definitions, without Homebrew.",
+             "Commands and flags follow `brew ... --cask`; everything that changes the Mac takes -n (--dry-run).", ""]
+    by_name = {c[0]: c for c in COMMANDS}
+    width = max(len(f"{n} {a}".rstrip()) for n, _, a, _ in COMMANDS)
+    for title, names in GROUPS:
+        lines.append(f"{title}:")
+        for n in names:
+            name, aliases, args, summary = by_name[n]
+            head = f"{name} {args}".rstrip()
+            alias = f" (also: {', '.join(aliases)})" if aliases else ""
+            lines.append(f"  {head:<{width}}  {summary}{alias}")
+        lines.append("")
+    lines += ["Examples:",
+              "  mycask install --adopt firefox        take over the Firefox already in /Applications",
+              "  mycask install --appdir ~/Applications alfred",
+              "  mycask upgrade -n                     only list what an upgrade would do",
+              "  mycask upgrade --greedy               also casks that update themselves",
+              "  mycask uninstall --zap slack          the app, its settings and caches",
+              "  mycask zap --force zoom               leftovers of an app mycask did not install",
+              "  mycask cleanup --prune 30 -n          old downloads and versions that would go",
+              "", "`mycask help COMMAND` or `mycask COMMAND --help` lists the options of one command.", ""]
+    return "\n".join(lines) + "\n" + GLOBAL_HELP
+
+
+def build_parser():
+    common = argparse.ArgumentParser(add_help=False)
+    g = common.add_argument_group("global options")
+    # SUPPRESS: a flag given before the command must survive the subcommand's parse
+    g.add_argument("-n", "--dry-run", dest="dry_run", action="store_true", default=argparse.SUPPRESS,
+                   help="show what would be done; change nothing")
+    g.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS, help="print every command run")
+    g.add_argument("-q", "--quiet", action="store_true", default=argparse.SUPPRESS, help="no progress lines")
+    g.add_argument("-d", "--debug", action="store_true", default=argparse.SUPPRESS, help="full tracebacks")
+    g.add_argument("--offline", action="store_true", default=argparse.SUPPRESS, help="use the cached cask index only")
+    g.add_argument("--cask", action="store_true", default=argparse.SUPPRESS, help="accepted for Homebrew compatibility")
+
+    inst = argparse.ArgumentParser(add_help=False)
+    i = inst.add_argument_group("install options")
+    i.add_argument("--force", action="store_true", help="replace files already in the way")
+    i.add_argument("--adopt", action="store_true", help="take over apps that are already installed")
+    i.add_argument("--appdir", metavar="DIR",
+                   help=f"folder for the app itself (default {DEFAULT_APPDIR}); upgrades and uninstalls remember it")
+    i.add_argument("--skip-cask-deps", action="store_true", help="don't install the casks this one depends on")
+    i.add_argument("--require-sha", action="store_true", help="refuse a download the cask gives no checksum for")
+    i.add_argument("--no-binaries", dest="binaries", action="store_false", help="don't link the cask's command-line binaries")
+    i.add_argument("--binaries", dest="binaries", action="store_true", help=argparse.SUPPRESS)
+    i.add_argument("--no-quarantine", dest="quarantine", action="store_false",
+                   help="don't mark apps as downloaded from the internet (Gatekeeper)")
+    i.add_argument("--quarantine", dest="quarantine", action="store_true", help=argparse.SUPPRESS)
+    i.add_argument("--skip-compat", action="store_true",
+                   help="don't check the app's own macOS and architecture requirements")
+
+    greedy = argparse.ArgumentParser(add_help=False)
+    gg = greedy.add_argument_group("which casks count as outdated")
+    gg.add_argument("--greedy", action="store_true", help="also casks that update themselves or have no version")
+    gg.add_argument("--greedy-latest", action="store_true", help='also casks whose version is "latest"')
+    gg.add_argument("--greedy-auto-updates", action="store_true", help="also casks that update themselves")
+
+    p = argparse.ArgumentParser(prog="mycask", add_help=False, parents=[common], usage="mycask COMMAND [OPTIONS] [TOKEN...]")
+    p.add_argument("-h", "--help", action="store_true")
+    p.add_argument("-V", "--version", action="store_true")
+    sub = p.add_subparsers(dest="cmd", metavar="COMMAND")
+    by_name = {c[0]: c for c in COMMANDS}
+
+    def add(name, *parents, **kw):
+        _, aliases, args, summary = by_name[name]
+        return sub.add_parser(name, aliases=aliases, parents=[common] + list(parents), help=summary, prog=f"mycask {name}",
+                              description=summary[0].upper() + summary[1:] + ".", usage=f"mycask {name} [OPTIONS] {args}".rstrip(),
+                              **kw)
+
+    s = add("install", inst)
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("reinstall", inst)
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("upgrade", inst, greedy, epilog="--force upgrades (reinstalls) the named casks, or every installed one, "
+                                           "even when they are current. --dry-run only prints the list.")
+    s.add_argument("tokens", nargs="*", metavar="TOKEN")
+    s = add("outdated", greedy)
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s = add("update")
+    s.add_argument("--force", action="store_true", help=argparse.SUPPRESS)  # update always refreshes now
+    s = add("bundle", inst)
+    s.add_argument("file", metavar="FILE")
+    s = add("fetch")
+    s.add_argument("--force", action="store_true", help="download again even if cached")
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("uninstall")
+    s.add_argument("--zap", action="store_true", help="also remove settings, caches and support files")
+    s.add_argument("--force", action="store_true",
+                   help="also when mycask has no receipt for it: remove what the cask definition names")
+    s.add_argument("--appdir", metavar="DIR", help="folder the app is in (with --force)")
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("zap")
+    s.add_argument("--force", action="store_true", help="also remove the app itself when mycask didn't install it")
+    s.add_argument("--appdir", metavar="DIR", help="folder the app is in, for casks mycask didn't install")
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("cleanup", epilog="Without --prune, downloads of the installed version are kept.")
+    s.add_argument("--prune", type=int, metavar="DAYS", help="also remove downloads older than DAYS")
+    s.add_argument("-s", "--scrub", action="store_true", help="remove every download, even of the installed version")
+    s.add_argument("tokens", nargs="*", metavar="TOKEN")
+    s = add("list")
+    s.add_argument("--versions", action="store_true", help="show the installed version too")
+    s.add_argument("--pinned", action="store_true", help="only pinned casks")
+    s.add_argument("--full-name", action="store_true", help="also the app folder, when it isn't /Applications")
+    s.add_argument("-1", dest="one", action="store_true", help=argparse.SUPPRESS)  # always one per line
+    s = add("info")
+    s.add_argument("--json", action="store_true", help="the definition as JSON, with the installed version")
+    s.add_argument("--installed", action="store_true", help="every installed cask")
+    s.add_argument("tokens", nargs="*", metavar="TOKEN")
+    s = add("search")
+    s.add_argument("--desc", action="store_true", help="search descriptions only, print token: description")
+    s.add_argument("query", metavar="TEXT")
+    s = add("deps")
+    s.add_argument("token", metavar="TOKEN")
+    s = add("home")
+    s.add_argument("tokens", nargs="*", metavar="TOKEN")
+    s = add("cat")
+    s.add_argument("token", metavar="TOKEN")
+    s = add("pin")
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    s = add("unpin")
+    s.add_argument("tokens", nargs="+", metavar="TOKEN")
+    add("doctor")
+    add("commands")
+    s = add("help")
+    s.add_argument("topic", nargs="?", metavar="COMMAND")
+    return p, sub
+
+
 def main(argv=None):
+    global QUIET, VERBOSE, REQUIRE_SHA
     if os.geteuid() == 0:
         sys.exit("Don't run mycask as root; it asks for sudo when it needs it")
-
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--offline", action="store_true", help="use cached cask definitions only")
-    inst = argparse.ArgumentParser(add_help=False)
-    inst.add_argument("--force", action="store_true", help="replace existing files in the way")
-    inst.add_argument("--adopt", action="store_true", help="take over apps that are already installed")
-    inst.add_argument("--skip-compat", action="store_true",
-                      help="don't check the app's own macOS/architecture requirements")
-    inst.add_argument("--no-quarantine", dest="quarantine", action="store_false",
-                      help="don't mark apps as downloaded from the internet")
-    inst.add_argument("--appdir", help=f"folder for the app itself (default {DEFAULT_APPDIR}); "
-                                       "upgrades and uninstalls remember it")
-
-    p = argparse.ArgumentParser(prog="mycask", description="Homebrew-cask-compatible app manager")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("install", parents=[common, inst])
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("reinstall", parents=[common, inst])
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("upgrade", parents=[common, inst])
-    s.add_argument("--greedy", action="store_true", help="include auto-updating casks")
-    s.add_argument("tokens", nargs="*")
-    s = sub.add_parser("outdated", parents=[common])
-    s.add_argument("--greedy", action="store_true")
-    s = sub.add_parser("uninstall", parents=[common])
-    s.add_argument("--zap", action="store_true", help="also remove settings, caches and support files")
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("zap", parents=[common])
-    s.add_argument("--appdir", help="folder the app was in, for casks mycask didn't install")
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("update", parents=[common])
-    s.add_argument("--force", action="store_true", help="refresh even if the index is under a day old")
-    sub.add_parser("list", parents=[common])
-    s = sub.add_parser("pin", parents=[common])
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("unpin", parents=[common])
-    s.add_argument("tokens", nargs="+")
-    s = sub.add_parser("info", parents=[common])
-    s.add_argument("token")
-    s = sub.add_parser("search", parents=[common])
-    s.add_argument("query")
-    s = sub.add_parser("bundle", parents=[common, inst])
-    s.add_argument("file")
+    p, sub = build_parser()
     args = p.parse_args(argv)
+    canonical = {alias: name for name, aliases, _, _ in COMMANDS for alias in aliases}
+    args.cmd = canonical.get(args.cmd, args.cmd)
+    if args.version:
+        print(f"mycask {__version__}")
+        return
+    if args.help or args.cmd is None or args.cmd == "help":
+        topic = getattr(args, "topic", None)
+        if args.cmd == "help" and topic:
+            topic = canonical.get(topic, topic)
+            if topic not in sub.choices:
+                sys.exit(f"Error: unknown command '{topic}'; `mycask help` lists them")
+            sub.choices[topic].print_help()
+        elif args.cmd not in (None, "help"):
+            sub.choices[args.cmd].print_help()
+        else:
+            print(overview(), end="")
+        return
     if sys.platform != "darwin":
         sys.exit("mycask only runs on macOS")
-    for name, default in (("force", False), ("adopt", False), ("quarantine", True),
-                          ("greedy", False), ("zap", False), ("skip_compat", False), ("appdir", None)):
+    for name, default in (("force", False), ("adopt", False), ("quarantine", True), ("binaries", True),
+                          ("greedy", False), ("greedy_latest", False), ("greedy_auto_updates", False), ("zap", False),
+                          ("skip_compat", False), ("skip_cask_deps", False), ("require_sha", False), ("appdir", None),
+                          ("dry_run", False), ("verbose", False), ("quiet", False), ("debug", False), ("offline", False),
+                          ("json", False), ("installed", False), ("versions", False), ("pinned", False),
+                          ("full_name", False), ("desc", False), ("prune", None), ("scrub", False)):
         if not hasattr(args, name):
             setattr(args, name, default)
+    QUIET, VERBOSE, REQUIRE_SHA = args.quiet, args.verbose, args.require_sha
+    if args.debug:
+        os.environ["MYCASK_DEBUG"] = "1"
 
     failed = []
     if args.cmd == "install":
@@ -1631,30 +2165,42 @@ def main(argv=None):
         failed = cmd_upgrade(args.tokens, args)
     elif args.cmd == "outdated":
         failed = cmd_outdated(args)
+    elif args.cmd == "update":
+        failed = for_each(["index"], lambda _: cmd_update(args))
+    elif args.cmd == "fetch":
+        failed = for_each(args.tokens, lambda t: cmd_fetch(t, args))
     elif args.cmd == "uninstall":
         failed = for_each(args.tokens, lambda t: uninstall(t, args))
     elif args.cmd == "zap":
         failed = for_each(args.tokens, lambda t: zap(t, args))
-    elif args.cmd == "update":
-        def do_update(_):
-            load_index(force=True) if args.force else load_index()
-            age = index_age() or 0
-            log(f"{len(_INDEX[0])} casks in the index, refreshed {age / 3600:.1f} hours ago")
-        failed = for_each(["index"], do_update)
+    elif args.cmd == "cleanup":
+        failed = cmd_cleanup(args.tokens, args)
     elif args.cmd == "list":
-        for t in installed_tokens():
-            rec = load_receipt(t)
-            print(f"{t} {rec['version']}" + (" (pinned)" if rec.get("pinned") else ""))
+        cmd_list(args)
     elif args.cmd in ("pin", "unpin"):
         def flip(t):
             if not load_receipt(t):
                 raise CaskError(f"{t} is not installed")
             update_receipt(t, pinned=True if args.cmd == "pin" else None)
+            log(f"{t} {'pinned at ' + load_receipt(t)['version'] if args.cmd == 'pin' else 'unpinned'}")
         failed = for_each(args.tokens, flip)
     elif args.cmd == "info":
-        failed = for_each([args.token], lambda t: cmd_info(t, args))
+        tokens = installed_tokens() if args.installed else args.tokens
+        if not tokens:
+            sys.exit("Error: `mycask info` needs a cask token, or --installed")
+        failed = for_each(tokens, lambda t: cmd_info(t, args))
     elif args.cmd == "search":
         failed = for_each([args.query], lambda q: cmd_search(q, args))
+    elif args.cmd == "deps":
+        failed = for_each([args.token], lambda t: cmd_deps(t, args))
+    elif args.cmd == "home":
+        failed = for_each(["home"], lambda _: cmd_home(args.tokens, args))
+    elif args.cmd == "cat":
+        failed = for_each([args.token], lambda t: cmd_cat(t, args))
+    elif args.cmd == "doctor":
+        failed = cmd_doctor(args)
+    elif args.cmd == "commands":
+        print("\n".join(name for name, _, _, _ in COMMANDS))
     if failed:
         print(f"Failed: {' '.join(failed)}", file=sys.stderr)
         sys.exit(1)
