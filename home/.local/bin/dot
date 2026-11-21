@@ -181,8 +181,16 @@ ask_name_email() {
 
 # bitwarden: true for this machine: the playbook reads secrets from the vault, which has to be unlocked
 bitwarden_unlock() {
-  [ -z "${BW_SESSION:-}" ] || return 0
   case " $* " in *bitwarden=false*) return 0 ;; esac
+  # a BW_SESSION from the shell is only used while it still opens the vault: after `bw lock` (or a lock from another
+  # client) the key stays exported but is worthless, and the playbook's lookups would fail with "Vault locked"
+  if [ -n "${BW_SESSION:-}" ]; then
+    case "$(bw status 2> /dev/null)" in
+      *'"status":"unlocked"'*) return 0 ;;
+    esac
+    say "BW_SESSION no longer opens the vault; unlocking again"
+    unset BW_SESSION
+  fi
   local secret="$REPO/home/.local/bin/dotfiles-secret" session
   # on when this machine says so, or when bootstrap.sh kept a Bitwarden login in the Keychain / Secret Service
   grep -q '"bitwarden": true' <<< "$(host_vars)" || "$secret" get BW_PASSWORD > /dev/null 2>&1 || return 0
