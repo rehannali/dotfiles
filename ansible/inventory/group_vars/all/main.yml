@@ -49,7 +49,7 @@ remove:
   cask: []                       # Homebrew casks
   mas: []                        # App Store ids
   apt: [git-flow]                # Debian packages (git-flow-next comes from mise there)
-  mise: [chezmoi]                # mise tool ids (also dropped from the mise config); chezmoi is not used
+  mise: [chezmoi, bitwarden]     # mise tool ids (also dropped from the mise config); chezmoi is not used, bitwarden is npm:@bitwarden/cli now
   port: []                       # MacPorts ports (Intel Macs)
   flatpak: []                    # Flathub ids (Linux desktops)
   snap: []                       # Snap Store names (Linux desktops)
