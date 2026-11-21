@@ -20,7 +20,7 @@ needs a newer macOS. It keeps the installed version and skips that update from t
 `mycask COMMAND --help`) the options of one command. Everything that changes the Mac takes `-n` (`--dry-run`).
 
 ```sh
-mycask install firefox                  # --adopt takes over an app already in place, --force replaces it
+mycask install firefox                  # an app already in place: upgraded if older, else taken over (--force replaces it)
 mycask install --appdir ~/Applications alfred   # into another folder; upgrades and uninstalls remember it
 mycask bundle casks.txt                 # every token in a file (see the format below)
 mycask upgrade                          # lists the outdated casks first, then upgrades them all
@@ -41,6 +41,11 @@ Install flags, as in Homebrew: `--adopt`, `--force`, `--appdir DIR`, `--no-quara
 `--skip-cask-deps`, `--require-sha`, and mycask's own `--skip-compat`. Global, before or after the command:
 `-n/--dry-run`, `-v/--verbose` (every command run), `-q/--quiet`, `-d/--debug`, `--offline`, `-V/--version`.
 Aliases: `up`, `remove`/`rm`, `ls`, `homepage`.
+
+An app or file a cask installs that is already there (installed by hand or by Homebrew) no longer stops the
+install. mycask reads its version: an older copy is set aside, the cask's version is installed, and the old copy comes
+back if anything fails; the same or a newer copy (an app that updated itself) is taken over as it is. Fonts and
+other files without a version are taken over. `--adopt` takes over even an older copy, `--force` always replaces.
 
 `casks.txt` has one token per line, `#` starts a comment. A line can name the folder its app goes to:
 
