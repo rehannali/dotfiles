@@ -222,7 +222,7 @@ def expand_text(s):
 
 
 def expand(s, base=None):
-    p = Path(os.path.expanduser(expand_text(s)))
+    p = Path(re.sub(r"^/+", "/", os.path.expanduser(expand_text(s))))   # cask.json writes "/$HOME/...": no "//"
     if not p.is_absolute() and base is not None:
         p = Path(base) / p
     return p
@@ -744,6 +744,40 @@ def add_quarantine(path):
     run(["xattr", "-w", "com.apple.quarantine", value, path], check=False, capture=True)
 
 
+def bundle_version(path):
+    """CFBundleShortVersionString (else CFBundleVersion) of an app or other bundle, '' if it has none."""
+    info = Path(path) / "Contents/Info.plist"
+    try:
+        d = plistlib.loads(info.read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return ""
+    return str(d.get("CFBundleShortVersionString") or d.get("CFBundleVersion") or "")
+
+
+def version_key(v):
+    nums = re.findall(r"\d+", str(v).split(",")[0])
+    return tuple(int(n) for n in nums) if nums else None
+
+
+def newer_than_installed(new, old, kind):
+    """True when the staged bundle is a newer version than the one in place. Anything that can't be compared
+    (fonts, files, bundles without a version) counts as not newer: it is taken over, never overwritten."""
+    if kind not in ("app", "suite") and not (Path(new) / "Contents/Info.plist").exists():
+        return False
+    a, b = version_key(bundle_version(new)), version_key(bundle_version(old))
+    if a is None or b is None:
+        return False
+    width = max(len(a), len(b))
+    return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
+
+
+def discard_replaced(staged):
+    """After a successful install: the older copies do_move set aside are no longer needed."""
+    d = Path(staged).parent / ".replaced"
+    if exists(d):
+        remove(d)
+
+
 def do_move(kind, src, target, staged, opts, items):
     srcp = find_source(staged, src)
     if target:
@@ -757,18 +791,30 @@ def do_move(kind, src, target, staged, opts, items):
             dest = MOVE_DIRS[kind] / dest.relative_to(DEFAULT_APPDIR)
         except ValueError:
             pass
+    replaced = None
     if exists(dest):
-        if opts.adopt:
-            log(f"Adopting existing {dest}")
+        if opts.force:
+            remove(dest)
+        elif opts.adopt or not newer_than_installed(srcp, dest, kind):
+            # --adopt, or (Homebrew would stop here) the copy in place is as new as the cask's: take it over
+            versioned = bundle_version(dest) and kind in ("app", "suite")
+            log(f"Taking over the existing {dest}" + ("" if opts.adopt or not versioned else " (same version or newer)"))
             remove(srcp)
             items.append({"kind": kind, "path": str(dest), "mode": "move", "adopted": True})
             return
-        if not opts.force:
-            raise CaskError(f"{dest} already exists; use --adopt to take it over or --force to replace it")
-        remove(dest)
+        else:
+            # an older copy is in place (installed before mycask): upgrade it, keeping it until the install succeeds
+            replaced = staged.parent / ".replaced" / f"{len(items)}-{dest.name}"
+            ensure_dir(replaced.parent)
+            remove(replaced)
+            log(f"Upgrading the existing {dest} ({bundle_version(dest)} -> {bundle_version(srcp)})")
+            move(dest, replaced)
     log(f"Moving {kind.replace('_', ' ')} '{srcp.name}' to '{dest}'")
     move(srcp, dest)
-    items.append({"kind": kind, "path": str(dest), "mode": "move"})
+    item = {"kind": kind, "path": str(dest), "mode": "move"}
+    if replaced:
+        item["replaced"] = str(replaced)
+    items.append(item)
     if opts.quarantine and kind in ("app", "suite"):
         add_quarantine(dest)
 
@@ -789,7 +835,7 @@ def do_link(kind, src, target, staged, opts, items):
         except OSError:
             run(["chmod", "+x", srcp], sudo=True, check=False)
     log(f"Linking {kind.replace('_', ' ')} '{srcp.name}' to '{dest}'")
-    if opts.adopt and dest.is_symlink():
+    if dest.is_symlink():   # a link left by an earlier install (Homebrew, mycask before a reinstall): replaced
         remove(dest)
     symlink(srcp, dest, opts.force)
     items.append({"kind": kind, "path": str(dest), "mode": "link", "source": str(srcp)})
@@ -806,7 +852,7 @@ def do_wrapper(name, o, target, staged, opts, items):
     wrapper.chmod(0o755)
     dest = expand(target, LINK_DIRS["command_wrapper"]) if target else LINK_DIRS["command_wrapper"] / name
     log(f"Linking command wrapper '{name}' to '{dest}'")
-    if opts.adopt and dest.is_symlink():
+    if dest.is_symlink():   # a link left by an earlier install (Homebrew, mycask before a reinstall): replaced
         remove(dest)
     symlink(wrapper, dest, opts.force)
     items.append({"kind": "command_wrapper", "path": str(dest), "mode": "link", "source": str(wrapper)})
@@ -1028,6 +1074,8 @@ def rollback(items):
             continue
         try:
             remove(Path(it["path"]))
+            if it.get("replaced") and exists(it["replaced"]):
+                move(Path(it["replaced"]), Path(it["path"]))   # put back the copy that was in place
         except CaskError as e:
             warn(str(e))
 
@@ -1318,6 +1366,9 @@ def install(token, opts, seen):
         except OSError:
             pass
         raise
+    for it in items:
+        it.pop("replaced", None)
+    discard_replaced(staged)
     save_receipt(meta, staged, items)
     show_caveats(meta)
     log(f"{token} {meta['version']} installed")
@@ -1434,6 +1485,9 @@ def upgrade(token, opts, force=False):
         remove(aside)
     elif old_staged != final:
         remove(old_staged)
+    for it in items:
+        it.pop("replaced", None)
+    discard_replaced(final)
     save_receipt(meta, final, items, keep=rec)
     show_caveats(meta)
     return "upgraded"
@@ -2025,7 +2079,8 @@ def build_parser():
     inst = argparse.ArgumentParser(add_help=False)
     i = inst.add_argument_group("install options")
     i.add_argument("--force", action="store_true", help="replace files already in the way")
-    i.add_argument("--adopt", action="store_true", help="take over apps that are already installed")
+    i.add_argument("--adopt", action="store_true",
+                   help="take over what is already in place even when the cask has a newer version (without it, an older copy is upgraded and the same or a newer one taken over)")
     i.add_argument("--appdir", metavar="DIR",
                    help=f"folder for the app itself (default {DEFAULT_APPDIR}); upgrades and uninstalls remember it")
     i.add_argument("--skip-cask-deps", action="store_true", help="don't install the casks this one depends on")
