@@ -68,6 +68,8 @@
 
 - name: App Store
   when: install_app_store | bool and mas_wanted | length > 0
+  vars:
+    mas_bin: "{{ '/opt/local/bin/mas' if intel_mac else '/opt/homebrew/bin/mas' }}"
   block:
     - name: App Store | mas (command line for the App Store)
       community.general.homebrew:
@@ -85,28 +87,46 @@
       check_mode: false   # only looks, so it runs in --check too
       when: intel_mac
 
-    - name: App Store | apps (needs a signed-in App Store)
-      community.general.mas:
-        id: "{{ item.mas }}"
-        state: present
-      loop: "{{ mas_wanted }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: mas_result
-      retries: "{{ install_retries | int - 1 }}"
-      delay: "{{ install_delay }}"
-      until: mas_result is succeeded
-      ignore_errors: true
+    - name: App Store | apps already installed
+      ansible.builtin.command: "{{ mas_bin }} list"
+      register: mas_list
+      changed_when: false
+      failed_when: false
+      check_mode: false   # only looks
 
-    - name: App Store | record what did not install
+    # An app is skipped when it is already installed (mas upgrade below updates it). A missing one is got with
+    # `mas get` (free apps, also ones this Apple Account never got before: `mas install` only re-downloads, and
+    # says "redownload is not available" otherwise), else `mas install` (an app bought earlier). One the account
+    # can't get (paid and not bought, or not offered for this Mac) is reported, not an error.
+    - name: App Store | get the missing apps (needs a signed-in App Store)
+      ansible.builtin.shell: |
+        if {{ mas_bin }} get {{ item.mas | quote }}; then echo MAS_OK; exit 0; fi
+        if {{ mas_bin }} install {{ item.mas | quote }}; then echo MAS_OK; exit 0; fi
+        echo MAS_UNAVAILABLE
+      loop: >-
+        {{ mas_wanted | rejectattr('mas', 'in', mas_list.stdout_lines | default([]) | select('match', '^\s*\d+\s') | map('trim') | map('split') | map('first')
+           | map('int') | list) | list }}
+      loop_control:
+        label: "{{ item.name }} ({{ item.mas }})"
+      become: true   # mas get needs root
+      environment:
+        MAS_NO_AUTO_INDEX: "1"
+      register: mas_result
+      changed_when: "'MAS_OK' in mas_result.stdout"
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: App Store | record what this Apple Account could not get
       ansible.builtin.set_fact:
-        install_failures: "{{ install_failures | default([]) + ['App Store: ' ~ item.item.name] }}"
-      loop: "{{ mas_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | list }}"
+        install_failures: >-
+          {{ install_failures | default([]) + ['App Store: ' ~ item.item.name ~ ' (' ~ item.item.mas ~ ') skipped, not available
+          for this Apple Account (paid and not bought, or not for this Mac)'] }}
+      loop: "{{ mas_result.results | default([]) | selectattr('stdout', 'defined') | selectattr('stdout', 'search', 'MAS_UNAVAILABLE') | list }}"
       loop_control:
         label: "{{ item.item.name }}"
 
     - name: App Store | update the apps (mas upgrade)
-      ansible.builtin.command: mas upgrade
+      ansible.builtin.command: "{{ mas_bin }} upgrade"
       register: mas_upgrade
       changed_when: "'Upgrading' in mas_upgrade.stdout"
       ignore_errors: true
